@@ -19,6 +19,7 @@
 #import "kryon/title_bar_widget"
 #import "kryon/title_bar_props"
 #import "kryon/dropdown_props"
+#import "kryon/drawing_props"
 #import "kryon/session"
 #import "kryon/geometry"
 #import "kryon/tree"
@@ -142,6 +143,7 @@ AppsFrame :: () -> bool {
     columns: s32 = ifx area.width >= 440.0 * scale then 2 else 1
     card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
     card_height := 232.0 * scale
+    card_fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
     rows := (cast(s32)cards.count + columns - 1) / columns
     scroll := Scroll(session, ScrollProps.{.key = cast(u64)5, .bounds = area, .scale = scale,
             .content_height = rows * cast(s32)(card_height + gap), .scroll_offset = scroll_offset})
@@ -153,7 +155,8 @@ AppsFrame :: () -> bool {
         x := scroll.content.x + cast(float32)(index % columns) * (card_width + gap)
         y := scroll.content.y + cast(float32)(index / columns) * (card_height + gap)
         key := cast(u64)(100 + index * 16)
-        unused Box(session, BoxProps.{.key = key, .bounds = Rectangle.{x, y, card_width, card_height}, .radius = 12.0 * scale})
+        unused Box(session, BoxProps.{.key = key, .bounds = Rectangle.{x, y, card_width, card_height},
+                .radius = 12.0 * scale, .fill = card_fill})
         preview := TextUntilNul(card.preview[:])
         if preview != "" {
             Image(session, ImageProps.{.key = key + cast(u64)1, .asset_path = preview, .alt_text = TextUntilNul(card.title[:]),
@@ -173,7 +176,7 @@ AppsFrame :: () -> bool {
         menu := TitleBar(session, TitleBarProps.{.key = key + cast(u64)4, .id = cast(s32)key + 4,
                 .bounds = Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 36.0 * scale},
                 .height = cast(s32)(36.0 * scale), .scale = scale, .has_dropdown = true,
-                .dropdown_min_width = cast(s32)(220.0 * scale), .dropdown_height = cast(s32)(144.0 * scale),
+                .dropdown_min_width = cast(s32)(220.0 * scale), .dropdown_height = cast(s32)(36.0 * scale),
                 .dropdown = DropdownProps.{.placeholder = AppsLabel(language, "actions"), .selected_index = -1}}, options[:])
         if menu.dropdown.changed && operation == "" {
             if menu.dropdown.selected_index == 0 { operation = ifx card.installed then "uninstall" else "install" }

@@ -14,6 +14,7 @@
 #import "kryon/tree"
 #import "kryon/paint_queue"
 #import "kryon/widget_host"
+#import "kryon/widget_kind"
 #import, file "../src/protocol.zi";
 #import, file "../src/catalog.zi";
 #import, file "../src/tree.zi";
@@ -22,6 +23,8 @@
 Node :: #import "node_types";
 using HostValueKind;
 using FrameStatus;
+using PaintKind;
+using WidgetKind;
 
 libc :: #system_library "libc";
 GetEnvironment :: (name: *u8) -> *u8 #foreign libc "getenv";
@@ -40,6 +43,7 @@ ui_session: Session;
 ui_frame: u64;
 preview_first: Rectangle;
 preview_second: Rectangle;
+first_card_fill: Color;
 
 #program_export
 MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
@@ -93,7 +97,40 @@ State :: (context: *void, account: string, identity: *AppIdentity, state: *AppSt
     return true
 }
 
-Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true) -> bool {
+// Inspect the native widget output, after the portable controller's props
+// have crossed the host codec and TitleBar has laid out its real Dropdown.
+CardPaintGeometry :: (scale: float32) -> bool {
+    fills: s32
+    triggers: s32
+    for index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
+        paint := PendingPaintAt(ui_session, index)
+        if paint.kind != PaintKindRoundedFill { continue }
+        node := TreeSubmittedNodeAt(ui_session, paint.node)
+        if node.kind == WidgetKindBox {
+            if paint.color.a != cast(u8)255 || node.bounds.height != 232.0 * scale { return false }
+            if fills == 0 { first_card_fill = paint.color }
+            fills += 1
+        }
+        if node.kind != WidgetKindDropdown { continue }
+        if node.bounds.height != 36.0 * scale || paint.bounds.height != node.bounds.height { return false }
+        contained: bool
+        for card_index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
+            card_paint := PendingPaintAt(ui_session, card_index)
+            if card_paint.kind != PaintKindRoundedFill { continue }
+            card := TreeSubmittedNodeAt(ui_session, card_paint.node)
+            if card.kind != WidgetKindBox { continue }
+            if node.bounds.x >= card.bounds.x && node.bounds.y >= card.bounds.y &&
+            node.bounds.x + node.bounds.width <= card.bounds.x + card.bounds.width &&
+            node.bounds.y + node.bounds.height <= card.bounds.y + card.bounds.height { contained = true }
+        }
+        if !contained { return false }
+        triggers += 1
+    }
+    return fills > 0 && fills == triggers
+}
+
+Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
+    dark: bool = false, scale: float32 = 1.0) -> bool {
     ui_host = host
     if ui_session.epoch == cast(u64)0 { ui_session = SessionOpen() }
     ui_frame += cast(u64)1
@@ -103,7 +140,8 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true) 
     runtime.app.session = ui_session
     runtime.app.bounds = bounds
     runtime.app.font = 18
-    runtime.app.scale = 1.0
+    runtime.app.scale = scale
+    runtime.app.dark = dark
     runtime.legacy.frame.session = ui_session
     runtime.legacy.frame.width = width
     runtime.legacy.frame.height = height
@@ -124,9 +162,10 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true) 
             images += 1
         }
     }
+    geometry := !require_preview || CardPaintGeometry(scale)
     ended := EndFrame(ui_session) == cast(FrameStatus)FrameOk
     AppHostCollect(host)
-    return ran && ended && (image || !require_preview)
+    return ran && ended && geometry && (image || !require_preview)
 }
 
 Allows :: (context: *void, node: *AppNode, function: string) -> bool {
@@ -202,6 +241,12 @@ Check :: () -> s32 {
     if TextUntilNul(middle.identity.id[:]) != "fixture.middle" { return 4 }
     runtime = cast(*AppRuntime)middle.runtime
     if !Draw(*host, 480, 600) || preview_second.x <= preview_first.x || preview_second.y != preview_first.y { return 30 }
+    light := first_card_fill
+    if !Draw(*host, 480, 600, true, true) { return 36 }
+    dark := first_card_fill
+    if cast(s32)dark.r + cast(s32)dark.g + cast(s32)dark.b >=
+    cast(s32)light.r + cast(s32)light.g + cast(s32)light.b { return 37 }
+    if !Draw(*host, 720, 900, true, false, 1.5) { return 38 }
     if !Draw(*host, 360, 640) || preview_second.y <= preview_first.y { return 35 }
     limit := host.tree.byte_limit
     resource := AppHostAsset(middle, "assets/node.zib")
