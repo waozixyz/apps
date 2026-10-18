@@ -1,0 +1,29 @@
+#import "apps/host"
+Hash :: #import "crypto/sha256";
+Daochi :: #import "daochi_client/crypto";
+#import "std/c_string"
+#import "std/text_buffer"
+
+#program_export
+Check :: () -> s32 {
+    known := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    if !AppHostBytesMatch("abc", known) { return 1 }
+    input: [3]u8 = .[97, 98, 99]
+    first: [32]u8; second: [32]u8
+    first_hex: [65]u8; second_hex: [65]u8
+    Hash.Sha256(*input[0], 3, *first[0]); Daochi.Sha256(*input[0], 3, *second[0])
+    if Hash.BytesToHex(*first[0], 32, *first_hex[0], 65) != 1 ||
+    Daochi.BytesToHex(*second[0], 32, *second_hex[0], 65) != 1 ||
+    TextUntilNul(first_hex[:]) != known || TextUntilNul(second_hex[:]) != known { return 2 }
+    Hash.Sha256Hex(*input[0], 3, *first_hex[0]); Daochi.Sha256Hex(*input[0], 3, *second_hex[0])
+    if TextUntilNul(first_hex[:]) != known || TextUntilNul(second_hex[:]) != known { return 3 }
+    if Hash.HexToBytes(known, *first[0], 32) != 1 || Daochi.HexToBytes(known, *second[0], 32) != 1 { return 4 }
+    key: [3]u8 = .[107, 101, 121]
+    if Hash.HmacSha256(*key[0], 3, *input[0], 3, *first[0]) != 1 ||
+    Daochi.HmacSha256(*key[0], 3, *input[0], 3, *second[0]) != 1 { return 5 }
+    for at: cast(s32)0..31 { if first[at] != second[at] { return 6 } }
+    if Hash.HmacSha256Text(*key[0], 3, "abc", *first[0]) != 1 ||
+    Daochi.HmacSha256Text(*key[0], 3, "abc", *second[0]) != 1 { return 7 }
+    for at: cast(s32)0..31 { if first[at] != second[at] { return 8 } }
+    return 0
+}
