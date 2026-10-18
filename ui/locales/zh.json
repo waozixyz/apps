@@ -1,0 +1,17 @@
+{
+  "back": "返回",
+  "open": "打开",
+  "install": "安装",
+  "uninstall": "卸载",
+  "pin": "固定",
+  "unpin": "取消固定",
+  "install_to_launcher": "安装到启动器",
+  "prompt_pending": "等待启动器确认",
+  "launcher_installed": "已安装到启动器",
+  "queued": "请求已排队",
+  "applied": "已更新",
+  "rejected": "请求被拒绝",
+  "unavailable": "应用不可用",
+  "empty": "此集合中没有应用",
+  "actions": "应用操作"
+}

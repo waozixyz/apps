@@ -1,0 +1,17 @@
+{
+  "back": "Retour",
+  "open": "Ouvrir",
+  "install": "Installer",
+  "uninstall": "Désinstaller",
+  "pin": "Épingler",
+  "unpin": "Désépingler",
+  "install_to_launcher": "Installer dans le lanceur",
+  "prompt_pending": "Confirmation du lanceur en attente",
+  "launcher_installed": "Installé dans le lanceur",
+  "queued": "Demande en attente",
+  "applied": "Mis à jour",
+  "rejected": "Demande refusée",
+  "unavailable": "Les applications sont indisponibles",
+  "empty": "Aucune application dans cette collection",
+  "actions": "Actions de l’application"
+}

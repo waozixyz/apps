@@ -1,0 +1,17 @@
+{
+  "back": "戻る",
+  "open": "開く",
+  "install": "インストール",
+  "uninstall": "アンインストール",
+  "pin": "固定",
+  "unpin": "固定を解除",
+  "install_to_launcher": "ランチャーにインストール",
+  "prompt_pending": "ランチャーの確認待ち",
+  "launcher_installed": "ランチャーにインストール済み",
+  "queued": "リクエストを受け付けました",
+  "applied": "更新しました",
+  "rejected": "リクエストが拒否されました",
+  "unavailable": "アプリを利用できません",
+  "empty": "このコレクションにはアプリがありません",
+  "actions": "アプリの操作"
+}

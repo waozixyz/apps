@@ -1,0 +1,17 @@
+{
+  "back": "Kembali",
+  "open": "Buka",
+  "install": "Pasang",
+  "uninstall": "Hapus instalasi",
+  "pin": "Sematkan",
+  "unpin": "Lepas sematan",
+  "install_to_launcher": "Pasang ke peluncur",
+  "prompt_pending": "Menunggu konfirmasi peluncur",
+  "launcher_installed": "Terpasang di peluncur",
+  "queued": "Permintaan diantrekan",
+  "applied": "Diperbarui",
+  "rejected": "Permintaan ditolak",
+  "unavailable": "Aplikasi tidak tersedia",
+  "empty": "Tidak ada aplikasi dalam koleksi ini",
+  "actions": "Tindakan aplikasi"
+}

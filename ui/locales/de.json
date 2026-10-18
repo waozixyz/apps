@@ -1,0 +1,17 @@
+{
+  "back": "Zurück",
+  "open": "Öffnen",
+  "install": "Installieren",
+  "uninstall": "Deinstallieren",
+  "pin": "Anheften",
+  "unpin": "Lösen",
+  "install_to_launcher": "Im Startmenü installieren",
+  "prompt_pending": "Bestätigung des Startmenüs ausstehend",
+  "launcher_installed": "Im Startmenü installiert",
+  "queued": "Anfrage vorgemerkt",
+  "applied": "Aktualisiert",
+  "rejected": "Anfrage abgelehnt",
+  "unavailable": "Apps sind nicht verfügbar",
+  "empty": "Keine Apps in dieser Sammlung",
+  "actions": "App-Aktionen"
+}

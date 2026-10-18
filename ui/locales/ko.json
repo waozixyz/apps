@@ -1,0 +1,17 @@
+{
+  "back": "뒤로",
+  "open": "열기",
+  "install": "설치",
+  "uninstall": "제거",
+  "pin": "고정",
+  "unpin": "고정 해제",
+  "install_to_launcher": "런처에 설치",
+  "prompt_pending": "런처 확인 대기 중",
+  "launcher_installed": "런처에 설치됨",
+  "queued": "요청 대기 중",
+  "applied": "업데이트됨",
+  "rejected": "요청 거부됨",
+  "unavailable": "앱을 사용할 수 없습니다",
+  "empty": "이 모음에는 앱이 없습니다",
+  "actions": "앱 작업"
+}

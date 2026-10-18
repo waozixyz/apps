@@ -1,0 +1,19 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+
+#program_export
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppIdentity("counter")
+        AppDescribe("Counter fixture", "")
+        return APP_PROTOCOL
+    }
+    if AppMode() == APP_COMMAND {
+        command := AppCommand()
+        if command == "write" {
+            if !DocumentWrite("position", "after") { return 1 }
+        }
+        AppReply(DocumentRead("position"))
+    }
+    return 0
+}

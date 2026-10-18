@@ -1,0 +1,399 @@
+// Navigation and effects execute at a host boundary, never from a guest's
+// foreign callback. There is no hierarchy-sized native/VM call stack.
+#import "std/vec"
+#import "std/option"
+#import "std/c_string"
+#import "std/text_buffer"
+#import, file "protocol.zi";
+#import, file "catalog.zi";
+
+AppHandle :: struct { slot: s64; generation: s64 }
+
+AppLocation :: struct {
+    id: [128]u8
+    sha256: [65]u8
+}
+
+// Persistent locators contain verified identities/revisions, never slots.
+AppLocator :: struct {
+    identity: AppIdentity
+    chain: Vec(AppLocation)
+}
+
+AppNode :: struct {
+    identity: AppIdentity
+    entry: AppEntry
+    catalog: AppCatalog
+    runtime: *void
+    parent: AppHandle
+    generation: s64
+    bytes: s64
+    collection: bool
+}
+
+// Open must read the exact parent-contained asset, verify its SHA-256 and
+// provenance, enforce capabilities/protocol, and complete expected_id's
+// handshake before publishing this candidate. It owns returned bundle bytes.
+AppProviderOpen :: #type (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool;
+AppProviderSave :: #type (context: *void, node: *AppNode) -> bool;
+AppProviderClose :: #type (context: *void, node: *AppNode) -> void;
+// Effects are atomic in account storage. Uninstall preserves saved records
+// and cached payload. OS shortcut requests may return QUEUED with a receipt.
+AppProviderEffect :: #type (context: *void, account: string, locator: *AppLocator,
+    operation: s32, reply: *AppsReply) -> bool;
+
+AppProvider :: struct {
+    context: *void
+    open: AppProviderOpen
+    save: AppProviderSave
+    close: AppProviderClose
+    effect: AppProviderEffect
+}
+
+AppPending :: struct {
+    caller: AppHandle
+    request: AppsRequest
+    reply: AppsReply
+    account_epoch: s64
+    complete: bool
+}
+
+AppSlot :: struct { node: *AppNode }
+
+AppTree :: struct {
+    nodes: Vec(AppSlot)
+    pending: Vec(AppPending)
+    active: AppHandle
+    running: AppHandle
+    provider: AppProvider
+    account: [256]u8
+    account_epoch: s64
+    sequence: s64
+    bytes: s64
+    byte_limit: s64
+    pending_limit: s64
+    generation: s64
+    busy: bool
+    draining: bool
+}
+
+AppHandleEqual :: (left: AppHandle, right: AppHandle) -> bool {
+    return left.slot == right.slot && left.generation == right.generation
+}
+
+AppTreeNode :: (tree: *AppTree, handle: AppHandle) -> *AppNode {
+    if handle.slot < 0 || handle.slot >= tree.nodes.count || handle.generation < 1 { return null }
+    node := tree.nodes[handle.slot].node
+    if node == null || node.generation != handle.generation { return null }
+    return node
+}
+
+AppTreeStart :: (tree: *AppTree, root: *AppNode, account: string,
+    provider: AppProvider, byte_limit: s64 = 67108864, pending_limit: s64 = 256) -> bool {
+    if tree.nodes.count != 0 || root == null || root.runtime == null ||
+    account == "" || !CopyCString(account, tree.account[:]) ||
+    TextUntilNul(root.identity.authority[:]) == "" || !AppIdValid(TextUntilNul(root.identity.id[:])) ||
+    provider.open == null || provider.save == null || provider.close == null || provider.effect == null ||
+    root.bytes < 0 || root.bytes > byte_limit || pending_limit < 1 { return false }
+    root.parent = AppHandle.{-1, 0}
+    root.generation = 1
+    if !VecPush(tree.nodes, AppSlot.{root}) { return false }
+    tree.provider = provider
+    tree.active = AppHandle.{0, 1}
+    tree.account_epoch = 1
+    tree.generation = 1
+    tree.bytes = root.bytes
+    tree.byte_limit = byte_limit
+    tree.pending_limit = pending_limit
+    return true
+}
+
+AppTreeBegin :: (tree: *AppTree, handle: AppHandle) -> bool {
+    if tree.busy || tree.draining || !AppHandleEqual(handle, tree.active) || AppTreeNode(tree, handle) == null { return false }
+    tree.running = handle
+    tree.busy = true
+    return true
+}
+
+AppTreeEnd :: (tree: *AppTree, handle: AppHandle) -> bool {
+    if !tree.busy || !AppHandleEqual(handle, tree.running) { return false }
+    tree.busy = false
+    tree.running = AppHandle.{}
+    return true
+}
+
+AppRejected :: (reason: string) -> AppsReply {
+    reply := AppsReply.{.status = APPS_REJECTED}
+    unused CopyCString(reason, reply.reason[:])
+    return reply
+}
+
+AppTreeQueue :: (tree: *AppTree, caller: AppHandle, request: AppsRequest) -> AppsReply {
+    if tree.draining { return AppRejected("effects are draining") }
+    node := AppTreeNode(tree, caller)
+    if node == null || !AppHandleEqual(caller, tree.active) { return AppRejected("inactive caller") }
+    if request.operation == APPS_STATUS {
+        for index: cast(s64)0..tree.pending.count - 1 {
+            pending := tree.pending[index]
+            if pending.reply.request == request.request && pending.account_epoch == tree.account_epoch &&
+            AppHandleEqual(pending.caller, caller) { return pending.reply }
+        }
+        return AppRejected("unknown request")
+    }
+    if request.operation < APPS_OPEN || request.operation > APPS_INSTALL_TO_LAUNCHER { return AppRejected("unsupported operation") }
+    if request.operation == APPS_BACK {
+        if AppTreeNode(tree, node.parent) == null { return AppRejected("already at root") }
+    } else if !node.collection || AppCatalogFind(*node.catalog, TextUntilNul(request.id[:])) < 0 {
+        return AppRejected("undeclared child")
+    }
+    if tree.pending.count >= tree.pending_limit {
+        reclaimed := false
+        for index: cast(s64)0..tree.pending.count - 1 {
+            if !tree.pending[index].complete { continue }
+            for next: index..tree.pending.count - 2 { tree.pending[next] = tree.pending[next + 1] }
+            unused VecPop(tree.pending)
+            reclaimed = true
+            break
+        }
+        if !reclaimed { return AppRejected("request limit") }
+    }
+    if tree.sequence >= 2147483647 { return AppRejected("request limit") }
+    tree.sequence += 1
+    pending := AppPending.{.caller = caller, .request = request, .account_epoch = tree.account_epoch,
+        .reply = AppsReply.{.status = APPS_QUEUED, .request = tree.sequence}}
+    if !VecPush(tree.pending, pending) { return AppRejected("request allocation failed") }
+    return pending.reply
+}
+
+AppLocatorClear :: (locator: *AppLocator) {
+    VecFree(locator.chain)
+    locator.identity = AppIdentity.{}
+}
+
+AppTreeLocate :: (tree: *AppTree, handle: AppHandle, locator: *AppLocator) -> bool {
+    node := AppTreeNode(tree, handle)
+    if node == null { return false }
+    candidate: AppLocator
+    candidate.identity = node.identity
+    while node != null {
+        location := AppLocation.{.id = node.identity.id, .sha256 = node.entry.sha256}
+        if !VecPush(candidate.chain, location) { AppLocatorClear(*candidate); return false }
+        node = AppTreeNode(tree, node.parent)
+    }
+    // The root-to-leaf chain is data. Deep paths do not consume UI scope or
+    // Session slots, and no array encodes a maximum nesting level.
+    index: s64 = 0
+    while index < candidate.chain.count / 2 {
+        other := candidate.chain.count - 1 - index
+        temporary := candidate.chain[index]
+        candidate.chain[index] = candidate.chain[other]
+        candidate.chain[other] = temporary
+        index += 1
+    }
+    AppLocatorClear(locator)
+    locator.identity = candidate.identity
+    VecSwap(locator.chain, candidate.chain)
+    VecFree(candidate.chain)
+    return true
+}
+
+AppTreeCycle :: (tree: *AppTree, parent: AppHandle, identity: *AppIdentity) -> bool {
+    node := AppTreeNode(tree, parent)
+    while node != null {
+        if AppIdentityEqual(*node.identity, identity) { return true }
+        node = AppTreeNode(tree, node.parent)
+    }
+    return false
+}
+
+AppTreeDiscard :: (tree: *AppTree, node: *AppNode) {
+    tree.provider.close(tree.provider.context, node)
+    AppCatalogClear(*node.catalog)
+    free(node)
+}
+
+AppTreeDrop :: (tree: *AppTree, handle: AppHandle) {
+    node := AppTreeNode(tree, handle)
+    if node == null { return }
+    tree.bytes -= node.bytes
+    tree.nodes[handle.slot].node = null
+    AppTreeDiscard(tree, node)
+    while tree.nodes.count > 0 && tree.nodes[tree.nodes.count - 1].node == null { unused VecPop(tree.nodes) }
+}
+
+AppTreeOpenChild :: (tree: *AppTree, parent: AppHandle, entry: *AppEntry) -> AppHandle {
+    invalid := AppHandle.{-1, 0}
+    owner := AppTreeNode(tree, parent)
+    if owner == null { return invalid }
+    candidate := New(AppNode)
+    if candidate == null { return invalid }
+    if !tree.provider.open(tree.provider.context, owner, entry, candidate) {
+        AppTreeDiscard(tree, candidate)
+        return invalid
+    }
+    if candidate.runtime == null || candidate.bytes < 0 || candidate.bytes > tree.byte_limit - tree.bytes ||
+    TextUntilNul(candidate.identity.authority[:]) != TextUntilNul(owner.identity.authority[:]) ||
+    TextUntilNul(candidate.identity.id[:]) != TextUntilNul(entry.id[:]) ||
+    TextUntilNul(candidate.entry.sha256[:]) != TextUntilNul(entry.sha256[:]) ||
+    TextUntilNul(candidate.entry.expected_id[:]) != TextUntilNul(entry.expected_id[:]) ||
+    candidate.entry.protocol != entry.protocol || AppTreeCycle(tree, parent, *candidate.identity) {
+        AppTreeDiscard(tree, candidate)
+        return invalid
+    }
+    if candidate.collection && TextUntilNul(candidate.catalog.id[:]) != TextUntilNul(candidate.identity.id[:]) {
+        AppTreeDiscard(tree, candidate)
+        return invalid
+    }
+    candidate.parent = parent
+    tree.generation += 1
+    candidate.generation = tree.generation
+    slot := tree.nodes.count
+    for index: cast(s64)0..tree.nodes.count - 1 {
+        if tree.nodes[index].node == null { slot = index; break }
+    }
+    handle := AppHandle.{slot, candidate.generation}
+    if slot < tree.nodes.count { tree.nodes[slot].node = candidate }
+    else if !VecPush(tree.nodes, AppSlot.{candidate}) { AppTreeDiscard(tree, candidate); return invalid }
+    tree.bytes += candidate.bytes
+    return handle
+}
+
+// Only call after every guest entry has returned. A failed save/load/effect
+// retains the old page and provider state. The provider owns atomic disk/sync
+// writes; this module never deletes application records or package caches.
+AppTreeDrain :: (tree: *AppTree) -> bool {
+    if tree.busy || tree.draining { return false }
+    tree.draining = true
+    for index: cast(s64)0..tree.pending.count - 1 {
+        pending := *tree.pending[index]
+        if pending.complete { continue }
+        pending.complete = true
+        sequence := pending.reply.request
+        caller := pending.caller
+        node := AppTreeNode(tree, caller)
+        if node == null || pending.account_epoch != tree.account_epoch || !AppHandleEqual(caller, tree.active) {
+            pending.reply = AppRejected("stale caller")
+            pending.reply.request = sequence
+            continue
+        }
+        if !tree.provider.save(tree.provider.context, node) {
+            pending.reply = AppRejected("save failed")
+            pending.reply.request = sequence
+            continue
+        }
+        request := pending.request
+        if request.operation == APPS_BACK {
+            if AppTreeNode(tree, node.parent) == null { pending.reply = AppRejected("parent unavailable") }
+            else {
+                tree.active = node.parent
+                pending.reply.status = APPS_APPLIED
+                AppTreeDrop(tree, caller)
+            }
+            pending.reply.request = sequence
+            continue
+        }
+        entry_index := AppCatalogFind(*node.catalog, TextUntilNul(request.id[:]))
+        if entry_index < 0 {
+            pending.reply = AppRejected("child unavailable")
+            pending.reply.request = sequence
+            continue
+        }
+        // Copy the manifest entry before growing the node vector.
+        entry := AppCatalogAt(*node.catalog, entry_index).*
+        child := AppTreeOpenChild(tree, caller, *entry)
+        candidate := AppTreeNode(tree, child)
+        if candidate == null {
+            pending.reply = AppRejected("child verification failed")
+            pending.reply.request = sequence
+            continue
+        }
+        if request.operation == APPS_OPEN {
+            tree.active = child
+            pending.reply.status = APPS_APPLIED
+        } else {
+            locator: AppLocator
+            if !AppTreeLocate(tree, child, *locator) ||
+            !tree.provider.effect(tree.provider.context, TextUntilNul(tree.account[:]), *locator, request.operation, *pending.reply) {
+                pending.reply = AppRejected("effect failed")
+            }
+            AppLocatorClear(*locator)
+            // Effects verify a temporary instance without navigating to it.
+            if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }
+            AppTreeDrop(tree, child)
+        }
+        pending.reply.request = sequence
+    }
+    tree.draining = false
+    return true
+}
+
+// Native favorites/OS launches resolve a stable verified locator. New guests
+// are staged beside the working route; any failure disposes only candidates.
+AppTreeOpenLocator :: (tree: *AppTree, locator: *AppLocator) -> bool {
+    if tree.busy || tree.draining || locator.chain.count == 0 { return false }
+    current := AppTreeNode(tree, tree.active)
+    root := AppTreeNode(tree, AppHandle.{0, 1})
+    if current == null || root == null || TextUntilNul(locator.identity.authority[:]) != TextUntilNul(root.identity.authority[:]) ||
+    TextUntilNul(locator.chain[0].id[:]) != TextUntilNul(root.identity.id[:]) ||
+    TextUntilNul(locator.chain[0].sha256[:]) != TextUntilNul(root.entry.sha256[:]) ||
+    !tree.provider.save(tree.provider.context, current) { return false }
+    tree.draining = true
+    staged: Vec(AppHandle)
+    parent := AppHandle.{0, 1}
+    success := true
+    for index: cast(s64)1..locator.chain.count - 1 {
+        node := AppTreeNode(tree, parent)
+        location := locator.chain[index]
+        at := AppCatalogFind(*node.catalog, TextUntilNul(location.id[:]))
+        if at < 0 { success = false; break }
+        entry := AppCatalogAt(*node.catalog, at).*
+        if TextUntilNul(entry.sha256[:]) != TextUntilNul(location.sha256[:]) { success = false; break }
+        child := AppTreeOpenChild(tree, parent, *entry)
+        if AppTreeNode(tree, child) == null { success = false; break }
+        if !VecPush(staged, child) { AppTreeDrop(tree, child); success = false; break }
+        parent = child
+    }
+    leaf := AppTreeNode(tree, parent)
+    if leaf == null || !AppIdentityEqual(*leaf.identity, *locator.identity) { success = false }
+    if success {
+        previous := tree.active
+        tree.active = parent
+        while previous.slot != 0 {
+            node := AppTreeNode(tree, previous)
+            if node == null { break }
+            next := node.parent
+            AppTreeDrop(tree, previous)
+            previous = next
+        }
+    } else {
+        index := staged.count
+        while index > 0 { index -= 1; AppTreeDrop(tree, staged[index]) }
+    }
+    VecFree(staged)
+    tree.draining = false
+    return success
+}
+
+// Account switches must save first. If that fails the caller retains this
+// whole tree/account; it must not point its provider at another account yet.
+AppTreeClose :: (tree: *AppTree) -> bool {
+    if tree.busy || tree.draining { return false }
+    node := AppTreeNode(tree, tree.active)
+    if node != null && !tree.provider.save(tree.provider.context, node) { return false }
+    // Reverse insertion order always disposes descendants before ancestors.
+    index := tree.nodes.count
+    while index > 0 {
+        index -= 1
+        if tree.nodes[index].node != null { AppTreeDiscard(tree, tree.nodes[index].node) }
+    }
+    VecFree(tree.nodes)
+    VecFree(tree.pending)
+    tree.active = AppHandle.{}
+    tree.running = AppHandle.{}
+    tree.provider = AppProvider.{}
+    tree.account[0] = cast(u8)0
+    tree.account_epoch = 0; tree.sequence = 0; tree.generation = 0
+    tree.bytes = 0; tree.byte_limit = 0; tree.pending_limit = 0
+    tree.busy = false; tree.draining = false
+    return true
+}

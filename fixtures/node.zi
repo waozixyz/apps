@@ -1,0 +1,33 @@
+#import "node_types"
+
+host_api :: #system_library "host_api";
+ReadAppHost :: () -> AppMessage #foreign host_api;
+WriteAppHost :: (message: AppMessage) #foreign host_api;
+ReadAppUiHost :: () -> AppUiFrame #foreign host_api;
+AppRecordHost :: (name: string) -> string #foreign host_api;
+SaveAppRecordHost :: (name: string, value: string) -> bool #foreign host_api;
+AppLocaleHost :: (key: string) -> string #foreign host_api;
+AppKeyHost :: () -> s32 #foreign host_api;
+
+#program_export
+Main :: () -> s32 {
+    message := ReadAppHost()
+    if message.abi != MODULE_ABI { return -1 }
+    if message.action == MODULE_IDENTIFY { return MODULE_NODE_APP }
+    message.succeeded = message.action == APP_ROUTE
+    if message.action == APP_FRAME {
+        frame := ReadAppUiHost()
+        if message.name != "node" || AppLocaleHost("node_label") != "Node fixture" { return -2 }
+        if frame.width == 1 {
+            if !SaveAppRecordHost("position", "node saved") { return -3 }
+        } else if AppRecordHost("position") != "node saved" { return -4 }
+        if frame.width == 1 && (AppKeyHost() != 42 || AppKeyHost() != 0) { return -5 }
+        message.succeeded = true
+        // A guest's reply cannot replace host-owned identity or account input.
+        message.name = "other"
+        message.account = "other-account"
+    }
+    if message.action == APP_BACK { message.succeeded = message.screen == 42 }
+    WriteAppHost(message)
+    return 0
+}

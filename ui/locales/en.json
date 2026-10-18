@@ -1,0 +1,17 @@
+{
+  "back": "Back",
+  "open": "Open",
+  "install": "Install",
+  "uninstall": "Uninstall",
+  "pin": "Pin",
+  "unpin": "Unpin",
+  "install_to_launcher": "Install to launcher",
+  "prompt_pending": "Launcher confirmation pending",
+  "launcher_installed": "Installed in launcher",
+  "queued": "Request queued",
+  "applied": "Updated",
+  "rejected": "Request rejected",
+  "unavailable": "Apps are unavailable",
+  "empty": "No apps in this collection",
+  "actions": "App actions"
+}

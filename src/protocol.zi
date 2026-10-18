@@ -1,0 +1,179 @@
+// Apps service version 1. Identity and storage ownership are host inputs.
+#import "std/json_scan"
+#import "std/text_buffer"
+
+APPS_SERVICE :: "apps"
+APPS_VERSION :: 1
+APPS_CATALOG_ASSET :: "assets/apps/catalog.json"
+
+APPS_CATALOG :: 1
+APPS_OPEN :: 2
+APPS_BACK :: 3
+APPS_INSTALL :: 4
+APPS_UNINSTALL :: 5
+APPS_PIN :: 6
+APPS_UNPIN :: 7
+APPS_INSTALL_TO_LAUNCHER :: 8
+APPS_STATUS :: 9
+
+APPS_REJECTED :: 0
+APPS_QUEUED :: 1
+APPS_APPLIED :: 2
+
+APPS_CONTEXT_PROTOCOL :: 1
+APPS_NODE_PROTOCOL :: 2
+APPS_COLLECTION_PROTOCOL :: 3
+
+// authority comes from the verified installation provider, not a guest's JSON.
+// The identity tuple is (account supplied separately, authority, id). Payload
+// revision/digest and navigation ancestry never change the saved-data owner.
+AppIdentity :: struct {
+    authority: [256]u8
+    id: [128]u8
+}
+
+AppsRequest :: struct {
+    operation: s32
+    id: [128]u8
+    request: s64
+}
+
+AppsReply :: struct {
+    status: s32
+    request: s64
+    // Stable provider receipt; queued launcher prompts are never "installed".
+    receipt: [256]u8
+    reason: [256]u8
+}
+
+AppState :: struct {
+    installed: bool
+    favorite: bool
+    // 0 absent, 1 requested/system confirmation pending, 2 confirmed.
+    launcher: s32
+}
+
+AppIdValid :: (id: string) -> bool {
+    if id.count == 0 || id.count >= 128 || id == "." || id == ".." { return false }
+    for byte: id {
+        if !((byte >= #char "a" && byte <= #char "z") ||
+            (byte >= #char "0" && byte <= #char "9") || byte == #char "." ||
+            byte == #char "-" || byte == #char "_") { return false }
+    }
+    return true
+}
+
+AppIdentityEqual :: (left: *AppIdentity, right: *AppIdentity) -> bool {
+    return TextUntilNul(left.authority[:]) == TextUntilNul(right.authority[:]) &&
+    TextUntilNul(left.id[:]) == TextUntilNul(right.id[:])
+}
+
+// The packed name is used exactly as declared. No URL decoding, filesystem
+// normalization, process working directory, or path concatenation is involved.
+AppAssetPathValid :: (path: string) -> bool {
+    if path.count < 8 || path.count >= 512 || path[:7] != "assets/" { return false }
+    start: s64 = 0
+    for index: cast(s64)0..path.count - 1 {
+        byte := path[index]
+        if byte == #char "/" {
+            if index == start || path[start:index] == "." || path[start:index] == ".." { return false }
+            start = index + 1
+        } else if !((byte >= #char "a" && byte <= #char "z") ||
+            (byte >= #char "A" && byte <= #char "Z") ||
+            (byte >= #char "0" && byte <= #char "9") || byte == #char "_" || byte == #char "-" || byte == #char ".") { return false }
+    }
+    return start < path.count && path[start:] != "." && path[start:] != ".."
+}
+
+AppBundlePathValid :: (path: string) -> bool {
+    return AppAssetPathValid(path) && path.count >= 12 && path[path.count - 4:] == ".zib"
+}
+
+// A screenshot belongs to its declaring collection, just like a child bundle.
+// The host resolves these exact packed names in that verified parent's bytes.
+AppPreviewPathValid :: (path: string) -> bool {
+    if !AppAssetPathValid(path) || path.count < 12 { return false }
+    return path[path.count - 4:] == ".png" || path[path.count - 4:] == ".jpg" ||
+    (path.count >= 13 && (path[path.count - 5:] == ".jpeg" || path[path.count - 5:] == ".webp"))
+}
+
+AppDigestValid :: (digest: string) -> bool {
+    if digest.count != 64 { return false }
+    for byte: digest {
+        if !((byte >= #char "0" && byte <= #char "9") || (byte >= #char "a" && byte <= #char "f")) { return false }
+    }
+    return true
+}
+
+// Reject ambiguous keys rather than granting effects based on first/last-key
+// parser differences. Keys in this protocol are unescaped ASCII literals.
+AppsObjectValid :: (text: string, at: s32, allowed: []string) -> bool {
+    cursor := Space(text, at)
+    if cursor < 0 || cursor >= text.count || text[cursor] != #char "{" { return false }
+    seen: u64 = 0
+    cursor = Space(text, cursor + 1)
+    while cursor < text.count && text[cursor] != #char "}" {
+        key := ReadString(text, cursor)
+        if !key.valid { return false }
+        found: s32 = -1
+        for index: cast(s32)0..cast(s32)allowed.count - 1 {
+            if SpanEqualsASCII(text, key, allowed[index]) { found = index; break }
+        }
+        if found < 0 || found >= 64 { return false }
+        bit := cast(u64)1 << cast(u64)found
+        if (seen & bit) != 0 { return false }
+        seen = seen | bit
+        cursor = Space(text, key.after)
+        if cursor >= text.count || text[cursor] != #char ":" { return false }
+        cursor = ValueEnd(text, cursor + 1, 0)
+        if cursor < 0 { return false }
+        cursor = Space(text, cursor)
+        if cursor < text.count && text[cursor] == #char "}" { return true }
+        if cursor >= text.count || text[cursor] != #char "," { return false }
+        cursor = Space(text, cursor + 1)
+        if cursor < text.count && text[cursor] == #char "}" { return false }
+    }
+    return cursor < text.count && text[cursor] == #char "}"
+}
+
+AppsReadText :: (text: string, object: s32, key: string, output: []u8) -> bool {
+    length := ReadStringText(text, FieldAt(text, object, key), output)
+    return length >= 0 && TextUntilNul(output).count == length
+}
+
+AppsOperation :: (name: string) -> s32 {
+    if name == "catalog" { return APPS_CATALOG }
+    if name == "open" { return APPS_OPEN }
+    if name == "back" { return APPS_BACK }
+    if name == "install" { return APPS_INSTALL }
+    if name == "uninstall" { return APPS_UNINSTALL }
+    if name == "pin" { return APPS_PIN }
+    if name == "unpin" { return APPS_UNPIN }
+    if name == "install_to_launcher" { return APPS_INSTALL_TO_LAUNCHER }
+    if name == "status" { return APPS_STATUS }
+    return 0
+}
+
+AppsReadRequest :: (text: string, request: *AppsRequest) -> bool {
+    if text.count > 2048 || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
+    keys: [4]string = .["v", "op", "id", "request"]
+    if !AppsObjectValid(text, 0, keys[:]) { return false }
+    version := ReadNumber(text, FieldAt(text, 0, "v"))
+    if !version.valid || version.value != 1.0 { return false }
+    name: [32]u8
+    parsed: AppsRequest
+    if !AppsReadText(text, 0, "op", name[:]) { return false }
+    parsed.operation = AppsOperation(TextUntilNul(name[:]))
+    if parsed.operation == 0 { return false }
+    if parsed.operation == APPS_STATUS {
+        sequence := ReadNumber(text, FieldAt(text, 0, "request"))
+        if !sequence.valid || sequence.value < 1.0 || sequence.value > 2147483647.0 { return false }
+        parsed.request = cast(s64)sequence.value
+        if cast(float64)parsed.request != sequence.value || FieldAt(text, 0, "id") >= 0 { return false }
+    } else if FieldAt(text, 0, "request") >= 0 { return false }
+    if parsed.operation >= APPS_OPEN && parsed.operation <= APPS_INSTALL_TO_LAUNCHER && parsed.operation != APPS_BACK {
+        if !AppsReadText(text, 0, "id", parsed.id[:]) || !AppIdValid(TextUntilNul(parsed.id[:])) { return false }
+    } else if FieldAt(text, 0, "id") >= 0 { return false }
+    request.* = parsed
+    return true
+}

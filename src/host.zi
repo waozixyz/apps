@@ -1,0 +1,478 @@
+// Shared native bundle ownership. Root hosts inject platform/account effects;
+// all child lookup, hash checking, expected identity and VM lifecycle live here.
+#import "std/vec"
+#import "std/byte_text_linux"
+#import "std/bundle_host"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "crypto/sha256"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/app_context_host"
+#import "kryon/app_protocol"
+#import "kryon/app_files"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/tree"
+#import "kryon/widget_host"
+#import "kryon/widget_kind"
+Rules :: #import "protocol";
+Node :: #import "node_types";
+#import, file "node_host.zi";
+#import, file "protocol.zi";
+#import, file "catalog.zi";
+#import, file "tree.zi";
+
+using HostValueKind;
+using WidgetKind;
+
+APP_NODE_ROUTE :: 6
+APP_HOST_BYTE_LIMIT :: 67108864
+
+AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) -> bool;
+AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32;
+AppPlatformSave :: #type (context: *void, node: *AppNode) -> bool;
+AppPlatformState :: #type (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool;
+
+AppPlatform :: struct {
+    context: *void
+    allows: AppPlatformAllows
+    call: AppPlatformCall
+    widgets: AppPlatformCall
+    save: AppPlatformSave
+    effect: AppProviderEffect
+    state: AppPlatformState
+}
+
+AppHost :: struct {
+    tree: AppTree
+    platform: AppPlatform
+    reply: string
+    last_reply: string
+    harness_sha256: [65]u8
+    locale: [16]u8
+    retired: *AppRuntime
+    retired_bytes: s64
+}
+
+AppRuntime :: struct {
+    app: AppContext
+    legacy: NodeContext
+    protocol: s32
+    node: *AppNode
+    host: *AppHost
+    // A collection's controller is trusted shared Apps UI; collection bootstrap
+    // and its children retain their own verified logical/save identities.
+    controller: bool
+    frontend: *AppRuntime
+    next_retired: *AppRuntime
+    retired: bool
+    byte_charge: s64
+    busy: bool
+}
+
+AppHostBytesMatch :: (bytes: string, digest: string) -> bool {
+    actual: [65]u8
+    descriptor := cast(*TextDescriptor)(*bytes)
+    Sha256Hex(descriptor.data, bytes.count, *actual[0])
+    return TextUntilNul(actual[:]) == digest
+}
+
+AppHostAllows :: (context: *void, function: string) -> bool {
+    runtime := cast(*AppRuntime)context
+    if runtime.retired { return false }
+    if function == APPS_SERVICE { return runtime.controller && runtime.node.collection }
+    platform := runtime.host.platform
+    return platform.allows != null && platform.allows(platform.context, runtime.node, function)
+}
+
+AppHostText :: (text: string) -> HostValue {
+    return HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+        .data = HostTextData(text), .length = cast(usize)text.count}
+}
+
+AppHostWriteQuoted :: (bytes: *Vec(u8), text: string) {
+    BuilderPrint(bytes, "\"")
+    for byte: text {
+        if byte == #char "\"" { BuilderPrint(bytes, "\\\"") }
+        else if byte == #char "\\" { BuilderPrint(bytes, "\\\\") }
+        else if byte == #char "\n" { BuilderPrint(bytes, "\\n") }
+        else if byte == #char "\r" { BuilderPrint(bytes, "\\r") }
+        else if byte == #char "\t" { BuilderPrint(bytes, "\\t") }
+        else if byte < cast(u8)32 { BuilderPrint(bytes, " ") }
+        else { unused VecPush(bytes.*, byte) }
+    }
+    BuilderPrint(bytes, "\"")
+}
+
+AppHostReply :: (host: *AppHost, reply: AppsReply) -> HostValue {
+    bytes: Vec(u8)
+    status := ifx reply.status == APPS_APPLIED then "applied" else ifx reply.status == APPS_QUEUED then "queued" else "rejected"
+    BuilderPrint(*bytes, "{\"v\":1,\"status\":\"%\",\"request\":%,\"receipt\":", status, reply.request)
+    AppHostWriteQuoted(*bytes, TextUntilNul(reply.receipt[:]))
+    BuilderPrint(*bytes, ",\"reason\":")
+    AppHostWriteQuoted(*bytes, TextUntilNul(reply.reason[:]))
+    BuilderPrint(*bytes, "}")
+    AppFileFree(host.reply)
+    host.reply = BuilderFinish(bytes)
+    return AppHostText(host.reply)
+}
+
+AppHostCatalog :: (runtime: *AppRuntime) -> HostValue {
+    host := runtime.host
+    node := runtime.node
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"v\":1,\"status\":\"applied\",\"id\":")
+    AppHostWriteQuoted(*bytes, TextUntilNul(node.identity.id[:]))
+    BuilderPrint(*bytes, ",\"title\":")
+    AppHostWriteQuoted(*bytes, TextUntilNul(node.catalog.title[:]))
+    BuilderPrint(*bytes, ",\"locale\":")
+    AppHostWriteQuoted(*bytes, TextUntilNul(host.locale[:]))
+    BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
+    item := node.catalog.children
+    while item != null {
+        if item != node.catalog.children { BuilderPrint(*bytes, ",") }
+        BuilderPrint(*bytes, "{\"id\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.id[:]))
+        BuilderPrint(*bytes, ",\"title\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.title[:]))
+        BuilderPrint(*bytes, ",\"version\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.version[:]))
+        BuilderPrint(*bytes, ",\"preview\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.preview[:]))
+        identity := AppIdentity.{.authority = node.identity.authority, .id = item.entry.id}
+        state: AppState
+        if host.platform.state != null && !host.platform.state(host.platform.context, TextUntilNul(host.tree.account[:]), *identity, *state) {
+            VecFree(bytes)
+            return AppHostReply(host, AppRejected("app state unavailable"))
+        }
+        BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%}", state.installed, state.favorite, state.launcher)
+        item = item.next
+    }
+    BuilderPrint(*bytes, "]}")
+    AppFileFree(host.reply)
+    host.reply = BuilderFinish(bytes)
+    return AppHostText(host.reply)
+}
+
+AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    runtime := cast(*AppRuntime)context
+    if runtime.retired { return 0 }
+    name := TextFromCString(function)
+    if name == "AppServiceHost" && count == 2 &&
+    HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
+    HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == APPS_SERVICE {
+        if !runtime.controller || !runtime.node.collection { return 0 }
+        request: AppsRequest
+        if !AppsReadRequest(AppArgumentText(arguments[1]), *request) {
+            result.* = AppHostReply(runtime.host, AppRejected("invalid request"))
+            return 1
+        }
+        if request.operation == APPS_CATALOG { result.* = AppHostCatalog(runtime); return 1 }
+        reply := AppTreeQueue(*runtime.host.tree, runtime.host.tree.running, request)
+        result.* = AppHostReply(runtime.host, reply)
+        return 1
+    }
+    platform := runtime.host.platform
+    if platform.call == null { return 0 }
+    return platform.call(platform.context, runtime.node, module, function, arguments, count, result)
+}
+
+AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    runtime := cast(*AppRuntime)context
+    if runtime.retired { return 0 }
+    platform := runtime.host.platform
+    if platform.widgets == null { return 0 }
+    return platform.widgets(platform.context, runtime.node, module, function, arguments, count, result)
+}
+
+AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: string,
+    controller: bool = false, protocol: s32 = APPS_CONTEXT_PROTOCOL) -> *AppRuntime {
+    runtime := New(AppRuntime)
+    if runtime == null { return null }
+    runtime.host = host
+    runtime.node = node
+    runtime.protocol = protocol
+    runtime.controller = controller
+    runtime.app.context = cast(*void)runtime
+    runtime.app.allows = AppHostAllows
+    runtime.app.services = AppHostCall
+    runtime.app.widgets = AppHostWidgets
+    runtime.app.expected_id = expected_id
+    ready: bool
+    if protocol == APPS_NODE_PROTOCOL {
+        runtime.legacy.app = AppContextRuntime(*runtime.app)
+        runtime.legacy.context = cast(*void)runtime
+        runtime.legacy.allows = AppHostAllows
+        runtime.legacy.services = AppHostCall
+        runtime.legacy.widgets = AppHostWidgets
+        ready = NodeOpen(*runtime.legacy, bytes, TextUntilNul(node.identity.id[:]), expected_id)
+    } else { ready = AppContextOpen(*runtime.app, bytes) }
+    if !ready {
+        HostedAppClose(AppContextRuntime(*runtime.app))
+        free(runtime)
+        return null
+    }
+    return runtime
+}
+
+AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> bool {
+    if !node.collection { return true }
+    item := node.catalog.children
+    while item != null {
+        preview := TextUntilNul(item.entry.preview[:])
+        if preview != "" && !AppHostAsset(node, preview).found { return false }
+        item = item.next
+    }
+    resource := HostedAppAsset(AppContextRuntime(*runtime.app), TextUntilNul(node.catalog.harness[:]))
+    if !resource.found || !AppHostBytesMatch(resource.data, TextUntilNul(host.harness_sha256[:])) { return false }
+    limit := ifx host.tree.byte_limit > 0 then host.tree.byte_limit else APP_HOST_BYTE_LIMIT
+    if resource.data.count + 65536 > limit - host.tree.bytes - host.retired_bytes - node.bytes { return false }
+    runtime.frontend = AppHostRuntime(host, node, resource.data, "apps", true)
+    if runtime.frontend == null { return false }
+    node.bytes += resource.data.count + 65536
+    return true
+}
+
+// Call with the verified node supplied to the platform callback. Bytes are
+// borrowed until AppHostCollect, so queued rendering must finish before then.
+// A renderer's cache key includes node.entry.sha256 as well as the packed path.
+AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
+    if node == null || node.runtime == null || !AppAssetPathValid(path) { return HostedAsset.{} }
+    runtime := cast(*AppRuntime)node.runtime
+    if runtime.retired { return HostedAsset.{} }
+    return HostedAppAsset(AppContextRuntime(*runtime.app), path)
+}
+
+AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
+    host := cast(*AppHost)context
+    parent_runtime := cast(*AppRuntime)parent.runtime
+    resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), TextUntilNul(entry.bundle[:]))
+    if !resource.found || !AppHostBytesMatch(resource.data, TextUntilNul(entry.sha256[:])) { return false }
+    if resource.data.count + 65536 + cast(s64)size_of(AppNode) > host.tree.byte_limit - host.tree.bytes - host.retired_bytes { return false }
+    if entry.protocol != APPS_CONTEXT_PROTOCOL && entry.protocol != APPS_COLLECTION_PROTOCOL &&
+    entry.protocol != APPS_NODE_PROTOCOL { return false }
+    candidate.identity.authority = parent.identity.authority
+    candidate.identity.id = entry.id
+    candidate.entry = entry.*
+    runtime := AppHostRuntime(host, candidate, resource.data, TextUntilNul(candidate.entry.expected_id[:]), false, entry.protocol)
+    if runtime == null { return false }
+    candidate.runtime = cast(*void)runtime
+    // Charge a conservative fixed amount for the native context as well as
+    // packed bytes. This is separate from the VM's own allocation policy.
+    candidate.bytes = resource.data.count + 65536 + cast(s64)size_of(AppNode)
+    candidate.collection = entry.protocol == APPS_COLLECTION_PROTOCOL
+    if candidate.collection {
+        manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
+        if !manifest.found || !AppCatalogRead(manifest.data, TextUntilNul(candidate.identity.id[:]), *candidate.catalog) { return false }
+    }
+    return AppHostController(host, candidate, runtime)
+}
+
+AppHostActiveRuntime :: (host: *AppHost) -> *AppRuntime {
+    node := AppTreeNode(*host.tree, host.tree.active)
+    return ifx node == null then null else cast(*AppRuntime)node.runtime
+}
+
+AppHostRun :: (host: *AppHost, mode: s32) -> bool {
+    node := AppTreeNode(*host.tree, host.tree.active)
+    if node == null { return false }
+    runtime := cast(*AppRuntime)node.runtime
+    if node.collection && runtime.frontend != null {
+        frontend := runtime.frontend
+        frontend.app.session = runtime.app.session
+        frontend.app.bounds = runtime.app.bounds
+        frontend.app.dark = runtime.app.dark
+        frontend.app.scale = runtime.app.scale
+        frontend.app.font = runtime.app.font
+        frontend.app.key = runtime.app.key
+        frontend.app.modifiers = runtime.app.modifiers
+        frontend.app.input = runtime.app.input
+        frontend.app.area_input = runtime.app.area_input
+        frontend.app.command = runtime.app.command
+        runtime = frontend
+    }
+    if runtime.busy || !AppTreeBegin(*host.tree, host.tree.active) { return false }
+    runtime.busy = true
+    handle := host.tree.active
+    frame_session := runtime.app.session
+    if runtime.protocol == APPS_NODE_PROTOCOL { frame_session = runtime.legacy.frame.session }
+    mounted: bool
+    if mode == APP_FRAME {
+        bounds := runtime.app.bounds
+        if runtime.protocol == APPS_NODE_PROTOCOL && (bounds.width <= 0.0 || bounds.height <= 0.0) {
+            frame := runtime.legacy.frame
+            bounds = Rectangle.{0.0, cast(float32)frame.top, cast(float32)frame.width,
+                cast(float32)(frame.height - frame.top - frame.bottom)}
+        }
+        if SessionValid(frame_session) {
+            mount := TreeSubmitCurrent(frame_session, cast(u64)1099511627776 + cast(u64)node.generation,
+                cast(s32)WidgetKindCustom, bounds)
+            if mount >= 0 { mounted = TreePushScope(frame_session, mount) }
+        }
+        if !mounted {
+            runtime.busy = false
+            unused AppTreeEnd(*host.tree, handle)
+            return false
+        }
+    }
+    result: bool
+    if runtime.protocol == APPS_NODE_PROTOCOL {
+        runtime.legacy.key = runtime.app.key
+        if runtime.legacy.message.locale == "" { runtime.legacy.message.locale = TextUntilNul(host.locale[:]) }
+        action: s32 = ifx mode == APP_BACK then Node.APP_BACK else ifx mode == APP_NODE_ROUTE then Node.APP_ROUTE else Node.APP_FRAME
+        if mode == APP_FRAME || mode == APP_BACK || mode == APP_NODE_ROUTE {
+            result = NodeRun(*runtime.legacy, action)
+            if mode != APP_BACK { result = result && runtime.legacy.succeeded }
+        }
+    } else { result = AppContextRun(*runtime.app, mode) }
+    AppFileFree(host.last_reply)
+    host.last_reply = ""
+    if runtime.app.reply.count <= APP_MANIFEST_BYTE_LIMIT {
+        bytes: Vec(u8)
+        BuilderPrint(*bytes, "%", runtime.app.reply)
+        host.last_reply = BuilderFinish(bytes)
+    }
+    else { result = false }
+    if mounted {
+        // The guest cannot End this mount. Close any scopes it left open
+        // before restoring the native host's parent, then drain navigation.
+        WidgetHostEnd()
+        if !TreePopScope(frame_session) { result = false }
+    }
+    runtime.busy = false
+    unused AppTreeEnd(*host.tree, handle)
+    // Child open/close and platform effects happen only after Run returns.
+    unused AppTreeDrain(*host.tree)
+    return result
+}
+
+// Route requests use the same non-reentrant VM boundary as frames. Generic
+// app/1 collections need no legacy route message.
+AppHostRoute :: (host: *AppHost) -> bool {
+    runtime := AppHostActiveRuntime(host)
+    if runtime == null { return false }
+    return runtime.protocol != APPS_NODE_PROTOCOL || AppHostRun(host, APP_NODE_ROUTE)
+}
+
+// -1: failure, keep the working page; 0: root did not consume Back;
+// 1: the guest consumed it or navigation moved exactly one parent.
+AppHostBack :: (host: *AppHost) -> s32 {
+    runtime := AppHostActiveRuntime(host)
+    if runtime == null || host.tree.busy || host.tree.draining { return -1 }
+    active := host.tree.active
+    if !AppHostRun(host, APP_BACK) { return -1 }
+    if !AppHandleEqual(host.tree.active, active) { return 1 }
+    if (runtime.protocol == APPS_NODE_PROTOCOL && runtime.legacy.succeeded) ||
+    (runtime.protocol != APPS_NODE_PROTOCOL && host.last_reply == "consumed") { return 1 }
+    node := AppTreeNode(*host.tree, active)
+    if node == null { return -1 }
+    if AppTreeNode(*host.tree, node.parent) == null { return 0 }
+    queued := AppTreeQueue(*host.tree, active, AppsRequest.{.operation = APPS_BACK})
+    if queued.status != APPS_QUEUED || !AppTreeDrain(*host.tree) { return -1 }
+    return ifx !AppHandleEqual(host.tree.active, active) then 1 else -1
+}
+
+AppHostSave :: (context: *void, node: *AppNode) -> bool {
+    host := cast(*AppHost)context
+    runtime := cast(*AppRuntime)node.runtime
+    if runtime == null || runtime.busy { return false }
+    runtime.busy = true
+    // node/2 writes during the frame; its published ABI has no save action.
+    saved := true
+    if runtime.protocol != APPS_NODE_PROTOCOL {
+        if runtime.frontend != null && !AppContextRun(*runtime.frontend.app, APP_SAVE) { runtime.busy = false; return false }
+        saved = AppContextRun(*runtime.app, APP_SAVE)
+    }
+    runtime.busy = false
+    if !saved { return false }
+    return host.platform.save == null || host.platform.save(host.platform.context, node)
+}
+
+AppHostClose :: (context: *void, node: *AppNode) {
+    runtime := cast(*AppRuntime)node.runtime
+    if runtime == null { return }
+    host := cast(*AppHost)context
+    runtime.retired = true
+    runtime.byte_charge = node.bytes
+    host.retired_bytes += runtime.byte_charge
+    runtime.node = null
+    if runtime.frontend != null { runtime.frontend.retired = true; runtime.frontend.node = null }
+    runtime.next_retired = host.retired
+    host.retired = runtime
+    node.runtime = null
+}
+
+// Call only after the root renderer has consumed its frame. Closing a routed
+// VM does not prove that submitted images/text stopped borrowing its storage.
+AppHostCollect :: (host: *AppHost) {
+    runtime := host.retired
+    host.retired = null
+    while runtime != null {
+        next := runtime.next_retired
+        host.retired_bytes -= runtime.byte_charge
+        if runtime.frontend != null {
+            HostedAppClose(AppContextRuntime(*runtime.frontend.app))
+            free(runtime.frontend)
+        }
+        HostedAppClose(AppContextRuntime(*runtime.app))
+        free(runtime)
+        runtime = next
+    }
+}
+
+AppHostEffect :: (context: *void, account: string, locator: *AppLocator, operation: s32, reply: *AppsReply) -> bool {
+    host := cast(*AppHost)context
+    return host.platform.effect != null && host.platform.effect(host.platform.context, account, locator, operation, reply)
+}
+
+// authority/expected root identity/digest are verified installation inputs.
+// This function never derives authority from a container manifest or a guest.
+AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
+    expected_id: string, digest: string, account: string, platform: AppPlatform,
+    harness_digest: string = "", locale: string = "en", protocol: s32 = APPS_CONTEXT_PROTOCOL) -> bool {
+    if host.tree.nodes.count != 0 || authority == "" || authority.count >= 256 || !Rules.AppIdValid(id) || !Rules.AppIdValid(expected_id) ||
+    bytes.count + 65536 + cast(s64)size_of(AppNode) > APP_HOST_BYTE_LIMIT ||
+    !AppDigestValid(digest) || !AppHostBytesMatch(bytes, digest) { return false }
+    root := New(AppNode)
+    if root == null { return false }
+    unused CopyCString(authority, root.identity.authority[:])
+    unused CopyCString(id, root.identity.id[:])
+    unused CopyCString(digest, root.entry.sha256[:])
+    unused CopyCString(expected_id, root.entry.expected_id[:])
+    host.platform = platform
+    if !CopyCString(harness_digest, host.harness_sha256[:]) || !CopyCString(locale, host.locale[:]) { free(root); return false }
+    if protocol != APPS_CONTEXT_PROTOCOL && protocol != APPS_COLLECTION_PROTOCOL && protocol != APPS_NODE_PROTOCOL {
+        free(root); return false
+    }
+    root.entry.protocol = protocol
+    runtime := AppHostRuntime(host, root, bytes, TextUntilNul(root.entry.expected_id[:]), false, protocol)
+    if runtime == null { free(root); return false }
+    root.runtime = cast(*void)runtime
+    root.bytes = bytes.count + 65536 + cast(s64)size_of(AppNode)
+    manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
+    root.collection = manifest.found
+    if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime))) ||
+    !AppTreeStart(*host.tree, root, account, AppProvider.{.context = cast(*void)host,
+            .open = AppHostOpen, .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}) {
+        AppHostClose(cast(*void)host, root)
+        AppCatalogClear(*root.catalog)
+        free(root)
+        AppHostCollect(host)
+        return false
+    }
+    return true
+}
+
+AppHostStop :: (host: *AppHost) -> bool {
+    if !AppTreeClose(*host.tree) { return false }
+    AppHostCollect(host)
+    AppFileFree(host.reply)
+    AppFileFree(host.last_reply)
+    host.reply = ""; host.last_reply = ""
+    host.platform = AppPlatform.{}
+    return true
+}

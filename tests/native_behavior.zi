@@ -1,0 +1,269 @@
+#import "std/vec"
+#import "std/file"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/bundle_host"
+#import "kryon/hosted_values"
+#import "kryon/app_context_host"
+#import "kryon/app_protocol"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/drawing_props"
+#import "kryon/Frame"
+#import "kryon/tree"
+#import "kryon/paint_queue"
+#import "kryon/widget_host"
+#import, file "../src/protocol.zi";
+#import, file "../src/catalog.zi";
+#import, file "../src/tree.zi";
+#import, file "../src/host.zi";
+#import, file "../src/node_host.zi";
+Node :: #import "node_types";
+using HostValueKind;
+using FrameStatus;
+
+libc :: #system_library "libc";
+GetEnvironment :: (name: *u8) -> *u8 #foreign libc "getenv";
+FixtureEnvironment :: (name: string) -> string {
+    key: [64]u8
+    if !CopyCString(name, key[:]) { return "" }
+    return TextFromCString(GetEnvironment(*key[0]))
+}
+
+stored: string = "legacy saved value";
+node_stored: string;
+effect_calls: s32;
+flush_failed: bool;
+ui_host: *AppHost;
+ui_session: Session;
+ui_frame: u64;
+preview_first: Rectangle;
+preview_second: Rectangle;
+
+#program_export
+MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
+    return cast(s32)value.count * font / 2
+}
+#program_export
+MeasureGlyphLineHeight :: (font: s32, typeface: string) -> s32 { return font }
+#program_export
+ImageWidth :: (path: string) -> s32 { return 1 }
+#program_export
+ImageHeight :: (path: string) -> s32 { return 1 }
+#program_export
+SystemClipboardOpenHost :: () -> s32 { return -1 }
+#program_export
+SystemClipboardByteHost :: (index: s32) -> s32 { return -1 }
+#program_export
+SystemClipboardWriteHost :: (text: string) -> bool { return false }
+
+#program_export
+RasterRoundedRectangle :: (bounds: Rectangle, radius: float32, segments: s32, color: Color) {}
+#program_export
+RasterRoundedRectangleOutline :: (bounds: Rectangle, radius: float32, segments: s32, width: float32, color: Color) {}
+#program_export
+RasterLine :: (line: Rectangle, color: Color) {}
+#program_export
+RasterText :: (value: string, x: s32, y: s32, font: s32, color: Color) {}
+#program_export
+RasterTextClipped :: (value: string, x: s32, y: s32, font: s32, color: Color, clip: Rectangle) {}
+#program_export
+RasterImage :: (path: string, texture: u32, source: Rectangle, destination: Rectangle,
+    clip: Rectangle, origin: Vector2, rotation: float32, radius: float32, tint: Color) {}
+#program_export
+RasterImageMesh :: (path: string, texture: u32, source: Rectangle, points: []Vector2,
+    columns: s32, rows: s32, clip: Rectangle, tint: Color) {}
+
+AllowImage :: (path: string) -> bool {
+    return path == "" || AppHostAsset(AppHostActiveRuntime(ui_host).node, path).found
+}
+
+ResolveImage :: (path: string) -> string {
+    return ifx path == "assets/preview.png" then "fixture/verified-parent/preview.png" else ""
+}
+
+Widgets :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    return WidgetHostCall(context, module, function, arguments, count, result)
+}
+
+State :: (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool {
+    state.* = AppState.{.installed = true}
+    return true
+}
+
+Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true) -> bool {
+    ui_host = host
+    if ui_session.epoch == cast(u64)0 { ui_session = SessionOpen() }
+    ui_frame += cast(u64)1
+    bounds := Rectangle.{0.0, 0.0, cast(float32)width, cast(float32)height}
+    BeginFrame(ui_session, ui_frame, bounds)
+    runtime := AppHostActiveRuntime(host)
+    runtime.app.session = ui_session
+    runtime.app.bounds = bounds
+    runtime.app.font = 18
+    runtime.app.scale = 1.0
+    runtime.legacy.frame.session = ui_session
+    runtime.legacy.frame.width = width
+    runtime.legacy.frame.height = height
+    // Host chrome and guest Back both use key 2; the runtime mount keeps
+    // them in separate tree scopes.
+    unused TreeSubmitCurrent(ui_session, cast(u64)2, 0, bounds)
+    WidgetHostBegin(ui_session, AllowImage, ResolveImage)
+    ran := AppHostRun(host, APP_FRAME)
+    WidgetHostEnd()
+    image: bool
+    images: s32 = 0
+    for index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
+        paint := PendingPaintAt(ui_session, index)
+        if paint.asset_path == "fixture/verified-parent/preview.png" {
+            image = true
+            if images == 0 { preview_first = paint.bounds }
+            if images == 1 { preview_second = paint.bounds }
+            images += 1
+        }
+    }
+    ended := EndFrame(ui_session) == cast(FrameStatus)FrameOk
+    AppHostCollect(host)
+    return ran && ended && (image || !require_preview)
+}
+
+Allows :: (context: *void, node: *AppNode, function: string) -> bool {
+    return function == "DocumentReadHost" || function == "DocumentWriteHost" ||
+    function == "AppRecordHost" || function == "SaveAppRecordHost" ||
+    TextUntilNul(node.identity.id[:]) == "inbe.chess"
+}
+
+Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    name := TextFromCString(function)
+    if TextUntilNul(node.identity.id[:]) == "fixture.node" {
+        if name == "AppRecordHost" && count == 1 {
+            result.* = AppHostText(node_stored)
+            return 1
+        }
+        if name == "SaveAppRecordHost" && count == 2 && AppArgumentText(arguments[1]) == "node saved" {
+            node_stored = "node saved"
+            result.* = HostScalar("bool", 1)
+            return 1
+        }
+        return 0
+    }
+    if TextUntilNul(node.identity.id[:]) != "fixture.counter" { return 0 }
+    if name == "DocumentReadHost" && count == 1 {
+        result.* = AppHostText(stored)
+        return 1
+    }
+    if name == "DocumentWriteHost" && count == 2 {
+        if AppArgumentText(arguments[0]) != "position" || AppArgumentText(arguments[1]) != "after" { return 0 }
+        stored = "after"
+        result.* = HostScalar("bool", 1)
+        return 1
+    }
+    return 0
+}
+
+Save :: (context: *void, node: *AppNode) -> bool { return !flush_failed }
+Effect :: (context: *void, account: string, locator: *AppLocator, operation: s32, reply: *AppsReply) -> bool {
+    effect_calls += 1
+    reply.status = APPS_APPLIED
+    return account == "account-a"
+}
+
+Command :: (host: *AppHost, command: string) -> bool {
+    node := AppTreeNode(*host.tree, host.tree.active)
+    runtime := cast(*AppRuntime)node.runtime
+    runtime.app.command = command
+    return AppHostRun(host, APP_COMMAND)
+}
+
+#program_export
+Check :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_ROOT_BUNDLE"))
+    digest := FixtureEnvironment("APPS_FIXTURE_ROOT_SHA256")
+    harness_digest := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
+    if !found { return 1 }
+    host: AppHost
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State}
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
+    root := AppTreeNode(*host.tree, host.tree.active)
+    runtime := cast(*AppRuntime)root.runtime
+    if runtime.controller || runtime.frontend == null || !runtime.frontend.controller { return 15 }
+    if !Draw(*host, 800, 600) || !Draw(*host, 360, 640) { return 28 }
+    languages: [12]string = .["cs", "de", "en", "es", "fr", "id", "it", "ja", "ko", "pt", "ru", "zh"]
+    for language: languages {
+        unused CopyCString(language, host.locale[:])
+        if !Draw(*host, 360, 640) { return 29 }
+    }
+    unused CopyCString("en", host.locale[:])
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.middle\"}") || host.tree.nodes.count != 2 { return 3 }
+    middle := AppTreeNode(*host.tree, host.tree.active)
+    if TextUntilNul(middle.identity.id[:]) != "fixture.middle" { return 4 }
+    runtime = cast(*AppRuntime)middle.runtime
+    if !Draw(*host, 480, 600) || preview_second.x <= preview_first.x || preview_second.y != preview_first.y { return 30 }
+    if !Draw(*host, 360, 640) || preview_second.y <= preview_first.y { return 35 }
+    limit := host.tree.byte_limit
+    resource := AppHostAsset(middle, "assets/node.zib")
+    host.tree.byte_limit = host.tree.bytes + resource.data.count + 65536 + cast(s64)size_of(AppNode)
+    if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.node\"}") || effect_calls != 1 || host.retired_bytes <= 0 { return 32 }
+    if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.node\"}") || effect_calls != 1 { return 33 }
+    host.tree.byte_limit = limit
+    AppHostCollect(*host)
+    if host.retired_bytes != 0 { return 34 }
+    node_entry := AppCatalogAt(*middle.catalog, AppCatalogFind(*middle.catalog, "fixture.node")).*
+    unused CopyCString("other", node_entry.expected_id[:])
+    rejected := AppTreeOpenChild(*host.tree, host.tree.active, *node_entry)
+    if AppTreeNode(*host.tree, rejected) != null || AppHostActiveRuntime(*host) != runtime { return 31 }
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") || host.tree.nodes.count != 3 { return 5 }
+    child := host.tree.active
+    if !Command(*host, "read") || host.last_reply != "legacy saved value" { return 6 }
+    if !Command(*host, "write") || stored != "after" { return 7 }
+    locator: AppLocator
+    if !AppTreeLocate(*host.tree, host.tree.active, *locator) || locator.chain.count != 3 { return 8 }
+    flush_failed = true
+    unused AppTreeQueue(*host.tree, host.tree.active, AppsRequest.{.operation = APPS_BACK}); unused AppTreeDrain(*host.tree)
+    if !AppHandleEqual(host.tree.active, child) { return 9 }
+    flush_failed = false
+    unused AppTreeQueue(*host.tree, host.tree.active, AppsRequest.{.operation = APPS_BACK}); unused AppTreeDrain(*host.tree)
+    returned := AppTreeNode(*host.tree, host.tree.active)
+    if TextUntilNul(returned.identity.id[:]) != "fixture.middle" { return 10 }
+    // A direct favorite reopens the same verified leaf bytes and save owner.
+    if !AppTreeOpenLocator(*host.tree, *locator) || !Command(*host, "read") ||
+    host.last_reply != "after" { return 11 }
+    // Corrupt revision and wrong expected handshake leave the working leaf.
+    active := host.tree.active
+    locator.chain[2].sha256[0] = #char "0"
+    if AppTreeOpenLocator(*host.tree, *locator) || !AppHandleEqual(host.tree.active, active) { return 12 }
+    AppLocatorClear(*locator)
+    if AppHostBack(*host) != 1 { return 16 }
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.node\"}") { return 17 }
+    runtime = AppHostActiveRuntime(*host)
+    if runtime.protocol != APPS_NODE_PROTOCOL { return 18 }
+    runtime.legacy.frame.width = 1
+    runtime.app.key = 42
+    if !Draw(*host, 1, 600, false) || node_stored != "node saved" ||
+    runtime.legacy.message.name != "node" || runtime.legacy.message.account != "" { return 19 }
+    runtime.legacy.frame.width = 2
+    if !Draw(*host, 2, 600, false) { return 20 }
+    active = host.tree.active
+    runtime.legacy.message.screen = 42
+    if AppHostBack(*host) != 1 || !AppHandleEqual(host.tree.active, active) { return 21 }
+    runtime.legacy.message.screen = 0
+    flush_failed = true
+    if AppHostBack(*host) != -1 || !AppHandleEqual(host.tree.active, active) { return 22 }
+    flush_failed = false
+    if AppHostBack(*host) != 1 || AppHandleEqual(host.tree.active, active) { return 23 }
+    chess_digest := FixtureEnvironment("APPS_FIXTURE_CHESS_SHA256")
+    if chess_digest != "" {
+        if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\"}") { return 24 }
+        runtime = AppHostActiveRuntime(*host)
+        if runtime.protocol != APPS_NODE_PROTOCOL || TextUntilNul(runtime.node.entry.sha256[:]) != chess_digest { return 25 }
+        if !AppHostRoute(*host) { return 26 }
+        if AppHostBack(*host) != 1 { return 27 }
+    }
+    AppHostCollect(*host)
+    if !AppHostStop(*host) { return 13 }
+    if AppHostStart(*host, bytes, "fixture.test", "fixture.root", "wrong", digest, "account-a", platform, harness_digest) { return 14 }
+    return 0
+}

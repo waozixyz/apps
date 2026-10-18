@@ -1,0 +1,23 @@
+[package]
+name = "Apps"
+module_roots = ["src", "ui"]
+
+[toolchain]
+git = "https://github.com/ziranlang/ziran.git"
+ref = "28c331e3a4095a45388fecdff44698aae05ebed5"
+
+[exports]
+protocol = "src/protocol.zi"
+catalog = "src/catalog.zi"
+tree = "src/tree.zi"
+host = "src/host.zi"
+node_types = "src/node_types.zi"
+node_codec = "src/node_codec.zi"
+
+[dependencies.kryon]
+git = "https://github.com/kryonlabs/kryon.git"
+ref = "0f48864b264367526ad6699151eecb5bf89d910d"
+
+[dependencies.crypto]
+git = "https://github.com/ziranlang/crypto.git"
+ref = "master"

@@ -1,0 +1,17 @@
+{
+  "back": "Indietro",
+  "open": "Apri",
+  "install": "Installa",
+  "uninstall": "Disinstalla",
+  "pin": "Fissa",
+  "unpin": "Rimuovi dai preferiti",
+  "install_to_launcher": "Installa nel launcher",
+  "prompt_pending": "In attesa della conferma del launcher",
+  "launcher_installed": "Installato nel launcher",
+  "queued": "Richiesta in coda",
+  "applied": "Aggiornato",
+  "rejected": "Richiesta rifiutata",
+  "unavailable": "Le app non sono disponibili",
+  "empty": "Nessuna app in questa raccolta",
+  "actions": "Azioni dell’app"
+}

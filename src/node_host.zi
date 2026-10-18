@@ -1,0 +1,209 @@
+// Adapter for published node/2 bundles. The verified payload descriptor binds
+// its legacy name to the stable app identity; callers cannot choose an owner.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/json_scan"
+#import "std/text_buffer"
+#import "std/vec"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/app_context_host"
+#import "kryon/app_files"
+#import "kryon/widget_host"
+#import, file "protocol.zi";
+#import, file "node_types.zi";
+#import, file "node_codec.zi";
+
+using HostValueKind;
+
+NODE_HOST_API :: 12
+
+NodeContext :: struct {
+    app: *HostedApp
+    id: [128]u8
+    name: [128]u8
+    message: AppMessage
+    frame: AppUiFrame
+    message_codec: WidgetAppMessageCodec
+    frame_codec: WidgetAppUiFrameCodec
+    context: *void
+    allows: AppServiceAllows
+    services: HostCall
+    widgets: HostCall
+    translations: string
+    identifying: bool
+    received: bool
+    succeeded: bool
+    key: s32
+}
+
+NodeAllows :: (context: *void, module: string, name: string) -> bool {
+    node := cast(*NodeContext)context
+    return name == "ReadAppHost" || name == "WriteAppHost" || name == "ReadAppUiHost" ||
+    name == "AppLocaleHost" || name == "AppKeyHost" || WidgetHostSupports(module, name) ||
+    (node.allows != null && node.allows(node.context, name))
+}
+
+NodeLocale :: (text: string, key: string) -> string {
+    at: s64 = 0
+    while at < text.count {
+        end := at
+        while end < text.count && text[end] != #char "\n" { end += 1 }
+        line := text[at:end]
+        if line.count == key.count + 2 && line[0] == #char "[" &&
+        line[line.count - 1] == #char "]" && line[1:line.count - 1] == key {
+            start := end + 1
+            last := start
+            while last < text.count {
+                next := last
+                while next < text.count && text[next] != #char "\n" { next += 1 }
+                if text[last:next] == "---" { return text[start:ifx last > start then last - 1 else last] }
+                last = next + 1
+            }
+        }
+        at = end + 1
+    }
+    return ""
+}
+
+NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    node := cast(*NodeContext)context
+    name := TextFromCString(function)
+    result.* = HostValue.{.kind = cast(s32)HostVoid, .type_name = HostTextData("void")}
+    if name == "ReadAppHost" && count == 0 {
+        message := ifx node.identifying then AppMessage.{.abi = MODULE_ABI} else node.message
+        result.* = WidgetEncodeAppMessage(message, *node.message_codec)
+        return 1
+    }
+    // Identification cannot read records, draw, or cause platform effects.
+    if node.identifying { return 0 }
+    if name == "WriteAppHost" && count == 1 && WidgetValidAppMessage(arguments[0]) {
+        message := WidgetDecodeAppMessage(arguments[0], *node.message_codec)
+        if message.abi != MODULE_ABI || node.received { return 0 }
+        node.received = true
+        node.succeeded = message.succeeded
+        // Every other field remains a host input, including name/account.
+        return 1
+    }
+    if name == "ReadAppUiHost" && count == 0 && node.message.action == APP_FRAME {
+        result.* = WidgetEncodeAppUiFrame(node.frame, *node.frame_codec)
+        return 1
+    }
+    if name == "AppLocaleHost" && count == 1 && HostScalarValid(arguments[0], "string", cast(s32)HostString) {
+        key := AppArgumentText(arguments[0])
+        text := NodeLocale(node.translations, key)
+        if text != "" {
+            result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+                .data = HostTextData(text), .length = cast(usize)text.count}
+            return 1
+        }
+        if node.services != null && node.allows != null && node.allows(node.context, name) {
+            return node.services(node.context, module, function, arguments, count, result)
+        }
+        result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+            .data = HostTextData(key), .length = cast(usize)key.count}
+        return 1
+    }
+    if name == "AppKeyHost" && count == 0 && node.message.action == APP_FRAME {
+        result.* = HostScalar("s32", node.key)
+        node.key = 0
+        return 1
+    }
+    if WidgetHostSupports(TextFromCString(module), name) {
+        if node.message.action != APP_FRAME || node.widgets == null { return 0 }
+        return node.widgets(node.context, module, function, arguments, count, result)
+    }
+    if node.services != null && node.allows != null && node.allows(node.context, name) {
+        return node.services(node.context, module, function, arguments, count, result)
+    }
+    return 0
+}
+
+NodeAssetsValid :: (node: *NodeContext, id: string, expected_id: string) -> bool {
+    prefix_bytes: Vec(u8)
+    BuilderPrint(*prefix_bytes, "assets/%/", expected_id)
+    prefix := BuilderFinish(prefix_bytes)
+    defer { AppFileFree(prefix) }
+    count := BundleAssets(node.app.bundle)
+    if count == cast(u64)0 || count > cast(u64)2048 { return false }
+    total: u64 = 0
+    for index: cast(u64)0..count - 1 {
+        path := TextFromCString(BundleAssetPath(node.app.bundle, index))
+        length := BundleAssetLength(node.app.bundle, index)
+        if !AppAssetPathValid(path) || path.count <= prefix.count || path[:prefix.count] != prefix ||
+        length > cast(u64)16777216 { return false }
+        total += length
+        if total > cast(u64)67108864 { return false }
+    }
+    path_bytes: Vec(u8)
+    BuilderPrint(*path_bytes, "%catalog.json", prefix)
+    path := BuilderFinish(path_bytes)
+    manifest := HostedAppAsset(node.app, path)
+    AppFileFree(path)
+    if !manifest.found || manifest.data.count > 1048576 { return false }
+    keys: [15]string = .["id", "name", "title", "kind", "contract_version", "module_api", "host_api", "save_schema",
+    "harnesses", "entry", "source", "assets", "locales", "locale_prefix", "preview"]
+    if Space(manifest.data, ValueEnd(manifest.data, 0, 0)) != manifest.data.count ||
+    !AppsObjectValid(manifest.data, 0, keys[:]) { return false }
+    actual_id: [128]u8
+    actual_name: [128]u8
+    if !AppsReadText(manifest.data, 0, "id", actual_id[:]) || TextUntilNul(actual_id[:]) != id ||
+    !AppsReadText(manifest.data, 0, "name", actual_name[:]) || TextUntilNul(actual_name[:]) != expected_id { return false }
+    contract := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "contract_version"))
+    module_api := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "module_api"))
+    host_api := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "host_api"))
+    save_schema := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "save_schema"))
+    if !contract.valid || contract.value != 1.0 || !module_api.valid || module_api.value != 2.0 ||
+    !host_api.valid || host_api.value < 1.0 || host_api.value > cast(float64)NODE_HOST_API ||
+    cast(float64)cast(s32)host_api.value != host_api.value ||
+    !save_schema.valid || save_schema.value < 1.0 || save_schema.value > 2147483647.0 ||
+    cast(float64)cast(s32)save_schema.value != save_schema.value { return false }
+    read: bool
+    write: bool
+    frame: bool
+    for index: cast(u64)0..BundleCapabilities(node.app.bundle) - cast(u64)1 {
+        name := TextFromCString(BundleCapabilityFunctionName(node.app.bundle, index))
+        read = read || name == "ReadAppHost"
+        write = write || name == "WriteAppHost"
+        frame = frame || name == "ReadAppUiHost"
+    }
+    return read && write && frame
+}
+
+NodeOpen :: (node: *NodeContext, bytes: string, id: string, expected_id: string) -> bool {
+    if node.app == null || !CopyCString(id, node.id[:]) || !CopyCString(expected_id, node.name[:]) ||
+    !HostedAppOpen(node.app, bytes) || !NodeAssetsValid(node, id, expected_id) ||
+    !HostedAppStart(node.app, NodeAllows, NodeCall, cast(*void)node) { return false }
+    node.identifying = true
+    answer: s64
+    identified := HostedAppRun(node.app, *answer) && answer == MODULE_NODE_APP
+    node.identifying = false
+    return identified
+}
+
+NodeRun :: (node: *NodeContext, action: s32) -> bool {
+    node.message.abi = MODULE_ABI
+    node.message.name = TextUntilNul(node.name[:])
+    node.message.action = action
+    node.message.succeeded = false
+    if node.message.locale == "" { node.message.locale = "en" }
+    path_bytes: Vec(u8)
+    BuilderPrint(*path_bytes, "assets/%/locales/%.txt", node.message.name, node.message.locale)
+    path := BuilderFinish(path_bytes)
+    translations := HostedAppAsset(node.app, path)
+    AppFileFree(path)
+    if !translations.found {
+        fallback: Vec(u8)
+        BuilderPrint(*fallback, "assets/%/locales/en.txt", node.message.name)
+        path = BuilderFinish(fallback)
+        translations = HostedAppAsset(node.app, path)
+        AppFileFree(path)
+    }
+    node.translations = translations.data
+    node.received = false
+    node.succeeded = false
+    answer: s64
+    return HostedAppRun(node.app, *answer) && answer == 0 && node.received
+}

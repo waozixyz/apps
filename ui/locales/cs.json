@@ -1,0 +1,17 @@
+{
+  "back": "Zpět",
+  "open": "Otevřít",
+  "install": "Nainstalovat",
+  "uninstall": "Odinstalovat",
+  "pin": "Připnout",
+  "unpin": "Odepnout",
+  "install_to_launcher": "Nainstalovat do spouštěče",
+  "prompt_pending": "Čeká se na potvrzení spouštěče",
+  "launcher_installed": "Nainstalováno ve spouštěči",
+  "queued": "Požadavek zařazen do fronty",
+  "applied": "Aktualizováno",
+  "rejected": "Požadavek zamítnut",
+  "unavailable": "Aplikace nejsou dostupné",
+  "empty": "V této kolekci nejsou žádné aplikace",
+  "actions": "Akce aplikace"
+}

@@ -1,0 +1,181 @@
+#import "std/vec"
+#import "std/c_string"
+#import "std/text_buffer"
+#import, file "../src/protocol.zi";
+#import, file "../src/catalog.zi";
+#import, file "../src/tree.zi";
+
+DIGEST :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+ROOT_DIGEST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+fail_save: bool;
+fail_open: bool;
+fail_effect: bool;
+installed: bool;
+pinned: bool;
+records: s32 = 41;
+closed: s32;
+depth: s32;
+
+MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"schema\":1,\"id\":\"%\",\"title\":\"Collection\",\"harness\":\"assets/apps/apps.zib\",\"children\":[", id)
+    if child != "" {
+        BuilderPrint(*bytes, "{\"id\":\"%\",\"title\":\"Child\",\"bundle\":\"assets/child.zib\",\"preview\":\"assets/previews/child.png\",\"protocol\":\"%\",\"expected_id\":\"child\",\"version\":\"1\",\"sha256\":\"%\"}", child, protocol, DIGEST)
+    }
+    BuilderPrint(*bytes, "]}")
+    result := AppCatalogRead(TextView(VecSlice(bytes, 0, bytes.count)), id, *node.catalog)
+    VecFree(bytes)
+    node.collection = true
+    return result
+}
+
+Open :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
+    if fail_open { return false }
+    candidate.identity.authority = parent.identity.authority
+    candidate.identity.id = entry.id
+    candidate.entry = entry.*
+    candidate.runtime = cast(*void)1
+    candidate.bytes = 1024
+    if entry.protocol == APPS_COLLECTION_PROTOCOL {
+        bytes: Vec(u8)
+        depth += 1
+        BuilderPrint(*bytes, "collection.%", depth + 1)
+        result := MakeCatalog(candidate, TextUntilNul(entry.id[:]), TextView(VecSlice(bytes, 0, bytes.count)), "collection/1")
+        VecFree(bytes)
+        return result
+    }
+    return true
+}
+
+Save :: (context: *void, node: *AppNode) -> bool { return !fail_save }
+Close :: (context: *void, node: *AppNode) { closed += 1; node.runtime = null }
+
+Effect :: (context: *void, account: string, locator: *AppLocator, operation: s32, reply: *AppsReply) -> bool {
+    if fail_effect || account != "account-a" || TextUntilNul(locator.identity.authority[:]) != "example.test" { return false }
+    if operation == APPS_INSTALL { installed = true }
+    if operation == APPS_UNINSTALL { installed = false }
+    if operation == APPS_PIN { pinned = true }
+    if operation == APPS_UNPIN { pinned = false }
+    reply.status = APPS_APPLIED
+    if operation == APPS_INSTALL_TO_LAUNCHER {
+        reply.status = APPS_QUEUED
+        unused CopyCString("android-prompt-1", reply.receipt[:])
+    }
+    return true
+}
+
+Root :: (child: string = "inbe.chess", protocol: string = "app/1") -> *AppNode {
+    node := New(AppNode)
+    if node == null { return null }
+    unused CopyCString("example.test", node.identity.authority[:])
+    unused CopyCString("arcade", node.identity.id[:])
+    unused CopyCString(ROOT_DIGEST, node.entry.sha256[:])
+    node.runtime = cast(*void)1
+    node.bytes = 1024
+    if !MakeCatalog(node, "arcade", child, protocol) { free(node); return null }
+    return node
+}
+
+Request :: (operation: s32, id: string = "") -> AppsRequest {
+    request := AppsRequest.{.operation = operation}
+    unused CopyCString(id, request.id[:])
+    return request
+}
+
+#program_export
+Check :: () -> s32 {
+    request: AppsRequest
+    if !AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\"}", *request) || request.operation != APPS_OPEN { return 1 }
+    if AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"owner\":\"other\"}", *request) ||
+    AppsReadRequest("{\"v\":1,\"v\":2,\"op\":\"back\"}", *request) ||
+    AppsReadRequest("{\"v\":2,\"op\":\"back\"}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"../other\"}", *request) { return 2 }
+    if !AppBundlePathValid("assets/games/chess.zib") || AppBundlePathValid("assets/../other.zib") ||
+    AppBundlePathValid("/assets/child.zib") || AppBundlePathValid("assets/%2e%2e/child.zib") ||
+    AppBundlePathValid("assets//child.zib") { return 3 }
+    if !AppPreviewPathValid("assets/previews/chess.png") || !AppPreviewPathValid("assets/card.webp") ||
+    AppPreviewPathValid("https://example.test/chess.png") || AppPreviewPathValid("assets/../chess.png") ||
+    AppPreviewPathValid("assets/%2e%2e/chess.jpg") || AppPreviewPathValid("assets//chess.jpeg") ||
+    AppPreviewPathValid("assets/chess.zib") || AppAssetPathValid("assets/..") { return 30 }
+    provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
+    tree: AppTree
+    root := Root()
+    first := AppCatalogAt(*root.catalog, 0)
+    if TextUntilNul(first.preview[:]) != "assets/previews/child.png" { return 31 }
+    if !AppTreeStart(*tree, root, "account-a", provider) { return 4 }
+    original := tree.active
+    if AppTreeQueue(*tree, original, Request(APPS_OPEN, "missing")).status != APPS_REJECTED { return 5 }
+    if !AppTreeBegin(*tree, original) || AppTreeBegin(*tree, original) { return 6 }
+    reply := AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess"))
+    if reply.status != APPS_QUEUED || AppTreeDrain(*tree) || !AppHandleEqual(tree.active, original) { return 7 }
+    if !AppTreeEnd(*tree, original) || !AppTreeDrain(*tree) { return 8 }
+    child := tree.active
+    if AppHandleEqual(child, original) || tree.nodes.count != 2 { return 9 }
+    locator: AppLocator
+    if !AppTreeLocate(*tree, child, *locator) || locator.chain.count != 2 || TextUntilNul(locator.identity.id[:]) != "inbe.chess" { return 10 }
+    fail_save = true
+    unused AppTreeQueue(*tree, child, Request(APPS_BACK)); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, child) { return 11 }
+    fail_save = false
+    unused AppTreeQueue(*tree, child, Request(APPS_BACK)); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, original) || AppTreeNode(*tree, child) != null { return 12 }
+    fail_open = true
+    unused AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 13 }
+    fail_open = false
+    // Both installed records and favorites survive failed writes. Uninstall
+    // and reinstall preserve the provider's saved Chess record value.
+    unused AppTreeQueue(*tree, original, Request(APPS_INSTALL, "inbe.chess")); unused AppTreeDrain(*tree)
+    unused AppTreeQueue(*tree, original, Request(APPS_PIN, "inbe.chess")); unused AppTreeDrain(*tree)
+    if !installed || !pinned || tree.nodes.count != 1 { return 14 }
+    fail_effect = true
+    unused AppTreeQueue(*tree, original, Request(APPS_UNINSTALL, "inbe.chess")); unused AppTreeDrain(*tree)
+    if !installed || !pinned { return 15 }
+    fail_effect = false
+    unused AppTreeQueue(*tree, original, Request(APPS_UNPIN, "inbe.chess")); unused AppTreeDrain(*tree)
+    unused AppTreeQueue(*tree, original, Request(APPS_UNINSTALL, "inbe.chess")); unused AppTreeDrain(*tree)
+    unused AppTreeQueue(*tree, original, Request(APPS_INSTALL, "inbe.chess")); unused AppTreeDrain(*tree)
+    if !installed || pinned || records != 41 { return 16 }
+    reply = AppTreeQueue(*tree, original, Request(APPS_INSTALL_TO_LAUNCHER, "inbe.chess")); unused AppTreeDrain(*tree)
+    status := AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = reply.request})
+    if status.status != APPS_QUEUED || TextUntilNul(status.receipt[:]) != "android-prompt-1" { return 17 }
+    if !AppTreeOpenLocator(*tree, *locator) || AppTreeNode(*tree, child) != null { return 18 }
+    active := tree.active
+    locator.chain[1].sha256[0] = #char "0"
+    if AppTreeOpenLocator(*tree, *locator) || !AppHandleEqual(tree.active, active) { return 19 }
+    AppLocatorClear(*locator)
+    // Status history is bounded and reusable, not a lifetime click limit.
+    unused AppTreeQueue(*tree, tree.active, Request(APPS_BACK)); unused AppTreeDrain(*tree)
+    for index: cast(s32)0..299 {
+        unused AppTreeQueue(*tree, tree.active, Request(APPS_PIN, "inbe.chess")); unused AppTreeDrain(*tree)
+    }
+    if tree.pending.count > tree.pending_limit || tree.nodes.count != 1 { return 20 }
+    if !AppTreeClose(*tree) { return 21 }
+    // Dynamic routes go beyond both the widget scope and Session capacities.
+    root = Root("collection.1", "collection/1")
+    if !AppTreeStart(*tree, root, "account-a", provider) { return 22 }
+    for index: cast(s32)1..80 {
+        node := AppTreeNode(*tree, tree.active)
+        entry := AppCatalogAt(*node.catalog, 0).*
+        unused AppTreeQueue(*tree, tree.active, Request(APPS_OPEN, TextUntilNul(entry.id[:])))
+        unused AppTreeDrain(*tree)
+        if tree.nodes.count != index + 1 { return 23 }
+    }
+    if !AppTreeLocate(*tree, tree.active, *locator) || locator.chain.count != 81 { return 24 }
+    AppLocatorClear(*locator)
+    for index: cast(s32)1..80 {
+        unused AppTreeQueue(*tree, tree.active, Request(APPS_BACK)); unused AppTreeDrain(*tree)
+    }
+    if tree.nodes.count != 1 || !AppHandleEqual(tree.active, AppHandle.{0, 1}) { return 25 }
+    // A descendant's declared root identity is rejected as an ancestor cycle.
+    root = AppTreeNode(*tree, tree.active)
+    if !MakeCatalog(root, "arcade", "collection.1", "collection/1") { return 26 }
+    unused AppTreeQueue(*tree, tree.active, Request(APPS_OPEN, "collection.1")); unused AppTreeDrain(*tree)
+    node := AppTreeNode(*tree, tree.active)
+    if !MakeCatalog(node, "collection.1", "arcade", "collection/1") { return 27 }
+    before := tree.active
+    unused AppTreeQueue(*tree, before, Request(APPS_OPEN, "arcade")); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, before) || tree.nodes.count != 2 { return 28 }
+    if !AppTreeClose(*tree) { return 29 }
+    return 0
+}

@@ -1,0 +1,6 @@
+[package]
+name = "AppsConsumerFixture"
+module_roots = ["."]
+
+# tests/consumer_test.py binds actual local package exports without inventing
+# a remote or changing any consumer's production dependency graph.

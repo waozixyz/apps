@@ -1,0 +1,26 @@
+#import "apps/host"
+#import "apps/tree"
+#import "apps/protocol"
+Node :: #import "apps/node_types";
+Codec :: #import "apps/node_codec";
+
+State :: (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool {
+    state.* = AppState.{.installed = true, .favorite = true, .launcher = 1}
+    return account == "account-a"
+}
+
+#program_export
+Check :: () -> s32 {
+    platform := AppPlatform.{.state = State}
+    identity: AppIdentity
+    state: AppState
+    if !platform.state(null, "account-a", *identity, *state) || !state.installed || !state.favorite || state.launcher != 1 { return 1 }
+    runtime: AppRuntime
+    runtime.legacy.message = Node.AppMessage.{.signed_in = true}
+    runtime.legacy.frame = Node.AppUiFrame.{.width = 800}
+    codec: Codec.WidgetAppPersonCodec
+    if runtime.legacy.frame.width != 800 || !runtime.legacy.message.signed_in { return 2 }
+    host: AppHost
+    if AppHostActiveRuntime(*host) != null || AppHostBack(*host) != -1 { return 3 }
+    return 0
+}

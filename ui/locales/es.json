@@ -1,0 +1,17 @@
+{
+  "back": "Volver",
+  "open": "Abrir",
+  "install": "Instalar",
+  "uninstall": "Desinstalar",
+  "pin": "Fijar",
+  "unpin": "Desfijar",
+  "install_to_launcher": "Instalar en el lanzador",
+  "prompt_pending": "Pendiente de confirmación del lanzador",
+  "launcher_installed": "Instalado en el lanzador",
+  "queued": "Solicitud en cola",
+  "applied": "Actualizado",
+  "rejected": "Solicitud rechazada",
+  "unavailable": "Las aplicaciones no están disponibles",
+  "empty": "No hay aplicaciones en esta colección",
+  "actions": "Acciones de la aplicación"
+}

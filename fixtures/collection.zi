@@ -1,0 +1,13 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+
+#program_export
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppIdentity("collection")
+        AppDescribe("Collection fixture", "")
+        return APP_PROTOCOL
+    }
+    if AppMode() == APP_COMMAND { AppReply(AppService("apps", AppCommand())) }
+    return 0
+}

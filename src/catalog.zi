@@ -1,0 +1,124 @@
+#import "std/json_scan"
+#import "std/text_buffer"
+#import, file "protocol.zi";
+
+APP_MANIFEST_BYTE_LIMIT :: 1048576
+APP_CATALOG_ENTRY_LIMIT :: 4096
+
+AppEntry :: struct {
+    id: [128]u8
+    title: [256]u8
+    bundle: [512]u8
+    preview: [512]u8
+    expected_id: [128]u8
+    version: [64]u8
+    sha256: [65]u8
+    protocol: s32
+}
+
+AppCatalog :: struct {
+    id: [128]u8
+    title: [256]u8
+    harness: [512]u8
+    children: *AppCatalogItem
+    tail: *AppCatalogItem
+    count: s64
+}
+
+AppCatalogItem :: struct { entry: AppEntry; next: *AppCatalogItem }
+
+AppEntryProtocol :: (text: string) -> s32 {
+    if text == "app/1" { return APPS_CONTEXT_PROTOCOL }
+    if text == "node/2" { return APPS_NODE_PROTOCOL }
+    if text == "collection/1" { return APPS_COLLECTION_PROTOCOL }
+    return 0
+}
+
+AppCatalogFind :: (catalog: *AppCatalog, id: string) -> s64 {
+    item := catalog.children
+    index: s64 = 0
+    while item != null {
+        if TextUntilNul(item.entry.id[:]) == id { return index }
+        item = item.next
+        index += 1
+    }
+    return -1
+}
+
+AppCatalogAt :: (catalog: *AppCatalog, at: s64) -> *AppEntry {
+    if at < 0 || at >= catalog.count { return null }
+    item := catalog.children
+    for index: cast(s64)0..at - 1 { item = item.next }
+    return *item.entry
+}
+
+AppCatalogAppend :: (catalog: *AppCatalog, entry: AppEntry) -> bool {
+    item := New(AppCatalogItem)
+    if item == null { return false }
+    item.entry = entry
+    if catalog.tail != null { catalog.tail.next = item }
+    else { catalog.children = item }
+    catalog.tail = item
+    catalog.count += 1
+    return true
+}
+
+AppCatalogClear :: (catalog: *AppCatalog) {
+    item := catalog.children
+    while item != null { next := item.next; free(item); item = next }
+    catalog.* = AppCatalog.{}
+}
+
+AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
+    keys: [8]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview"]
+    if !AppsObjectValid(text, at, keys[:]) { return false }
+    parsed: AppEntry
+    protocol: [32]u8
+    if !AppsReadText(text, at, "id", parsed.id[:]) || !AppIdValid(TextUntilNul(parsed.id[:])) ||
+    !AppsReadText(text, at, "title", parsed.title[:]) || TextUntilNul(parsed.title[:]) == "" ||
+    !AppsReadText(text, at, "bundle", parsed.bundle[:]) || !AppBundlePathValid(TextUntilNul(parsed.bundle[:])) ||
+    !AppsReadText(text, at, "expected_id", parsed.expected_id[:]) || !AppIdValid(TextUntilNul(parsed.expected_id[:])) ||
+    !AppsReadText(text, at, "version", parsed.version[:]) || TextUntilNul(parsed.version[:]) == "" ||
+    !AppsReadText(text, at, "sha256", parsed.sha256[:]) || !AppDigestValid(TextUntilNul(parsed.sha256[:])) ||
+    !AppsReadText(text, at, "protocol", protocol[:]) { return false }
+    parsed.protocol = AppEntryProtocol(TextUntilNul(protocol[:]))
+    if parsed.protocol == 0 { return false }
+    if FieldAt(text, at, "preview") >= 0 {
+        if !AppsReadText(text, at, "preview", parsed.preview[:]) { return false }
+        preview := TextUntilNul(parsed.preview[:])
+        if preview != "" && !AppPreviewPathValid(preview) { return false }
+    }
+    entry.* = parsed
+    return true
+}
+
+// Build a candidate first: rejection never replaces the visible collection.
+AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> bool {
+    if text.count > APP_MANIFEST_BYTE_LIMIT || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
+    keys: [5]string = .["schema", "id", "title", "harness", "children"]
+    if !AppsObjectValid(text, 0, keys[:]) { return false }
+    schema := ReadNumber(text, FieldAt(text, 0, "schema"))
+    if !schema.valid || schema.value != 1.0 { return false }
+    parsed: AppCatalog
+    if !AppsReadText(text, 0, "id", parsed.id[:]) || TextUntilNul(parsed.id[:]) != expected_id ||
+    !AppIdValid(expected_id) || !AppsReadText(text, 0, "title", parsed.title[:]) ||
+    TextUntilNul(parsed.title[:]) == "" || !AppsReadText(text, 0, "harness", parsed.harness[:]) ||
+    !AppBundlePathValid(TextUntilNul(parsed.harness[:])) { return false }
+    children := FieldAt(text, 0, "children")
+    count := ArrayCount(text, children)
+    if count < 0 || count > APP_CATALOG_ENTRY_LIMIT { return false }
+    cursor := Space(text, children + 1)
+    for index: cast(s32)0..count - 1 {
+        entry: AppEntry
+        if !AppReadEntry(text, cursor, *entry) || AppCatalogFind(*parsed, TextUntilNul(entry.id[:])) >= 0 ||
+        TextUntilNul(entry.id[:]) == expected_id || !AppCatalogAppend(*parsed, entry) {
+            AppCatalogClear(*parsed)
+            return false
+        }
+        cursor = Space(text, ValueEnd(text, cursor, 0))
+        if index + 1 < count { cursor = Space(text, cursor + 1) }
+    }
+    AppCatalogClear(catalog)
+    catalog.* = parsed
+    return true
+}
