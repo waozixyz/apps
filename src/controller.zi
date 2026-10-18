@@ -1,0 +1,126 @@
+// A trusted shared Apps UI mounted in a native catalog. Native routes remain
+// native: the caller supplies apps/1 service JSON and the standard widget host.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "crypto/sha256"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/app_context_host"
+#import "kryon/app_protocol"
+#import "kryon/session"
+#import "kryon/tree"
+#import "kryon/widget_kind"
+#import "kryon/widget_host"
+#import, file "protocol.zi";
+
+using HostValueKind;
+using WidgetKind;
+
+AppControllerService :: #type (context: *void, request: string) -> string;
+
+AppControllerPlatform :: struct {
+    context: *void
+    // Returned text remains valid until Run returns. Copy and queue mutations
+    // here; apply them only after Run, under the current account's authority.
+    service: AppControllerService
+    widgets: HostCall
+}
+
+AppController :: struct {
+    app: AppContext
+    platform: AppControllerPlatform
+    generation: u64
+    busy: bool
+    ready: bool
+}
+
+app_controller_generation: u64;
+
+AppControllerAllows :: (context: *void, function: string) -> bool {
+    controller := cast(*AppController)context
+    return controller.ready && function == APPS_SERVICE
+}
+
+AppControllerCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    controller := cast(*AppController)context
+    if !controller.ready || !controller.busy || TextFromCString(function) != "AppServiceHost" || count != 2 ||
+    !HostScalarValid(arguments[0], "string", cast(s32)HostString) ||
+    !HostScalarValid(arguments[1], "string", cast(s32)HostString) || AppArgumentText(arguments[0]) != APPS_SERVICE { return 0 }
+    request := AppArgumentText(arguments[1])
+    parsed: AppsRequest
+    if !AppsReadRequest(request, *parsed) { return 0 }
+    response := controller.platform.service(controller.platform.context, request)
+    if response.count > 1048576 { return 0 }
+    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+        .data = HostTextData(response), .length = cast(usize)response.count}
+    return 1
+}
+
+AppControllerWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    controller := cast(*AppController)context
+    if !controller.ready || !controller.busy { return 0 }
+    return controller.platform.widgets(controller.platform.context, module, function, arguments, count, result)
+}
+
+// bytes and digest are trusted installation inputs. No native catalog entry
+// or request may substitute another controller. Keep this struct at a stable
+// address until Close, after the renderer has consumed borrowed frame values.
+AppControllerOpen :: (controller: *AppController, bytes: string, digest: string,
+    platform: AppControllerPlatform) -> bool {
+    if controller.ready || controller.busy || controller.app.app.bundle != null ||
+    bytes.count > 67108864 || !AppDigestValid(digest) || platform.service == null || platform.widgets == null { return false }
+    actual: [65]u8
+    descriptor := cast(*TextDescriptor)(*bytes)
+    Sha256Hex(descriptor.data, bytes.count, *actual[0])
+    if TextUntilNul(actual[:]) != digest { return false }
+    controller.platform = platform
+    controller.app.context = cast(*void)controller
+    controller.app.expected_id = "apps"
+    controller.app.allows = AppControllerAllows
+    controller.app.services = AppControllerCall
+    controller.app.widgets = AppControllerWidgets
+    // Identification cannot invoke services, even though the allowlist must
+    // already admit the controller's declared Apps capability.
+    controller.ready = true
+    if !AppContextOpen(*controller.app, bytes) { controller.ready = false; return false }
+    app_controller_generation += cast(u64)1
+    controller.generation = app_controller_generation
+    return true
+}
+
+// The caller begins WidgetHost before Run. Icon presentation uses the exact
+// supplied bounds as a cards-only group; the native caller retains its scroll,
+// headings, search, drag and dock. Preview mode owns its collection chrome.
+AppControllerRun :: (controller: *AppController, mode: s32) -> bool {
+    if !controller.ready || controller.busy { return false }
+    controller.busy = true
+    session := controller.app.session
+    mounted: bool
+    if mode == APP_FRAME {
+        if SessionValid(session) {
+            mount := TreeSubmitCurrent(session, cast(u64)2199023255552 + controller.generation,
+                cast(s32)WidgetKindCustom, controller.app.bounds)
+            if mount >= 0 { mounted = TreePushScope(session, mount) }
+        }
+        if !mounted { controller.busy = false; return false }
+    }
+    result := AppContextRun(*controller.app, mode)
+    if mounted {
+        WidgetHostEnd()
+        if !TreePopScope(session) { result = false }
+    }
+    controller.busy = false
+    return result
+}
+
+// Only after paint; Close never applies effects or deletes saved app data.
+AppControllerClose :: (controller: *AppController) -> bool {
+    if controller.busy { return false }
+    HostedAppClose(AppContextRuntime(*controller.app))
+    controller.* = AppController.{}
+    return true
+}

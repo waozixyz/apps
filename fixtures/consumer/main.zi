@@ -1,6 +1,8 @@
 #import "apps/host"
 #import "apps/tree"
 #import "apps/protocol"
+#import "apps/controller"
+#import "std/bundle_host"
 Node :: #import "apps/node_types";
 Codec :: #import "apps/node_codec";
 
@@ -9,12 +11,26 @@ State :: (context: *void, account: string, identity: *AppIdentity, state: *AppSt
     return account == "account-a"
 }
 
+Service :: (context: *void, request: string) -> string { return "{}" }
+Widgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue, count: s32, result: *HostValue) -> s32 { return 0 }
+
+VersionEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> bool {
+    reply.status = APPS_APPLIED
+    return account == "account-a" && request.operation == APPS_UPDATE
+}
+
 #program_export
 Check :: () -> s32 {
-    platform := AppPlatform.{.state = State}
+    platform := AppPlatform.{.state = State, .version_effect = VersionEffect,
+        .presentation = AppPresentation.{.icon = true, .tile_class = 501}}
     identity: AppIdentity
     state: AppState
     if !platform.state(null, "account-a", *identity, *state) || !state.installed || !state.favorite || state.launcher != 1 { return 1 }
+    request := AppsRequest.{.operation = APPS_UPDATE}
+    locator: AppLocator
+    reply: AppsReply
+    if !platform.version_effect(null, "account-a", *locator, *request, *reply) || reply.status != APPS_APPLIED ||
+    !platform.presentation.icon || AppCardKey("native.clock") == AppCardKey("native.breathing") { return 5 }
     runtime: AppRuntime
     runtime.legacy.message = Node.AppMessage.{.signed_in = true}
     runtime.legacy.frame = Node.AppUiFrame.{.width = 800}
@@ -22,5 +38,8 @@ Check :: () -> s32 {
     if runtime.legacy.frame.width != 800 || !runtime.legacy.message.signed_in { return 2 }
     host: AppHost
     if AppHostActiveRuntime(*host) != null || AppHostBack(*host) != -1 { return 3 }
+    controller: AppController
+    controller_platform := AppControllerPlatform.{.service = Service, .widgets = Widgets}
+    if AppControllerOpen(*controller, "bad", "bad", controller_platform) || AppControllerRun(*controller, 2) || !AppControllerClose(*controller) { return 4 }
     return 0
 }

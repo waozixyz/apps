@@ -9,9 +9,16 @@
   "prompt_pending": "Aguardando confirmação do lançador",
   "launcher_installed": "Instalado no lançador",
   "queued": "Solicitação na fila",
-  "applied": "Atualizado",
   "rejected": "Solicitação rejeitada",
   "unavailable": "Os aplicativos estão indisponíveis",
   "empty": "Nenhum aplicativo nesta coleção",
-  "actions": "Ações do aplicativo"
+  "options": "Opções da aplicação",
+  "update": "Atualizar",
+  "rollback": "Restaurar versão",
+  "update_available": "Atualização disponível",
+  "current_version": "Versão atual",
+  "available_version": "Nova versão",
+  "restore_version": "Versão a restaurar",
+  "choose_version": "Escolha uma versão guardada e confirme a restauração.",
+  "cancel": "Cancelar"
 }

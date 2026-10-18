@@ -9,9 +9,16 @@
   "prompt_pending": "Menunggu konfirmasi peluncur",
   "launcher_installed": "Terpasang di peluncur",
   "queued": "Permintaan diantrekan",
-  "applied": "Diperbarui",
   "rejected": "Permintaan ditolak",
   "unavailable": "Aplikasi tidak tersedia",
   "empty": "Tidak ada aplikasi dalam koleksi ini",
-  "actions": "Tindakan aplikasi"
+  "options": "Opsi aplikasi",
+  "update": "Perbarui",
+  "rollback": "Kembalikan versi",
+  "update_available": "Pembaruan tersedia",
+  "current_version": "Versi saat ini",
+  "available_version": "Versi baru",
+  "restore_version": "Pulihkan versi",
+  "choose_version": "Pilih versi yang disimpan, lalu konfirmasi pengembalian.",
+  "cancel": "Batal"
 }

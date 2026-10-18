@@ -1,6 +1,7 @@
 // Apps service version 1. Identity and storage ownership are host inputs.
 #import "std/json_scan"
 #import "std/text_buffer"
+#import "std/vec"
 
 APPS_SERVICE :: "apps"
 APPS_VERSION :: 1
@@ -15,6 +16,8 @@ APPS_PIN :: 6
 APPS_UNPIN :: 7
 APPS_INSTALL_TO_LAUNCHER :: 8
 APPS_STATUS :: 9
+APPS_UPDATE :: 10
+APPS_ROLLBACK :: 11
 
 APPS_REJECTED :: 0
 APPS_QUEUED :: 1
@@ -36,6 +39,9 @@ AppsRequest :: struct {
     operation: s32
     id: [128]u8
     request: s64
+    // Version actions identify exact native-verified content, not a version alone.
+    version: [64]u8
+    sha256: [65]u8
 }
 
 AppsReply :: struct {
@@ -46,11 +52,34 @@ AppsReply :: struct {
     reason: [256]u8
 }
 
+AppVersion :: struct { version: [64]u8; sha256: [65]u8 }
+
+AppPresentation :: struct {
+    // False preserves the screenshot collection presentation.
+    icon: bool
+    tile_class: s32
+    action_class: s32
+    muted_class: s32
+}
+
 AppState :: struct {
     installed: bool
     favorite: bool
     // 0 absent, 1 requested/system confirmation pending, 2 confirmed.
     launcher: s32
+    selected: bool
+    disabled: bool
+    bytes: s64
+    // Optional native capability mask: bit (1 << operation). Absent preserves
+    // old install/favorite/launcher actions, never grants version actions.
+    actions_known: bool
+    actions: u64
+    update_available: bool
+    current_version: [64]u8
+    available_version: [64]u8
+    available_sha256: [65]u8
+    history: [3]AppVersion
+    history_count: s32
 }
 
 AppIdValid :: (id: string) -> bool {
@@ -151,12 +180,14 @@ AppsOperation :: (name: string) -> s32 {
     if name == "unpin" { return APPS_UNPIN }
     if name == "install_to_launcher" { return APPS_INSTALL_TO_LAUNCHER }
     if name == "status" { return APPS_STATUS }
+    if name == "update" { return APPS_UPDATE }
+    if name == "rollback" { return APPS_ROLLBACK }
     return 0
 }
 
 AppsReadRequest :: (text: string, request: *AppsRequest) -> bool {
     if text.count > 2048 || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
-    keys: [4]string = .["v", "op", "id", "request"]
+    keys: [6]string = .["v", "op", "id", "request", "version", "sha256"]
     if !AppsObjectValid(text, 0, keys[:]) { return false }
     version := ReadNumber(text, FieldAt(text, 0, "v"))
     if !version.valid || version.value != 1.0 { return false }
@@ -171,9 +202,47 @@ AppsReadRequest :: (text: string, request: *AppsRequest) -> bool {
         parsed.request = cast(s64)sequence.value
         if cast(float64)parsed.request != sequence.value || FieldAt(text, 0, "id") >= 0 { return false }
     } else if FieldAt(text, 0, "request") >= 0 { return false }
-    if parsed.operation >= APPS_OPEN && parsed.operation <= APPS_INSTALL_TO_LAUNCHER && parsed.operation != APPS_BACK {
+    if parsed.operation >= APPS_OPEN && parsed.operation <= APPS_ROLLBACK && parsed.operation != APPS_BACK && parsed.operation != APPS_STATUS {
         if !AppsReadText(text, 0, "id", parsed.id[:]) || !AppIdValid(TextUntilNul(parsed.id[:])) { return false }
     } else if FieldAt(text, 0, "id") >= 0 { return false }
+    if AppsVersionOperation(parsed.operation) {
+        if !AppsReadText(text, 0, "version", parsed.version[:]) ||
+        !AppVersionValid(TextUntilNul(parsed.version[:])) ||
+        !AppsReadText(text, 0, "sha256", parsed.sha256[:]) ||
+        !AppDigestValid(TextUntilNul(parsed.sha256[:])) { return false }
+    } else if FieldAt(text, 0, "version") >= 0 || FieldAt(text, 0, "sha256") >= 0 { return false }
     request.* = parsed
     return true
+}
+
+AppsVersionOperation :: (operation: s32) -> bool {
+    return operation == APPS_UPDATE || operation == APPS_ROLLBACK
+}
+
+AppVersionValid :: (version: string) -> bool {
+    if version.count == 0 || version.count >= 64 { return false }
+    for byte: version { if byte < cast(u8)32 || byte == cast(u8)127 { return false } }
+    return true
+}
+
+AppsWriteQuoted :: (bytes: *Vec(u8), text: string) {
+    BuilderPrint(bytes, "\"")
+    for byte: text {
+        if byte == #char "\"" { BuilderPrint(bytes, "\\\"") }
+        else if byte == #char "\\" { BuilderPrint(bytes, "\\\\") }
+        else if byte == #char "\n" { BuilderPrint(bytes, "\\n") }
+        else if byte == #char "\r" { BuilderPrint(bytes, "\\r") }
+        else if byte == #char "\t" { BuilderPrint(bytes, "\\t") }
+        else if byte < cast(u8)32 { BuilderPrint(bytes, " ") }
+        else { unused VecPush(bytes.*, byte) }
+    }
+    BuilderPrint(bytes, "\"")
+}
+
+// Stable base tile key for native drag/dock adapters. Menu and update
+// triggers use base + 5 and base + 6 and must not inherit tile drag behavior.
+AppCardKey :: (id: string) -> u64 {
+    hash: u64 = cast(u64)2166136261
+    for byte: id { hash = (hash ^ cast(u64)byte) * cast(u64)16777619 }
+    return (hash & cast(u64)72057594037927935) * cast(u64)16 + cast(u64)100
 }

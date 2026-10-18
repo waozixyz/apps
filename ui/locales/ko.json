@@ -9,9 +9,16 @@
   "prompt_pending": "런처 확인 대기 중",
   "launcher_installed": "런처에 설치됨",
   "queued": "요청 대기 중",
-  "applied": "업데이트됨",
   "rejected": "요청 거부됨",
   "unavailable": "앱을 사용할 수 없습니다",
   "empty": "이 모음에는 앱이 없습니다",
-  "actions": "앱 작업"
+  "options": "앱 옵션",
+  "update": "업데이트",
+  "rollback": "이전 버전으로 복원",
+  "update_available": "업데이트 있음",
+  "current_version": "현재 버전",
+  "available_version": "새 버전",
+  "restore_version": "복원할 버전",
+  "choose_version": "보관된 버전을 선택한 다음 복원을 확인하세요.",
+  "cancel": "취소"
 }

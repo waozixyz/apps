@@ -4,9 +4,11 @@
 #import "std/text_buffer"
 #import "std/c_string"
 #import "std/bundle_host"
+#import "std/json_scan"
 #import "kryon/hosted_values"
 #import "kryon/app_context_host"
 #import "kryon/app_protocol"
+#import "kryon/app_files"
 #import "kryon/session"
 #import "kryon/geometry"
 #import "kryon/drawing_props"
@@ -15,6 +17,12 @@
 #import "kryon/paint_queue"
 #import "kryon/widget_host"
 #import "kryon/widget_kind"
+#import "kryon/tree_input"
+#import "kryon/widget_codec"
+#import "kryon/button_props"
+#import "kryon/scroll_widget"
+#import "kryon/scroll_props"
+#import, file "../src/controller.zi";
 #import, file "../src/protocol.zi";
 #import, file "../src/catalog.zi";
 #import, file "../src/tree.zi";
@@ -44,6 +52,10 @@ ui_frame: u64;
 preview_first: Rectangle;
 preview_second: Rectangle;
 first_card_fill: Color;
+menu_triggers: s32;
+invalid_trigger: s32;
+button_codec: WidgetButtonPropsCodec;
+host_version_calls: s32;
 
 #program_export
 MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
@@ -89,44 +101,43 @@ ResolveImage :: (path: string) -> string {
 
 Widgets :: (context: *void, node: *AppNode, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if TextFromCString(function) == "ButtonHostedHost" && count == 2 && WidgetValidButtonProps(arguments[1]) {
+        props := WidgetDecodeButtonProps(arguments[1], *button_codec)
+        if props.icon_shape == "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01" {
+            menu_triggers += 1
+            scale := AppHostActiveRuntime(ui_host).app.scale
+            if !props.icon_only || props.bounds.width != 36.0 * scale || props.bounds.height != 36.0 * scale { invalid_trigger += 1 }
+        }
+    }
     return WidgetHostCall(context, module, function, arguments, count, result)
 }
 
 State :: (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool {
-    state.* = AppState.{.installed = true}
+    state.* = AppState.{.installed = true, .bytes = 12345, .actions_known = true,
+        .actions = cast(u64)4092, .update_available = true, .history_count = 1}
+    unused CopyCString("1.0", state.current_version[:])
+    unused CopyCString("2.0", state.available_version[:])
+    unused CopyCString("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", state.available_sha256[:])
+    unused CopyCString("0.9", state.history[0].version[:])
+    unused CopyCString("cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", state.history[0].sha256[:])
     return true
 }
 
-// Inspect the native widget output, after the portable controller's props
-// have crossed the host codec and TitleBar has laid out its real Dropdown.
+// Inspect actual opaque card fills; ellipsis buttons are Ghost and have no
+// fill, so their precise props are checked in Widgets before native drawing.
 CardPaintGeometry :: (scale: float32) -> bool {
     fills: s32
-    triggers: s32
     for index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
         paint := PendingPaintAt(ui_session, index)
         if paint.kind != PaintKindRoundedFill { continue }
         node := TreeSubmittedNodeAt(ui_session, paint.node)
-        if node.kind == WidgetKindBox {
-            if paint.color.a != cast(u8)255 || node.bounds.height != 232.0 * scale { return false }
-            if fills == 0 { first_card_fill = paint.color }
-            fills += 1
-        }
-        if node.kind != WidgetKindDropdown { continue }
-        if node.bounds.height != 36.0 * scale || paint.bounds.height != node.bounds.height { return false }
-        contained: bool
-        for card_index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
-            card_paint := PendingPaintAt(ui_session, card_index)
-            if card_paint.kind != PaintKindRoundedFill { continue }
-            card := TreeSubmittedNodeAt(ui_session, card_paint.node)
-            if card.kind != WidgetKindBox { continue }
-            if node.bounds.x >= card.bounds.x && node.bounds.y >= card.bounds.y &&
-            node.bounds.x + node.bounds.width <= card.bounds.x + card.bounds.width &&
-            node.bounds.y + node.bounds.height <= card.bounds.y + card.bounds.height { contained = true }
-        }
-        if !contained { return false }
-        triggers += 1
+        if node.kind == WidgetKindDropdown { return false }
+        if node.kind != WidgetKindBox { continue }
+        if paint.color.a != cast(u8)255 || node.bounds.height != 232.0 * scale { return false }
+        if fills == 0 { first_card_fill = paint.color }
+        fills += 1
     }
-    return fills > 0 && fills == triggers
+    return fills > 0 && menu_triggers == fills && invalid_trigger == 0
 }
 
 Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
@@ -135,7 +146,7 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
     if ui_session.epoch == cast(u64)0 { ui_session = SessionOpen() }
     ui_frame += cast(u64)1
     bounds := Rectangle.{0.0, 0.0, cast(float32)width, cast(float32)height}
-    BeginFrame(ui_session, ui_frame, bounds)
+    BeginFrame(ui_session, cast(u64)1, bounds)
     runtime := AppHostActiveRuntime(host)
     runtime.app.session = ui_session
     runtime.app.bounds = bounds
@@ -148,6 +159,7 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
     // Host chrome and guest Back both use key 2; the runtime mount keeps
     // them in separate tree scopes.
     unused TreeSubmitCurrent(ui_session, cast(u64)2, 0, bounds)
+    menu_triggers = 0; invalid_trigger = 0
     WidgetHostBegin(ui_session, AllowImage, ResolveImage)
     ran := AppHostRun(host, APP_FRAME)
     WidgetHostEnd()
@@ -210,6 +222,153 @@ Effect :: (context: *void, account: string, locator: *AppLocator, operation: s32
     return account == "account-a"
 }
 
+HostVersionEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> bool {
+    if ui_host.tree.busy || !ui_host.tree.draining || account != "account-a" ||
+    TextUntilNul(locator.identity.id[:]) != "fixture.middle" || request.operation != APPS_UPDATE ||
+    TextUntilNul(request.sha256[:]) != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" { return false }
+    host_version_calls += 1
+    reply.status = APPS_APPLIED
+    return true
+}
+
+native_controller: AppController;
+native_catalog: string;
+native_request: AppsRequest;
+native_queued: s32;
+native_applied: s32;
+native_tiles: s32;
+native_actions: s32;
+native_updates: s32;
+native_bad: bool;
+native_icon_mode: bool = true;
+native_label_bounds: Rectangle;
+
+NativeService :: (context: *void, text: string) -> string {
+    request: AppsRequest
+    if !AppsReadRequest(text, *request) { return "{}" }
+    if request.operation == APPS_CATALOG { return native_catalog }
+    if request.operation == APPS_STATUS { return "{\"v\":1,\"status\":\"applied\",\"request\":1}" }
+    // This is a native root catalog; it has no AppNode, slot, or fake tree.
+    // Reentrant runs and disposal cannot invalidate the in-flight VM.
+    if AppControllerRun(*native_controller, APP_FRAME) || AppControllerClose(*native_controller) { native_bad = true }
+    native_request = request
+    native_queued += 1
+    return "{\"v\":1,\"status\":\"queued\",\"request\":1}"
+}
+
+NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    if TextFromCString(function) == "ButtonHostedHost" && count == 2 && WidgetValidButtonProps(arguments[1]) {
+        props := WidgetDecodeButtonProps(arguments[1], *button_codec)
+        if props.label == "Breathing" {
+            native_tiles += 1
+            if native_icon_mode && (props.bounds.height != 88.0 || props.class_name != 501 || !props.selected ||
+                cast(s32)props.tone != 1 || cast(s32)props.emphasis != 0 || cast(s32)props.icon_placement != 2 ||
+                props.image.asset_path != "assets/preview.png") { native_bad = true }
+        }
+        if props.label == "App options" {
+            native_actions += 1
+            if props.bounds.height != 36.0 || !props.icon_only || props.class_name != 502 ||
+            cast(s32)props.emphasis != 3 || props.icon_shape != "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01" { native_bad = true }
+        }
+        if props.label == "Update available" { native_updates += 1 }
+    }
+    return WidgetHostCall(context, module, function, arguments, count, result)
+}
+
+NativeImage :: (path: string) -> bool { return path == "" || path == "assets/preview.png" }
+
+NativeLoadCatalog :: (name: string) -> bool {
+    path: Vec(u8)
+    BuilderPrint(*path, "%/%-catalog.json", FixtureEnvironment("APPS_FIXTURE_NATIVE_CATALOG_ROOT"), name)
+    text, found := ReadEntireFile(TextView(VecSlice(path, 0, path.count)))
+    VecFree(path)
+    if !found { return false }
+    AppFileFree(native_catalog)
+    native_catalog = text
+    return true
+}
+
+NativeDraw :: () -> bool {
+    native_tiles = 0; native_actions = 0; native_updates = 0
+    BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
+    native_controller.app.session = ui_session
+    native_controller.app.bounds = Rectangle.{0.0, 0.0, 480.0, 600.0}
+    outer: bool
+    if native_icon_mode {
+        group := Scroll(ui_session, ScrollProps.{.key = cast(u64)99, .bounds = Rectangle.{0.0, 0.0, 480.0, 88.0}, .content_height = 200})
+        if !group.opened { return false }
+        outer = true
+        native_controller.app.bounds = Rectangle.{group.content.x, group.content.y, group.content.width, 88.0}
+    }
+    native_controller.app.scale = 1.0
+    native_controller.app.font = 18
+    WidgetHostBegin(ui_session, NativeImage)
+    ran := AppControllerRun(*native_controller, APP_FRAME)
+    WidgetHostEnd()
+    if outer { End(ui_session) }
+    if EndFrame(ui_session) != cast(FrameStatus)FrameOk || native_bad { return false }
+    return ran && native_tiles == 1 && native_actions == 2
+}
+
+NativeLabel :: (label: string, kind: s32 = -1) -> s32 {
+    for index: cast(s32)0..TreeCount(ui_session) - 1 {
+        node := TreeNodeAt(ui_session, index)
+        if node.semantic_label == label && (kind < 0 || node.kind == kind) {
+            native_label_bounds = node.bounds
+            return index
+        }
+    }
+    return -1
+}
+
+NativeClick :: (label: string, kind: s32 = -1) -> bool {
+    target := NativeLabel(label, kind)
+    if target < 0 { return false }
+    // Hit testing proves the real overlay/menu target receives the click.
+    hit := TreeHitAt(ui_session, native_label_bounds.x + native_label_bounds.width * 0.5,
+        native_label_bounds.y + native_label_bounds.height * 0.5)
+    return hit == target && TreeActivateAt(ui_session, hit)
+}
+
+NativeControllerCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_UI_BUNDLE"))
+    if !found { return 50 }
+    platform := AppControllerPlatform.{.service = NativeService, .widgets = NativeWidgets}
+    if !NativeLoadCatalog("native") || !AppControllerOpen(*native_controller, bytes,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256"), platform) { return 51 }
+    if !NativeDraw() || native_updates != 1 || native_queued != 0 || NativeLabel("Updated") >= 0 ||
+    NativeLabel("Native apps") >= 0 || NativeLabel("12.3 kB") < 0 { return 52 }
+    if !NativeClick("Update available") || !NativeDraw() || native_queued != 0 || NativeLabel("Update", WidgetKindButton) < 0 { return 53 }
+    // A verified target changing while the confirmation is open disables its
+    // old target; the modal cannot silently submit the newly offered bytes.
+    if !NativeLoadCatalog("changed-update") || !NativeDraw() { return 54 }
+    if NativeClick("Update", WidgetKindButton) { return 55 }
+    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || native_queued != 0 { return 56 }
+    if !NativeLoadCatalog("native") || !NativeDraw() || !NativeClick("Update available") || !NativeDraw() ||
+    !NativeClick("Update", WidgetKindButton) || !NativeDraw() || native_queued != 1 || native_applied != 0 ||
+    native_request.operation != 10 || TextUntilNul(native_request.version[:]) != "2.0" ||
+    TextUntilNul(native_request.sha256[:]) != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" { return 57 }
+    // Native account storage mutates only after Run returns.
+    native_applied += 1
+    if !NativeLoadCatalog("no-update") || !NativeDraw() || native_updates != 0 || NativeLabel("Updated") >= 0 { return 58 }
+    if !NativeClick("App options") || !NativeDraw() || NativeLabel("Rollback", WidgetKindSelectable) < 0 { return 59 }
+    if !NativeClick("Rollback", WidgetKindSelectable) || !NativeDraw() || native_queued != 1 { return 60 }
+    if !NativeClick("0.9", WidgetKindButton) || !NativeDraw() || !NativeDraw() || native_queued != 1 { return 61 }
+    if !NativeClick("Rollback", WidgetKindButton) { return 620 }
+    if !NativeDraw() { return 621 }
+    if native_queued != 2 { return 622 }
+    if native_request.operation != 11 { return 623 }
+    if TextUntilNul(native_request.version[:]) != "0.9" { return 624 }
+    if TextUntilNul(native_request.sha256[:]) != "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" { return 625 }
+    if !NativeDraw() || !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
+    native_icon_mode = false
+    if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
+    if !AppControllerClose(*native_controller) { return 65 }
+    AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""
+    return 0
+}
+
 Command :: (host: *AppHost, command: string) -> bool {
     node := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)node.runtime
@@ -224,7 +383,7 @@ Check :: () -> s32 {
     harness_digest := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
     if !found { return 1 }
     host: AppHost
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State}
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State, .version_effect = HostVersionEffect}
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
     root := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)root.runtime
@@ -236,6 +395,17 @@ Check :: () -> s32 {
         if !Draw(*host, 360, 640) { return 29 }
     }
     unused CopyCString("en", host.locale[:])
+    catalog_reply := AppHostCatalog(runtime.frontend)
+    catalog_text := AppArgumentText(catalog_reply)
+    children := FieldAt(catalog_text, 0, "children")
+    first := Space(catalog_text, children + 1)
+    if !MatchLiteral(catalog_text, Space(catalog_text, FieldAt(catalog_text, first, "update_available")), "true") ||
+    ReadNumber(catalog_text, FieldAt(catalog_text, first, "bytes")).value != 12345.0 { return 66 }
+    active_root := host.tree.active
+    if !Command(*host, "{\"v\":1,\"op\":\"update\",\"id\":\"fixture.middle\",\"version\":\"2.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}") ||
+    host_version_calls != 1 || !AppHandleEqual(host.tree.active, active_root) { return 67 }
+    AppHostCollect(*host)
+
     if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.middle\"}") || host.tree.nodes.count != 2 { return 3 }
     middle := AppTreeNode(*host.tree, host.tree.active)
     if TextUntilNul(middle.identity.id[:]) != "fixture.middle" { return 4 }
@@ -310,5 +480,5 @@ Check :: () -> s32 {
     AppHostCollect(*host)
     if !AppHostStop(*host) { return 13 }
     if AppHostStart(*host, bytes, "fixture.test", "fixture.root", "wrong", digest, "account-a", platform, harness_digest) { return 14 }
-    return 0
+    return NativeControllerCheck()
 }

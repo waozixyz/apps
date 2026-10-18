@@ -51,6 +51,7 @@ def stage(name, identifier, entries, payloads, controller):
                                        chunk(b'IDAT', zlib.compress(bytes([0, 40, 160, 100]))) + chunk(b'IEND', b''))
     for entry in entries:
         entry['preview'] = 'assets/preview.png'
+        entry['icon'] = 'assets/preview.png'
     (assets / 'apps/catalog.json').write_text(json.dumps(dict(
         schema=1, id=identifier, title=identifier, harness='assets/apps/apps.zib', children=entries)))
     return assets
@@ -63,8 +64,9 @@ def main():
         os.environ.pop(key, None)
     WORK.mkdir(parents=True, exist_ok=True)
     leaf, middle, root = [WORK / (name + '.zib') for name in ('counter', 'middle', 'root')]
-    controller, node = ROOT / 'build/ui/apps.zib', WORK / 'node.zib'
-    run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
+    controller, node = Path(os.environ.get('APPS_TEST_UI', ROOT / 'build/ui/apps.zib')).resolve(), WORK / 'node.zib'
+    if not os.environ.get('APPS_TEST_UI'):
+        run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
     bundle('counter', leaf)
     node_assets = WORK / 'node-stage/assets/node'
     (node_assets / 'locales').mkdir(parents=True, exist_ok=True)
@@ -82,6 +84,20 @@ def main():
     bundle('collection', middle, stage('middle-stage', 'fixture.middle', entries, payloads, controller))
     bundle('collection', root, stage('root-stage', 'fixture.root',
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zib': middle}, controller))
+    native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
+    for name in ('native', 'no-update', 'changed-update', 'preview'):
+        import copy
+        candidate = copy.deepcopy(native_catalog)
+        if name == 'no-update':
+            candidate['children'][0]['update_available'] = False
+        if name == 'changed-update':
+            candidate['children'][0]['available_sha256'] = 'd' * 64
+        if name == 'preview':
+            candidate['presentation']['mode'] = 'preview'
+            for card in candidate['children']:
+                card['preview'] = 'assets/preview.png'
+        (WORK / (name + '-catalog.json')).write_text(json.dumps(candidate))
+    os.environ['APPS_FIXTURE_NATIVE_CATALOG_ROOT'] = str(WORK)
     output = WORK / 'c'
     output.mkdir(exist_ok=True)
     run(ZIRAN, 'build', '--project', *LOCK_FLAGS, '--target=c', '--no-main', '--entry', 'native_behavior:Check',
@@ -91,6 +107,7 @@ def main():
     includes = [argument for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for argument in ('-iquote', str(path))]
     run(os.environ.get('CC', 'cc'), '-std=c11', '-O2', '-ffunction-sections', '-fdata-sections', '-I' + str(toolchain / 'include'),
         *includes, *map(str, sorted(output.rglob('*.c'))), sys.argv[1], '-Wl,--gc-sections', '-lm', '-lpthread', '-o', str(WORK / 'test'))
+    os.environ['APPS_FIXTURE_UI_BUNDLE'] = str(controller)
     os.environ['APPS_FIXTURE_ROOT_BUNDLE'] = str(root)
     os.environ['APPS_FIXTURE_ROOT_SHA256'] = digest(root)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = digest(controller)
@@ -102,7 +119,7 @@ def main():
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         result.check_returncode()
-    print('Apps native: compact screenshot grid, 12 locales, trusted nested bundles, node/2, frame ownership, resource bounds, rollback and stable locators passed')
+    print('Apps native: screenshot/icon cards, hosted menus, explicit update/rollback targets, 12 locales, native controller, nested node/2, resource bounds and stable locators passed')
 
 
 if __name__ == '__main__':

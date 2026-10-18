@@ -9,9 +9,16 @@
   "prompt_pending": "Launcher confirmation pending",
   "launcher_installed": "Installed in launcher",
   "queued": "Request queued",
-  "applied": "Updated",
   "rejected": "Request rejected",
   "unavailable": "Apps are unavailable",
   "empty": "No apps in this collection",
-  "actions": "App actions"
+  "options": "App options",
+  "update": "Update",
+  "rollback": "Rollback",
+  "update_available": "Update available",
+  "current_version": "Current version",
+  "available_version": "New version",
+  "restore_version": "Restore version",
+  "choose_version": "Choose a retained version, then confirm rollback.",
+  "cancel": "Cancel"
 }

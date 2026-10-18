@@ -9,9 +9,16 @@
   "prompt_pending": "Pendiente de confirmación del lanzador",
   "launcher_installed": "Instalado en el lanzador",
   "queued": "Solicitud en cola",
-  "applied": "Actualizado",
   "rejected": "Solicitud rechazada",
   "unavailable": "Las aplicaciones no están disponibles",
   "empty": "No hay aplicaciones en esta colección",
-  "actions": "Acciones de la aplicación"
+  "options": "Opciones de la aplicación",
+  "update": "Actualizar",
+  "rollback": "Restaurar versión",
+  "update_available": "Actualización disponible",
+  "current_version": "Versión actual",
+  "available_version": "Nueva versión",
+  "restore_version": "Versión a restaurar",
+  "choose_version": "Elige una versión conservada y confirma la restauración.",
+  "cancel": "Cancelar"
 }

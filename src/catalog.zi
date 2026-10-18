@@ -10,6 +10,8 @@ AppEntry :: struct {
     title: [256]u8
     bundle: [512]u8
     preview: [512]u8
+    icon: [512]u8
+    icon_shape: [16384]u8
     expected_id: [128]u8
     version: [64]u8
     sha256: [65]u8
@@ -70,7 +72,7 @@ AppCatalogClear :: (catalog: *AppCatalog) {
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [8]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview"]
+    keys: [10]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -88,6 +90,12 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
         preview := TextUntilNul(parsed.preview[:])
         if preview != "" && !AppPreviewPathValid(preview) { return false }
     }
+    if FieldAt(text, at, "icon") >= 0 {
+        if !AppsReadText(text, at, "icon", parsed.icon[:]) { return false }
+        icon := TextUntilNul(parsed.icon[:])
+        if icon != "" && !AppPreviewPathValid(icon) { return false }
+    }
+    if FieldAt(text, at, "icon_shape") >= 0 && !AppsReadText(text, at, "icon_shape", parsed.icon_shape[:]) { return false }
     entry.* = parsed
     return true
 }

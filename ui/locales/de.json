@@ -9,9 +9,16 @@
   "prompt_pending": "Bestätigung des Startmenüs ausstehend",
   "launcher_installed": "Im Startmenü installiert",
   "queued": "Anfrage vorgemerkt",
-  "applied": "Aktualisiert",
   "rejected": "Anfrage abgelehnt",
   "unavailable": "Apps sind nicht verfügbar",
   "empty": "Keine Apps in dieser Sammlung",
-  "actions": "App-Aktionen"
+  "options": "App-Optionen",
+  "update": "Aktualisieren",
+  "rollback": "Version zurücksetzen",
+  "update_available": "Update verfügbar",
+  "current_version": "Aktuelle Version",
+  "available_version": "Neue Version",
+  "restore_version": "Version wiederherstellen",
+  "choose_version": "Gespeicherte Version auswählen und das Zurücksetzen bestätigen.",
+  "cancel": "Abbrechen"
 }

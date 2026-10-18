@@ -42,6 +42,8 @@ AppPlatform :: struct {
     widgets: AppPlatformCall
     save: AppPlatformSave
     effect: AppProviderEffect
+    version_effect: AppProviderVersionEffect
+    presentation: AppPresentation
     state: AppPlatformState
 }
 
@@ -93,17 +95,7 @@ AppHostText :: (text: string) -> HostValue {
 }
 
 AppHostWriteQuoted :: (bytes: *Vec(u8), text: string) {
-    BuilderPrint(bytes, "\"")
-    for byte: text {
-        if byte == #char "\"" { BuilderPrint(bytes, "\\\"") }
-        else if byte == #char "\\" { BuilderPrint(bytes, "\\\\") }
-        else if byte == #char "\n" { BuilderPrint(bytes, "\\n") }
-        else if byte == #char "\r" { BuilderPrint(bytes, "\\r") }
-        else if byte == #char "\t" { BuilderPrint(bytes, "\\t") }
-        else if byte < cast(u8)32 { BuilderPrint(bytes, " ") }
-        else { unused VecPush(bytes.*, byte) }
-    }
-    BuilderPrint(bytes, "\"")
+    AppsWriteQuoted(bytes, text)
 }
 
 AppHostReply :: (host: *AppHost, reply: AppsReply) -> HostValue {
@@ -129,6 +121,9 @@ AppHostCatalog :: (runtime: *AppRuntime) -> HostValue {
     AppHostWriteQuoted(*bytes, TextUntilNul(node.catalog.title[:]))
     BuilderPrint(*bytes, ",\"locale\":")
     AppHostWriteQuoted(*bytes, TextUntilNul(host.locale[:]))
+    presentation := host.platform.presentation
+    BuilderPrint(*bytes, ",\"presentation\":{\"mode\":\"%\",\"tile_class\":%,\"action_class\":%,\"muted_class\":%}",
+        ifx presentation.icon then "icon" else "preview", presentation.tile_class, presentation.action_class, presentation.muted_class)
     BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
     item := node.catalog.children
     while item != null {
@@ -141,13 +136,20 @@ AppHostCatalog :: (runtime: *AppRuntime) -> HostValue {
         AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.version[:]))
         BuilderPrint(*bytes, ",\"preview\":")
         AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.preview[:]))
+        BuilderPrint(*bytes, ",\"icon\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.icon[:]))
+        BuilderPrint(*bytes, ",\"icon_shape\":")
+        AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.icon_shape[:]))
         identity := AppIdentity.{.authority = node.identity.authority, .id = item.entry.id}
         state: AppState
         if host.platform.state != null && !host.platform.state(host.platform.context, TextUntilNul(host.tree.account[:]), *identity, *state) {
             VecFree(bytes)
             return AppHostReply(host, AppRejected("app state unavailable"))
         }
-        BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%}", state.installed, state.favorite, state.launcher)
+        BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
+            state.installed, state.favorite, state.launcher, state.selected, state.disabled, state.bytes)
+        AppHostVersions(*bytes, *state, host.platform.version_effect != null)
+        BuilderPrint(*bytes, "}")
         item = item.next
     }
     BuilderPrint(*bytes, "]}")
@@ -225,6 +227,8 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
     while item != null {
         preview := TextUntilNul(item.entry.preview[:])
         if preview != "" && !AppHostAsset(node, preview).found { return false }
+        icon := TextUntilNul(item.entry.icon[:])
+        if icon != "" && !AppHostAsset(node, icon).found { return false }
         item = item.next
     }
     resource := HostedAppAsset(AppContextRuntime(*runtime.app), TextUntilNul(node.catalog.harness[:]))
@@ -424,6 +428,11 @@ AppHostCollect :: (host: *AppHost) {
     }
 }
 
+AppHostVersionEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> bool {
+    host := cast(*AppHost)context
+    return host.platform.version_effect != null && host.platform.version_effect(host.platform.context, account, locator, request, reply)
+}
+
 AppHostEffect :: (context: *void, account: string, locator: *AppLocator, operation: s32, reply: *AppsReply) -> bool {
     host := cast(*AppHost)context
     return host.platform.effect != null && host.platform.effect(host.platform.context, account, locator, operation, reply)
@@ -455,9 +464,11 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     root.bytes = bytes.count + 65536 + cast(s64)size_of(AppNode)
     manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
     root.collection = manifest.found
+    provider := AppProvider.{.context = cast(*void)host, .open = AppHostOpen,
+        .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}
+    if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
     if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime))) ||
-    !AppTreeStart(*host.tree, root, account, AppProvider.{.context = cast(*void)host,
-            .open = AppHostOpen, .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}) {
+    !AppTreeStart(*host.tree, root, account, provider) {
         AppHostClose(cast(*void)host, root)
         AppCatalogClear(*root.catalog)
         free(root)
@@ -475,4 +486,49 @@ AppHostStop :: (host: *AppHost) -> bool {
     host.reply = ""; host.last_reply = ""
     host.platform = AppPlatform.{}
     return true
+}
+
+// These fields only come from the trusted native provider, never the manifest.
+AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool) {
+    if state.actions_known {
+        BuilderPrint(bytes, ",\"actions\":[")
+        first := true
+        names: [11]string = .["catalog", "open", "back", "install", "uninstall", "pin", "unpin", "install_to_launcher", "status", "update", "rollback"]
+        for operation: cast(s32)2..11 {
+            if operation == APPS_BACK || operation == APPS_STATUS ||
+            (state.actions & (cast(u64)1 << cast(u64)operation)) == cast(u64)0 ||
+            (AppsVersionOperation(operation) && !enabled) { continue }
+            if !first { BuilderPrint(bytes, ",") }
+            first = false
+            AppsWriteQuoted(bytes, names[operation - 1])
+        }
+        BuilderPrint(bytes, "]")
+    }
+    BuilderPrint(bytes, ",\"current_version\":")
+    AppsWriteQuoted(bytes, TextUntilNul(state.current_version[:]))
+    available := enabled && state.update_available && AppVersionValid(TextUntilNul(state.available_version[:])) &&
+    AppDigestValid(TextUntilNul(state.available_sha256[:]))
+    BuilderPrint(bytes, ",\"update_available\":%", available)
+    if available {
+        BuilderPrint(bytes, ",\"available_version\":")
+        AppsWriteQuoted(bytes, TextUntilNul(state.available_version[:]))
+        BuilderPrint(bytes, ",\"available_sha256\":")
+        AppsWriteQuoted(bytes, TextUntilNul(state.available_sha256[:]))
+    }
+    BuilderPrint(bytes, ",\"version_history\":[")
+    first := true
+    index: s32 = 0
+    while enabled && index < state.history_count && index < 3 {
+        version := *state.history[index]
+        index += 1
+        if !AppVersionValid(TextUntilNul(version.version[:])) || !AppDigestValid(TextUntilNul(version.sha256[:])) { continue }
+        if !first { BuilderPrint(bytes, ",") }
+        first = false
+        BuilderPrint(bytes, "{\"version\":")
+        AppsWriteQuoted(bytes, TextUntilNul(version.version[:]))
+        BuilderPrint(bytes, ",\"sha256\":")
+        AppsWriteQuoted(bytes, TextUntilNul(version.sha256[:]))
+        BuilderPrint(bytes, "}")
+    }
+    BuilderPrint(bytes, "]")
 }

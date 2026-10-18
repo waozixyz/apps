@@ -9,9 +9,16 @@
   "prompt_pending": "In attesa della conferma del launcher",
   "launcher_installed": "Installato nel launcher",
   "queued": "Richiesta in coda",
-  "applied": "Aggiornato",
   "rejected": "Richiesta rifiutata",
   "unavailable": "Le app non sono disponibili",
   "empty": "Nessuna app in questa raccolta",
-  "actions": "Azioni dell’app"
+  "options": "Opzioni app",
+  "update": "Aggiorna",
+  "rollback": "Ripristina versione",
+  "update_available": "Aggiornamento disponibile",
+  "current_version": "Versione attuale",
+  "available_version": "Nuova versione",
+  "restore_version": "Versione da ripristinare",
+  "choose_version": "Scegli una versione conservata, poi conferma il ripristino.",
+  "cancel": "Annulla"
 }

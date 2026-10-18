@@ -25,7 +25,8 @@ def main():
         raise SystemExit('Pass the intended libziran.a')
     for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS'):
         os.environ.pop(name, None)
-    run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
+    if not os.environ.get('APPS_TEST_UI'):
+        run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
     package = 'p0000000000000001'
     lines = ['P\troot\t' + str(CONSUMER), 'M\troot\tmain\t' + str(CONSUMER / 'main.zi')]
     for line in (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines():

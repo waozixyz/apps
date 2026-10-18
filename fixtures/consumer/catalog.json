@@ -1,0 +1,57 @@
+{
+  "v": 1,
+  "status": "applied",
+  "title": "Native apps",
+  "locale": "en",
+  "can_back": false,
+  "presentation": {
+    "mode": "icon",
+    "tile_class": 501,
+    "action_class": 502,
+    "muted_class": 503
+  },
+  "children": [
+    {
+      "id": "native.breathing",
+      "title": "Breathing",
+      "icon": "assets/preview.png",
+      "icon_shape": "S2rr:M4 12H20",
+      "installed": true,
+      "favorite": true,
+      "launcher": 0,
+      "selected": true,
+      "bytes": 12345,
+      "actions": [
+        "open",
+        "uninstall",
+        "unpin",
+        "install_to_launcher",
+        "update",
+        "rollback"
+      ],
+      "current_version": "1.0",
+      "update_available": true,
+      "available_version": "2.0",
+      "available_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "version_history": [
+        {
+          "version": "0.9",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        {
+          "version": "1.0",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
+    },
+    {
+      "id": "native.clock",
+      "title": "Clock",
+      "icon_shape": "S2rr:M12 3V12H18",
+      "installed": true,
+      "actions": [
+        "open"
+      ]
+    }
+  ]
+}

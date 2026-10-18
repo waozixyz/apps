@@ -42,12 +42,18 @@ AppProviderClose :: #type (context: *void, node: *AppNode) -> void;
 AppProviderEffect :: #type (context: *void, account: string, locator: *AppLocator,
     operation: s32, reply: *AppsReply) -> bool;
 
+// The provider revalidates the exact version/digest, identity and current
+// account at drain. A guest request cannot authorize a downgrade by itself.
+AppProviderVersionEffect :: #type (context: *void, account: string, locator: *AppLocator,
+    request: *AppsRequest, reply: *AppsReply) -> bool;
+
 AppProvider :: struct {
     context: *void
     open: AppProviderOpen
     save: AppProviderSave
     close: AppProviderClose
     effect: AppProviderEffect
+    version_effect: AppProviderVersionEffect
 }
 
 AppPending :: struct {
@@ -140,7 +146,11 @@ AppTreeQueue :: (tree: *AppTree, caller: AppHandle, request: AppsRequest) -> App
         }
         return AppRejected("unknown request")
     }
-    if request.operation < APPS_OPEN || request.operation > APPS_INSTALL_TO_LAUNCHER { return AppRejected("unsupported operation") }
+    if request.operation < APPS_OPEN || request.operation > APPS_ROLLBACK { return AppRejected("unsupported operation") }
+    if AppsVersionOperation(request.operation) && (tree.provider.version_effect == null ||
+        !AppVersionValid(TextUntilNul(request.version[:])) || !AppDigestValid(TextUntilNul(request.sha256[:]))) {
+        return AppRejected("version target unavailable")
+    }
     if request.operation == APPS_BACK {
         if AppTreeNode(tree, node.parent) == null { return AppRejected("already at root") }
     } else if !node.collection || AppCatalogFind(*node.catalog, TextUntilNul(request.id[:])) < 0 {
@@ -312,10 +322,14 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
             pending.reply.status = APPS_APPLIED
         } else {
             locator: AppLocator
-            if !AppTreeLocate(tree, child, *locator) ||
-            !tree.provider.effect(tree.provider.context, TextUntilNul(tree.account[:]), *locator, request.operation, *pending.reply) {
-                pending.reply = AppRejected("effect failed")
+            applied := AppTreeLocate(tree, child, *locator)
+            if applied {
+                if AppsVersionOperation(request.operation) {
+                    applied = tree.provider.version_effect != null && tree.provider.version_effect(tree.provider.context,
+                        TextUntilNul(tree.account[:]), *locator, *request, *pending.reply)
+                } else { applied = tree.provider.effect(tree.provider.context, TextUntilNul(tree.account[:]), *locator, request.operation, *pending.reply) }
             }
+            if !applied { pending.reply = AppRejected("effect failed") }
             AppLocatorClear(*locator)
             // Effects verify a temporary instance without navigating to it.
             if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }

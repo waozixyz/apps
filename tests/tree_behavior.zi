@@ -15,6 +15,8 @@ pinned: bool;
 records: s32 = 41;
 closed: s32;
 depth: s32;
+version_calls: s32;
+version_seen: AppsRequest;
 
 MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
     bytes: Vec(u8)
@@ -64,6 +66,16 @@ Effect :: (context: *void, account: string, locator: *AppLocator, operation: s32
     return true
 }
 
+VersionEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> bool {
+    version_calls += 1
+    version_seen = request.*
+    if account != "account-a" || TextUntilNul(locator.identity.id[:]) != "inbe.chess" ||
+    TextUntilNul(locator.identity.authority[:]) != "example.test" ||
+    TextUntilNul(request.version[:]) != "2.0" || TextUntilNul(request.sha256[:]) != DIGEST { return false }
+    reply.status = APPS_APPLIED
+    return true
+}
+
 Root :: (child: string = "inbe.chess", protocol: string = "app/1") -> *AppNode {
     node := New(AppNode)
     if node == null { return null }
@@ -97,6 +109,10 @@ Check :: () -> s32 {
     AppPreviewPathValid("https://example.test/chess.png") || AppPreviewPathValid("assets/../chess.png") ||
     AppPreviewPathValid("assets/%2e%2e/chess.jpg") || AppPreviewPathValid("assets//chess.jpeg") ||
     AppPreviewPathValid("assets/chess.zib") || AppAssetPathValid("assets/..") { return 30 }
+    if !AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}", *request) || request.operation != 10 { return 40 }
+    if AppsReadRequest("{\"v\":1,\"op\":\"rollback\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bad\"}", *request) { return 41 }
     provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
     tree: AppTree
     root := Root()
@@ -104,6 +120,33 @@ Check :: () -> s32 {
     if TextUntilNul(first.preview[:]) != "assets/previews/child.png" { return 31 }
     if !AppTreeStart(*tree, root, "account-a", provider) { return 4 }
     original := tree.active
+    update := Request(APPS_UPDATE, "inbe.chess")
+    unused CopyCString("2.0", update.version[:]); unused CopyCString(DIGEST, update.sha256[:])
+    if AppTreeQueue(*tree, original, update).status != APPS_REJECTED { return 42 }
+    tree.provider.version_effect = VersionEffect
+    if !AppTreeBegin(*tree, original) { return 43 }
+    version_reply := AppTreeQueue(*tree, original, update)
+    update.version[0] = #char "9"
+    if version_reply.status != APPS_QUEUED || AppTreeDrain(*tree) || version_calls != 0 { return 44 }
+    if !AppTreeEnd(*tree, original) || !AppTreeDrain(*tree) || version_calls != 1 ||
+    TextUntilNul(version_seen.version[:]) != "2.0" || !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 45 }
+    checked := AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = version_reply.request})
+    if checked.status != APPS_APPLIED { return 46 }
+    update = version_seen; update.operation = APPS_ROLLBACK
+    fail_save = true
+    unused AppTreeQueue(*tree, original, update); unused AppTreeDrain(*tree)
+    if version_calls != 1 || !AppHandleEqual(tree.active, original) { return 47 }
+    fail_save = false
+    update.sha256[0] = #char "0"
+    version_reply = AppTreeQueue(*tree, original, update); unused AppTreeDrain(*tree)
+    checked = AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = version_reply.request})
+    if checked.status != APPS_REJECTED || version_calls != 2 || !AppHandleEqual(tree.active, original) { return 48 }
+    update = version_seen; unused CopyCString(DIGEST, update.sha256[:])
+    version_reply = AppTreeQueue(*tree, original, update)
+    tree.account_epoch += 1
+    unused AppTreeDrain(*tree)
+    if version_calls != 2 { return 49 }
+
     if AppTreeQueue(*tree, original, Request(APPS_OPEN, "missing")).status != APPS_REJECTED { return 5 }
     if !AppTreeBegin(*tree, original) || AppTreeBegin(*tree, original) { return 6 }
     reply := AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess"))

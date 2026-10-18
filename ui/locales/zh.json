@@ -9,9 +9,16 @@
   "prompt_pending": "等待启动器确认",
   "launcher_installed": "已安装到启动器",
   "queued": "请求已排队",
-  "applied": "已更新",
   "rejected": "请求被拒绝",
   "unavailable": "应用不可用",
   "empty": "此集合中没有应用",
-  "actions": "应用操作"
+  "options": "应用选项",
+  "update": "更新",
+  "rollback": "回退版本",
+  "update_available": "有可用更新",
+  "current_version": "当前版本",
+  "available_version": "新版本",
+  "restore_version": "恢复版本",
+  "choose_version": "选择保留的版本，然后确认回退。",
+  "cancel": "取消"
 }

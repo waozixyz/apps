@@ -1,5 +1,5 @@
-// One shared collection screen at every navigation level. App/account policy
-// stays in the host; this portable UI only presents its verified catalog.
+// Shared cards and native widget menus; account, installation and release
+// verification remain with the trusted Apps service provider.
 #import "std/json_scan"
 #import "std/c_string"
 #import "std/vec"
@@ -8,43 +8,77 @@
 #import "kryon/app_protocol"
 #import "kryon/text_widget"
 #import "kryon/text_props"
+#import "kryon/text_align"
 #import "kryon/image_widget"
 #import "kryon/image_props"
 #import "kryon/button_widget"
 #import "kryon/button_props"
+#import "kryon/control_props"
 #import "kryon/box_widget"
 #import "kryon/box_props"
 #import "kryon/scroll_widget"
 #import "kryon/scroll_props"
-#import "kryon/title_bar_widget"
-#import "kryon/title_bar_props"
-#import "kryon/dropdown_props"
+#import "kryon/context_menu_widget"
+#import "kryon/modal_widget"
+#import "kryon/modal_props"
 #import "kryon/drawing_props"
 #import "kryon/session"
 #import "kryon/geometry"
 #import "kryon/tree"
+Rules :: #import "protocol";
 #import, file "words.zi";
 
 using ImageFit;
 using TextWrap;
+using TextAlign;
+using ButtonTone;
+using ButtonEmphasis;
+using IconPlacement;
+
+APP_ELLIPSIS :: "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
+APP_UPDATE_ICON :: "S1.8rr:M12 3V15M7 10L12 15L17 10M5 20H19"
 
 AppCard :: struct {
     id: [128]u8
     title: [256]u8
     preview: [512]u8
+    icon: [512]u8
+    icon_shape: [16384]u8
     installed: bool
     favorite: bool
     launcher: s32
+    selected: bool
+    disabled: bool
+    bytes: s64
+    actions: u64
+    current_version: [64]u8
+    available: Rules.AppVersion
+    update_available: bool
+    history: [3]Rules.AppVersion
+    history_count: s32
 }
 
 cards: Vec(AppCard);
+empty_target: [128]u8;
 title: [256]u8;
 locale: [16]u8;
 can_back: bool;
+icon_mode: bool;
+tile_class: s32;
+action_class: s32;
+muted_class: s32;
 scroll_offset: s32;
 request: s64;
 status: [32]u8;
 action_taken: bool;
+menu_id: [128]u8;
+menu_x: float32;
+menu_y: float32;
+dialog_id: [128]u8;
+// 1 update confirmation, 2 retained version chooser, 3 rollback confirmation.
+dialog: s32;
+dialog_target: Rules.AppVersion;
+dialog_message: [2048]u8;
 
 AppsBool :: (text: string, at: s32) -> bool {
     return at >= 0 && MatchLiteral(text, Space(text, at), "true")
@@ -55,12 +89,45 @@ AppsNumber :: (text: string, at: s32) -> float64 {
     return ifx parsed.valid then parsed.value else 0.0
 }
 
+AppsArrayAt :: (text: string, array: s32, index: s32) -> s32 {
+    at := Space(text, array + 1)
+    for previous: cast(s32)0..index - 1 { at = Space(text, ValueEnd(text, at, 0) + 1) }
+    return at
+}
+
+AppsOptionalText :: (text: string, at: s32, key: string, output: []u8) -> bool {
+    return FieldAt(text, at, key) < 0 || Rules.AppsReadText(text, at, key, output)
+}
+
+AppsVersionRead :: (text: string, at: s32, version: *Rules.AppVersion) -> bool {
+    return Rules.AppsReadText(text, at, "version", version.version[:]) &&
+    Rules.AppVersionValid(TextUntilNul(version.version[:])) &&
+    Rules.AppsReadText(text, at, "sha256", version.sha256[:]) &&
+    Rules.AppDigestValid(TextUntilNul(version.sha256[:]))
+}
+
+AppsVersionEqual :: (left: *Rules.AppVersion, right: *Rules.AppVersion) -> bool {
+    return TextUntilNul(left.version[:]) == TextUntilNul(right.version[:]) &&
+    TextUntilNul(left.sha256[:]) == TextUntilNul(right.sha256[:])
+}
+
+AppsSupported :: (card: *AppCard, operation: s32) -> bool {
+    return (card.actions & (cast(u64)1 << cast(u64)operation)) != cast(u64)0
+}
+
 AppsReadCatalog :: () -> bool {
     text := AppService("apps", "{\"v\":1,\"op\":\"catalog\"}")
     version := ReadNumber(text, FieldAt(text, 0, "v"))
-    if !version.valid || version.value != 1.0 || ReadStringText(text, FieldAt(text, 0, "title"), title[:]) < 0 ||
-    ReadStringText(text, FieldAt(text, 0, "locale"), locale[:]) < 0 { return false }
+    if !version.valid || version.value != 1.0 || !Rules.AppsReadText(text, 0, "title", title[:]) ||
+    !Rules.AppsReadText(text, 0, "locale", locale[:]) { return false }
     can_back = AppsBool(text, FieldAt(text, 0, "can_back"))
+    presentation := FieldAt(text, 0, "presentation")
+    mode: [16]u8
+    if !AppsOptionalText(text, presentation, "mode", mode[:]) { return false }
+    icon_mode = TextUntilNul(mode[:]) == "icon"
+    tile_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "tile_class"))
+    action_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "action_class"))
+    muted_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "muted_class"))
     children := FieldAt(text, 0, "children")
     count := ArrayCount(text, children)
     if count < 0 || count > 4096 { return false }
@@ -68,12 +135,55 @@ AppsReadCatalog :: () -> bool {
     at := Space(text, children + 1)
     for index: cast(s32)0..count - 1 {
         card: AppCard
-        if ReadStringText(text, FieldAt(text, at, "id"), card.id[:]) < 0 ||
-        ReadStringText(text, FieldAt(text, at, "title"), card.title[:]) < 0 ||
-        ReadStringText(text, FieldAt(text, at, "preview"), card.preview[:]) < 0 { return false }
+        if !Rules.AppsReadText(text, at, "id", card.id[:]) || !Rules.AppIdValid(TextUntilNul(card.id[:])) ||
+        !Rules.AppsReadText(text, at, "title", card.title[:]) ||
+        !AppsOptionalText(text, at, "preview", card.preview[:]) ||
+        !AppsOptionalText(text, at, "icon", card.icon[:]) ||
+        !AppsOptionalText(text, at, "icon_shape", card.icon_shape[:]) ||
+        !AppsOptionalText(text, at, "current_version", card.current_version[:]) { return false }
+        if TextUntilNul(card.preview[:]) != "" && !Rules.AppPreviewPathValid(TextUntilNul(card.preview[:])) { return false }
+        if TextUntilNul(card.icon[:]) != "" && !Rules.AppPreviewPathValid(TextUntilNul(card.icon[:])) { return false }
+        if TextUntilNul(card.current_version[:]) == "" { unused AppsOptionalText(text, at, "version", card.current_version[:]) }
         card.installed = AppsBool(text, FieldAt(text, at, "installed"))
         card.favorite = AppsBool(text, FieldAt(text, at, "favorite"))
         card.launcher = cast(s32)AppsNumber(text, FieldAt(text, at, "launcher"))
+        card.selected = AppsBool(text, FieldAt(text, at, "selected"))
+        card.disabled = AppsBool(text, FieldAt(text, at, "disabled"))
+        card.bytes = cast(s64)AppsNumber(text, FieldAt(text, at, "bytes"))
+        actions := FieldAt(text, at, "actions")
+        if actions < 0 {
+            for operation: cast(s32)2..8 { card.actions = card.actions | (cast(u64)1 << cast(u64)operation) }
+        } else {
+            action_count := ArrayCount(text, actions)
+            if action_count < 0 || action_count > 11 { return false }
+            for action: cast(s32)0..action_count - 1 {
+                name: [32]u8
+                if ReadStringText(text, AppsArrayAt(text, actions, action), name[:]) < 0 { return false }
+                operation := Rules.AppsOperation(TextUntilNul(name[:]))
+                if operation > 0 { card.actions = card.actions | (cast(u64)1 << cast(u64)operation) }
+            }
+        }
+        if AppsBool(text, FieldAt(text, at, "update_available")) &&
+        AppsOptionalText(text, at, "available_version", card.available.version[:]) &&
+        AppsOptionalText(text, at, "available_sha256", card.available.sha256[:]) &&
+        Rules.AppVersionValid(TextUntilNul(card.available.version[:])) && Rules.AppDigestValid(TextUntilNul(card.available.sha256[:])) {
+            card.update_available = AppsSupported(*card, Rules.APPS_UPDATE)
+        }
+        history := FieldAt(text, at, "version_history")
+        history_count := ifx history < 0 then 0 else ArrayCount(text, history)
+        if history_count < 0 || history_count > 3 { return false }
+        for entry: cast(s32)0..history_count - 1 {
+            retained: Rules.AppVersion
+            if !AppsVersionRead(text, AppsArrayAt(text, history, entry), *retained) { return false }
+            duplicate: bool
+            for previous: cast(s32)0..card.history_count - 1 {
+                if AppsVersionEqual(*retained, *card.history[previous]) { duplicate = true }
+            }
+            if !duplicate { card.history[card.history_count] = retained; card.history_count += 1 }
+        }
+        for previous: cast(s64)0..cards.count - 1 {
+            if TextUntilNul(cards[previous].id[:]) == TextUntilNul(card.id[:]) { return false }
+        }
         if !VecPush(cards, card) { return false }
         at = Space(text, ValueEnd(text, at, 0))
         if index + 1 < count { at = Space(text, at + 1) }
@@ -86,14 +196,23 @@ AppsResponse :: (text: string) {
     request = cast(s64)AppsNumber(text, FieldAt(text, 0, "request"))
 }
 
-AppsAct :: (operation: string, target: [128]u8) {
+AppsAct :: (operation: string, target: [128]u8, version: Rules.AppVersion = Rules.AppVersion.{}) {
     if action_taken { return }
     action_taken = true
     bytes: Vec(u8)
-    id := TextUntilNul(target[:])
-    // IDs and operations come from the validated service catalog and UI.
-    if id == "" { BuilderPrint(*bytes, "{\"v\":1,\"op\":\"%\"}", operation) }
-    else { BuilderPrint(*bytes, "{\"v\":1,\"op\":\"%\",\"id\":\"%\"}", operation, id) }
+    BuilderPrint(*bytes, "{\"v\":1,\"op\":")
+    Rules.AppsWriteQuoted(*bytes, operation)
+    if TextUntilNul(target[:]) != "" {
+        BuilderPrint(*bytes, ",\"id\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(target[:]))
+    }
+    if Rules.AppsVersionOperation(Rules.AppsOperation(operation)) {
+        BuilderPrint(*bytes, ",\"version\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(version.version[:]))
+        BuilderPrint(*bytes, ",\"sha256\":")
+        Rules.AppsWriteQuoted(*bytes, TextUntilNul(version.sha256[:]))
+    }
+    BuilderPrint(*bytes, "}")
     AppsResponse(AppService("apps", TextView(VecSlice(bytes, 0, bytes.count))))
     VecFree(bytes)
 }
@@ -102,9 +221,104 @@ AppsText :: (session: Session, key: u64, bounds: Rectangle, text: string, font: 
     Text(session, TextProps.{.key = key, .bounds = bounds, .text = text, .font = font, .wrap = cast(TextWrap)TextWrapEllipsis})
 }
 
-AppsControl :: (session: Session, key: u64, bounds: Rectangle, label: string, disabled: bool = false) -> bool {
-    return Button(session, ButtonProps.{.key = key, .id = cast(s32)key, .bounds = bounds,
-            .label = label, .disabled = disabled, .fit_content = true}) != 0
+AppsFind :: (id: [128]u8) -> *AppCard {
+    for index: cast(s64)0..cards.count - 1 {
+        if TextUntilNul(cards[index].id[:]) == TextUntilNul(id[:]) { return *cards[index] }
+    }
+    return null
+}
+
+AppsMenuItem :: (items: []ContextMenuItem, count: *s32, card: *AppCard, operation: s32,
+    language: string, label: string, disabled: bool = false) {
+    if !AppsSupported(card, operation) { return }
+    items[count.*] = ContextMenuItem.{.id = operation, .label = AppsLabel(language, label), .disabled = disabled}
+    count.* += 1
+}
+
+AppsMenu :: (session: Session, scale: float32, language: string) {
+    card := AppsFind(menu_id)
+    if card == null || card.disabled { menu_id[0] = cast(u8)0; return }
+    items: [5]ContextMenuItem
+    count: s32
+    AppsMenuItem(items[:], *count, card, ifx card.installed then Rules.APPS_UNINSTALL else Rules.APPS_INSTALL,
+        language, ifx card.installed then "uninstall" else "install")
+    AppsMenuItem(items[:], *count, card, ifx card.favorite then Rules.APPS_UNPIN else Rules.APPS_PIN,
+        language, ifx card.favorite then "unpin" else "pin", !card.installed)
+    AppsMenuItem(items[:], *count, card, Rules.APPS_INSTALL_TO_LAUNCHER, language,
+        ifx card.launcher == 1 then "prompt_pending" else ifx card.launcher == 2 then "launcher_installed" else "install_to_launcher",
+        !card.installed || card.launcher != 0)
+    if card.update_available { AppsMenuItem(items[:], *count, card, Rules.APPS_UPDATE, language, "update") }
+    if card.history_count > 0 { AppsMenuItem(items[:], *count, card, Rules.APPS_ROLLBACK, language, "rollback") }
+    if count == 0 { menu_id[0] = cast(u8)0; return }
+    menu := ContextMenu(session, ContextMenuProps.{.key = cast(u64)7, .open = true, .x = menu_x, .y = menu_y,
+            .scale = scale, .escape = AppKey() == 256 || AppKey() == 27}, items[:count])
+    if menu.activated_id == Rules.APPS_UPDATE { dialog_id = card.id; dialog = 1; dialog_target = card.available }
+    else if menu.activated_id == Rules.APPS_ROLLBACK { dialog_id = card.id; dialog = 2 }
+    else if menu.activated_id > 0 {
+        operation := ifx menu.activated_id == Rules.APPS_INSTALL then "install" else ifx menu.activated_id == Rules.APPS_UNINSTALL then "uninstall" else ifx menu.activated_id == Rules.APPS_PIN then "pin" else ifx menu.activated_id == Rules.APPS_UNPIN then "unpin" else "install_to_launcher"
+        AppsAct(operation, card.id)
+    }
+    if !menu.open { menu_id[0] = cast(u8)0 }
+}
+
+AppsDialog :: (session: Session, scale: float32, language: string) {
+    if dialog == 0 { return }
+    card := AppsFind(dialog_id)
+    if card == null || card.disabled || AppKey() == 256 || AppKey() == 27 { dialog = 0; return }
+    if (dialog == 1 && !AppsSupported(card, Rules.APPS_UPDATE)) ||
+    (dialog >= 2 && !AppsSupported(card, Rules.APPS_ROLLBACK)) { dialog = 0; return }
+    message: Vec(u8)
+    BuilderPrint(*message, "%\n%: %", TextUntilNul(card.title[:]), AppsLabel(language, "current_version"), TextUntilNul(card.current_version[:]))
+    actions: [4]ActionModalAction
+    count: s32
+    valid: bool
+    if dialog == 2 {
+        BuilderPrint(*message, "\n%", AppsLabel(language, "choose_version"))
+        for index: cast(s32)0..card.history_count - 1 {
+            actions[count] = ActionModalAction.{.label = TextUntilNul(card.history[index].version[:]), .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}
+            count += 1
+        }
+    } else {
+        label := ifx dialog == 1 then "available_version" else "restore_version"
+        BuilderPrint(*message, "\n%: %", AppsLabel(language, label), TextUntilNul(dialog_target.version[:]))
+        if dialog == 1 { valid = card.update_available && AppsVersionEqual(*card.available, *dialog_target) }
+        else {
+            for index: cast(s32)0..card.history_count - 1 {
+                if AppsVersionEqual(*card.history[index], *dialog_target) { valid = true }
+            }
+        }
+        actions[count] = ActionModalAction.{.label = AppsLabel(language, ifx dialog == 1 then "update" else "rollback"),
+            .tone = cast(ButtonTone)ButtonToneAccent, .emphasis = cast(ButtonEmphasis)ButtonEmphasisFilled, .disabled = !valid}
+        count += 1
+    }
+    actions[count] = ActionModalAction.{.label = AppsLabel(language, "cancel"), .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost}
+    count += 1
+    unused CopyCString(TextView(VecSlice(message, 0, message.count)), dialog_message[:])
+    VecFree(message)
+    result := ActionModal(session, ActionModalProps.{.key = cast(u64)(8 + dialog), .title = AppsLabel(language, ifx dialog == 1 then "update" else "rollback"),
+            .message = TextUntilNul(dialog_message[:]), .scale = scale, .max_width = 440}, actions[:count])
+    if result.action < 0 || result.action == count { dialog = 0 }
+    else if result.action > 0 {
+        if dialog == 2 { dialog_target = card.history[result.action - 1]; dialog = 3 }
+        else if valid { AppsAct(ifx dialog == 1 then "update" else "rollback", card.id, dialog_target); dialog = 0 }
+    }
+}
+
+AppsSize :: (bytes: s64, output: []u8) -> bool {
+    if bytes <= 0 || bytes > 67108864 { return false }
+    value: Vec(u8)
+    if bytes < 1000 { BuilderPrint(*value, "% B", bytes) }
+    else {
+        unit: s64 = 1000
+        suffix := " kB"
+        if bytes >= 999950 { unit = 1000000; suffix = " MB" }
+        tenths := (bytes * 10 + unit / 2) / unit
+        BuilderPrint(*value, "%.%", tenths / 10, tenths % 10)
+        BuilderPrint(*value, "%", suffix)
+    }
+    result := CopyCString(TextView(VecSlice(value, 0, value.count)), output)
+    VecFree(value)
+    return result
 }
 
 AppsFrame :: () -> bool {
@@ -126,78 +340,104 @@ AppsFrame :: () -> bool {
         VecFree(bytes)
     }
     gap := 12.0 * scale
-    head := 44.0 * scale
-    operation: string
-    target: [128]u8
-    if can_back && AppsControl(session, cast(u64)2, Rectangle.{bounds.x + gap, bounds.y + gap, 84.0 * scale, head}, AppsLabel(language, "back")) {
-        operation = "back"
+    area := bounds
+    if !icon_mode {
+        if can_back && Button(session, ButtonProps.{.key = cast(u64)2, .label = AppsLabel(language, "back"),
+                .bounds = Rectangle.{bounds.x + gap, bounds.y + gap, 84.0 * scale, 44.0 * scale}, .fit_content = true}) != 0 {
+            AppsAct("back", empty_target)
+        }
+        title_x := bounds.x + gap + ifx can_back then 96.0 * scale else 0.0
+        AppsText(session, cast(u64)3, Rectangle.{title_x, bounds.y + gap, bounds.x + bounds.width - gap - title_x, 44.0 * scale}, TextUntilNul(title[:]), font + 4)
+        top := bounds.y + 68.0 * scale
+        area = Rectangle.{bounds.x + gap, top, bounds.width - gap * 2.0, bounds.y + bounds.height - top - gap}
+        // Successful actions add no persistent label or extra row.
+        state_buffer := status
+        state := TextUntilNul(state_buffer[:])
+        if state == "rejected" {
+            AppsText(session, cast(u64)4, Rectangle.{area.x, area.y, area.width, 26.0 * scale}, AppsLabel(language, "rejected"), font)
+            area.y += 30.0 * scale; area.height -= 30.0 * scale
+        }
     }
-    title_x := bounds.x + gap + ifx can_back then 96.0 * scale else 0.0
-    AppsText(session, cast(u64)3, Rectangle.{title_x, bounds.y + gap, bounds.x + bounds.width - gap - title_x, head}, TextUntilNul(title[:]), font + 4)
-    {
-        state := TextUntilNul(status[:])
-        if state != "" { AppsText(session, cast(u64)4, Rectangle.{bounds.x + gap, bounds.y + head + gap, bounds.width - gap * 2.0, 26.0 * scale}, AppsLabel(language, state), font) }
-    }
-    top := bounds.y + head + gap * 2.0 + 26.0 * scale
-    area := Rectangle.{bounds.x + gap, top, bounds.width - gap * 2.0, bounds.y + bounds.height - top - gap}
     columns: s32 = ifx area.width >= 440.0 * scale then 2 else 1
-    card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
     card_height := 232.0 * scale
-    card_fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
+    if icon_mode {
+        columns = cast(s32)((area.width + gap) / (140.0 * scale + gap))
+        if columns < 1 { columns = 1 }
+        if columns > 6 { columns = 6 }
+        card_height = 88.0 * scale
+    }
+    card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
     rows := (cast(s32)cards.count + columns - 1) / columns
-    scroll := Scroll(session, ScrollProps.{.key = cast(u64)5, .bounds = area, .scale = scale,
-            .content_height = rows * cast(s32)(card_height + gap), .scroll_offset = scroll_offset})
-    scroll_offset = scroll.scroll_offset
-    if !scroll.opened { return true }
-    if cards.count == 0 { AppsText(session, cast(u64)6, scroll.content, AppsLabel(language, "empty"), font) }
+    opened: bool
+    if !icon_mode {
+        scroll := Scroll(session, ScrollProps.{.key = cast(u64)5, .bounds = area, .scale = scale,
+                .content_height = rows * cast(s32)(card_height + gap), .scroll_offset = scroll_offset})
+        scroll_offset = scroll.scroll_offset
+        if !scroll.opened { return true }
+        area = scroll.content
+        opened = true
+    }
+    if cards.count == 0 { AppsText(session, cast(u64)6, area, AppsLabel(language, "empty"), font) }
     for index: cast(s32)0..cast(s32)cards.count - 1 {
-        card := cards[index]
-        x := scroll.content.x + cast(float32)(index % columns) * (card_width + gap)
-        y := scroll.content.y + cast(float32)(index / columns) * (card_height + gap)
-        key := cast(u64)(100 + index * 16)
-        unused Box(session, BoxProps.{.key = key, .bounds = Rectangle.{x, y, card_width, card_height},
-                .radius = 12.0 * scale, .fill = card_fill})
-        preview := TextUntilNul(card.preview[:])
-        if preview != "" {
-            Image(session, ImageProps.{.key = key + cast(u64)1, .asset_path = preview, .alt_text = TextUntilNul(card.title[:]),
-                    .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, 130.0 * scale}, .fit = cast(ImageFit)ImageFitContain, .smooth = true})
+        card := *cards[index]
+        x := area.x + cast(float32)(index % columns) * (card_width + gap)
+        y := area.y + cast(float32)(index / columns) * (card_height + gap)
+        key := Rules.AppCardKey(TextUntilNul(card.id[:]))
+        tile := ButtonProps.{.key = key, .label = TextUntilNul(card.title[:]), .class_name = tile_class,
+            .bounds = Rectangle.{x, y, card_width, card_height}, .disabled = card.disabled,
+            .selected = card.selected, .fit_content = true, .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}
+        if card.selected { tile.tone = cast(ButtonTone)ButtonToneAccent; tile.emphasis = cast(ButtonEmphasis)ButtonEmphasisFilled }
+        if icon_mode {
+            tile.icon_shape = TextUntilNul(card.icon_shape[:])
+            tile.image = ImageProps.{.asset_path = TextUntilNul(card.icon[:]), .alt_text = TextUntilNul(card.title[:])}
+            tile.icon_placement = cast(IconPlacement)IconPlacementAbove
+        } else {
+            fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
+            unused Box(session, BoxProps.{.key = key + cast(u64)1, .bounds = tile.bounds, .radius = 12.0 * scale, .fill = fill})
+            preview := TextUntilNul(card.preview[:])
+            if preview != "" {
+                Image(session, ImageProps.{.key = key + cast(u64)2, .asset_path = preview, .alt_text = TextUntilNul(card.title[:]),
+                        .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, 168.0 * scale}, .fit = cast(ImageFit)ImageFitContain, .smooth = true})
+            }
+            AppsText(session, key + cast(u64)3, Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
+            tile.invisible = true
         }
-        AppsText(session, key + cast(u64)2, Rectangle.{x + gap, y + 148.0 * scale, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
-        if Button(session, ButtonProps.{.key = key + cast(u64)3, .id = cast(s32)key + 3, .label = TextUntilNul(card.title[:]),
-                .detail = AppsLabel(language, "open"), .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, 168.0 * scale}, .invisible = true}) != 0 && operation == "" {
-            operation = "open"
-            target = card.id
+        tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
+        if Button(session, tile) != 0 { AppsAct("open", card.id) }
+        if icon_mode {
+            size_text: [32]u8
+            if AppsSize(card.bytes, size_text[:]) {
+                Text(session, TextProps.{.key = key + cast(u64)4, .text = TextUntilNul(size_text[:]), .font = cast(s32)(11.0 * scale),
+                        .bounds = Rectangle.{x + 8.0 * scale, y + card_height - 16.0 * scale, card_width - 16.0 * scale, 12.0 * scale},
+                        .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})
+            }
         }
-        launcher_label := ifx card.launcher == 1 then "prompt_pending" else ifx card.launcher == 2 then "launcher_installed" else "install_to_launcher"
-        options: [3]DropdownOption = .[
-        DropdownOption.{.label = AppsLabel(language, ifx card.installed then "uninstall" else "install")},
-        DropdownOption.{.label = AppsLabel(language, ifx card.favorite then "unpin" else "pin"), .disabled = !card.installed},
-        DropdownOption.{.label = AppsLabel(language, launcher_label), .disabled = !card.installed || card.launcher != 0}]
-        menu := TitleBar(session, TitleBarProps.{.key = key + cast(u64)4, .id = cast(s32)key + 4,
-                .bounds = Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 36.0 * scale},
-                .height = cast(s32)(36.0 * scale), .scale = scale, .has_dropdown = true,
-                .dropdown_min_width = cast(s32)(220.0 * scale), .dropdown_height = cast(s32)(36.0 * scale),
-                .dropdown = DropdownProps.{.placeholder = AppsLabel(language, "actions"), .selected_index = -1}}, options[:])
-        if menu.dropdown.changed && operation == "" {
-            if menu.dropdown.selected_index == 0 { operation = ifx card.installed then "uninstall" else "install" }
-            if menu.dropdown.selected_index == 1 { operation = ifx card.favorite then "unpin" else "pin" }
-            if menu.dropdown.selected_index == 2 { operation = "install_to_launcher" }
-            target = card.id
+        action := ButtonProps.{.key = key + cast(u64)5, .label = AppsLabel(language, "options"), .icon_shape = APP_ELLIPSIS,
+            .icon_only = true, .class_name = action_class, .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost,
+            .bounds = Rectangle.{x + card_width - 40.0 * scale, y + 4.0 * scale, 36.0 * scale, 36.0 * scale},
+            .disabled = card.disabled, .fit_content = true}
+        if card.selected { action.tone = cast(ButtonTone)ButtonToneAccent }
+        if Button(session, action) != 0 {
+            menu_id = card.id; menu_x = action.bounds.x; menu_y = action.bounds.y + action.bounds.height
+        }
+        if card.update_available {
+            action.key = key + cast(u64)6
+            action.label = AppsLabel(language, "update_available")
+            action.icon_shape = APP_UPDATE_ICON
+            action.bounds.x -= 36.0 * scale
+            if Button(session, action) != 0 { dialog_id = card.id; dialog = 1; dialog_target = card.available; menu_id[0] = cast(u8)0 }
         }
     }
-    End(session)
-    if operation != "" { AppsAct(operation, target) }
+    if opened { End(session) }
+    AppsMenu(session, scale, language)
+    AppsDialog(session, scale, language)
     return true
 }
 
 #program_export
 Main :: () -> s32 {
     mode := AppMode()
-    if mode == APP_IDENTIFY {
-        AppIdentity("apps")
-        AppDescribe("Apps", "")
-        return APP_PROTOCOL
-    }
+    if mode == APP_IDENTIFY { AppIdentity("apps"); AppDescribe("Apps", ""); return APP_PROTOCOL }
     if mode == APP_FRAME { return ifx AppsFrame() then 0 else 1 }
     if mode == APP_COMMAND { AppReply(AppService("apps", AppCommand())) }
     return 0
