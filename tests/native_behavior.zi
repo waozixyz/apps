@@ -56,6 +56,11 @@ menu_triggers: s32;
 invalid_trigger: s32;
 button_codec: WidgetButtonPropsCodec;
 host_version_calls: s32;
+open_decision: s32 = APP_OPEN_DECLARED;
+host_open_calls: s32;
+host_open_chain: s64;
+host_open_leaf: [65]u8;
+host_open_bad: bool;
 
 #program_export
 MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 {
@@ -231,6 +236,21 @@ HostVersionEffect :: (context: *void, account: string, locator: *AppLocator, req
     return true
 }
 
+// Every guest OPEN reaches here after its caller saved and the declared child
+// verified; no guest VM is running and the caller is still the active page.
+HostOpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> s32 {
+    host_open_calls += 1
+    active := AppHostActiveRuntime(ui_host)
+    if ui_host.tree.busy || !ui_host.tree.draining || active == null || active.busy ||
+    (active.frontend != null && active.frontend.busy) || account != "account-a" || request.operation != APPS_OPEN ||
+    TextUntilNul(locator.identity.id[:]) != TextUntilNul(request.id[:]) || locator.chain.count < 2 ||
+    TextUntilNul(locator.chain[0].sha256[:]) != FixtureEnvironment("APPS_FIXTURE_ROOT_SHA256") { host_open_bad = true }
+    host_open_chain = locator.chain.count
+    unused CopyCString(TextUntilNul(locator.chain[locator.chain.count - 1].sha256[:]), host_open_leaf[:])
+    unused CopyCString("native-leaf", reply.receipt[:])
+    return open_decision
+}
+
 native_controller: AppController;
 native_catalog: string;
 native_request: AppsRequest;
@@ -383,7 +403,8 @@ Check :: () -> s32 {
     harness_digest := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
     if !found { return 1 }
     host: AppHost
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State, .version_effect = HostVersionEffect}
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State, .version_effect = HostVersionEffect,
+        .open_effect = HostOpenEffect}
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
     root := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)root.runtime
@@ -430,7 +451,40 @@ Check :: () -> s32 {
     unused CopyCString("other", node_entry.expected_id[:])
     rejected := AppTreeOpenChild(*host.tree, host.tree.active, *node_entry)
     if AppTreeNode(*host.tree, rejected) != null || AppHostActiveRuntime(*host) != runtime { return 31 }
-    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") || host.tree.nodes.count != 3 { return 5 }
+    // Native OPEN boundary over real bundles: the counter's exact verified
+    // chain reaches the provider; HANDLED and REJECTED keep the middle page
+    // and retire only the temporary counter VM.
+    counter_entry := AppCatalogAt(*middle.catalog, AppCatalogFind(*middle.catalog, "fixture.counter"))
+    outcomes: [2]s32 = .[APP_OPEN_HANDLED, APP_OPEN_REJECTED]
+    for outcome: outcomes {
+        open_decision = outcome
+        calls := host_open_calls
+        if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") || host.tree.nodes.count != 2 ||
+        AppHostActiveRuntime(*host) != runtime || host.retired_bytes <= 0 || host_open_calls != calls + 1 ||
+        host_open_bad || host_open_chain != 3 || TextUntilNul(host_open_leaf[:]) != TextUntilNul(counter_entry.sha256[:]) { return 68 }
+        status := AppTreeQueue(*host.tree, host.tree.active, AppsRequest.{.operation = APPS_STATUS, .request = host.tree.sequence})
+        expected := ifx outcome == APP_OPEN_HANDLED then APPS_QUEUED else APPS_REJECTED
+        if status.status != expected || (outcome == APP_OPEN_HANDLED && TextUntilNul(status.receipt[:]) != "native-leaf") { return 69 }
+        AppHostCollect(*host)
+        if host.retired_bytes != 0 || !Draw(*host, 480, 600) { return 70 }
+    }
+    // A failed save or a declared digest mismatch never reaches the provider
+    // and opens no temporary child.
+    open_decision = APP_OPEN_HANDLED
+    calls := host_open_calls
+    flush_failed = true
+    unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}")
+    flush_failed = false
+    if host_open_calls != calls || host.tree.nodes.count != 2 || host.retired_bytes != 0 || AppHostActiveRuntime(*host) != runtime { return 71 }
+    digest_first := counter_entry.sha256[0]
+    counter_entry.sha256[0] = ifx digest_first == #char "0" then #char "1" else #char "0"
+    unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}")
+    counter_entry.sha256[0] = digest_first
+    if host_open_calls != calls || host.tree.nodes.count != 2 || host.retired_bytes != 0 || AppHostActiveRuntime(*host) != runtime { return 72 }
+    // DECLARED, the default, opens the verified counter exactly as before.
+    open_decision = APP_OPEN_DECLARED
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") || host.tree.nodes.count != 3 ||
+    host_open_calls != calls + 1 || host_open_bad { return 5 }
     child := host.tree.active
     if !Command(*host, "read") || host.last_reply != "legacy saved value" { return 6 }
     if !Command(*host, "write") || stored != "after" { return 7 }

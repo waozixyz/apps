@@ -47,6 +47,20 @@ AppProviderEffect :: #type (context: *void, account: string, locator: *AppLocato
 AppProviderVersionEffect :: #type (context: *void, account: string, locator: *AppLocator,
     request: *AppsRequest, reply: *AppsReply) -> bool;
 
+// Optional native OPEN decision. Unknown values reject.
+APP_OPEN_REJECTED :: 0
+APP_OPEN_DECLARED :: 1
+APP_OPEN_HANDLED :: 2
+
+// Runs at drain only after the caller saved and the declared child verified.
+// locator names that exact verified chain; it and request are borrowed for
+// this call, and reply.request is the guest's sequence. DECLARED navigates to
+// the child. HANDLED copies the target for native staging after Run returns;
+// REJECTED refuses it. Both keep the caller active and dispose only the
+// temporary child. A HANDLED reply stays queued with the provider's receipt.
+AppProviderOpenEffect :: #type (context: *void, account: string, locator: *AppLocator,
+    request: *AppsRequest, reply: *AppsReply) -> s32;
+
 AppProvider :: struct {
     context: *void
     open: AppProviderOpen
@@ -54,6 +68,7 @@ AppProvider :: struct {
     close: AppProviderClose
     effect: AppProviderEffect
     version_effect: AppProviderVersionEffect
+    open_effect: AppProviderOpenEffect
 }
 
 AppPending :: struct {
@@ -318,8 +333,24 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
             continue
         }
         if request.operation == APPS_OPEN {
-            tree.active = child
-            pending.reply.status = APPS_APPLIED
+            decision: s32 = APP_OPEN_DECLARED
+            if tree.provider.open_effect != null {
+                locator: AppLocator
+                decision = APP_OPEN_REJECTED
+                if AppTreeLocate(tree, child, *locator) {
+                    decision = tree.provider.open_effect(tree.provider.context,
+                        TextUntilNul(tree.account[:]), *locator, *request, *pending.reply)
+                }
+                AppLocatorClear(*locator)
+            }
+            if decision == APP_OPEN_DECLARED {
+                tree.active = child
+                pending.reply.status = APPS_APPLIED
+            } else {
+                if decision == APP_OPEN_HANDLED { pending.reply.status = APPS_QUEUED }
+                else { pending.reply = AppRejected("open rejected") }
+                AppTreeDrop(tree, child)
+            }
         } else {
             locator: AppLocator
             applied := AppTreeLocate(tree, child, *locator)

@@ -19,9 +19,13 @@ VersionEffect :: (context: *void, account: string, locator: *AppLocator, request
     return account == "account-a" && request.operation == APPS_UPDATE
 }
 
+OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> s32 {
+    return ifx account == "account-a" && request.operation == APPS_OPEN then APP_OPEN_HANDLED else APP_OPEN_REJECTED
+}
+
 #program_export
 Check :: () -> s32 {
-    platform := AppPlatform.{.state = State, .version_effect = VersionEffect,
+    platform := AppPlatform.{.state = State, .version_effect = VersionEffect, .open_effect = OpenEffect,
         .presentation = AppPresentation.{.icon = true, .tile_class = 501}}
     identity: AppIdentity
     state: AppState
@@ -31,6 +35,9 @@ Check :: () -> s32 {
     reply: AppsReply
     if !platform.version_effect(null, "account-a", *locator, *request, *reply) || reply.status != APPS_APPLIED ||
     !platform.presentation.icon || AppCardKey("native.clock") == AppCardKey("native.breathing") { return 5 }
+    open := AppsRequest.{.operation = APPS_OPEN}
+    if platform.open_effect(null, "account-a", *locator, *open, *reply) != APP_OPEN_HANDLED ||
+    platform.open_effect(null, "account-b", *locator, *open, *reply) != APP_OPEN_REJECTED { return 6 }
     runtime: AppRuntime
     runtime.legacy.message = Node.AppMessage.{.signed_in = true}
     runtime.legacy.frame = Node.AppUiFrame.{.width = 800}

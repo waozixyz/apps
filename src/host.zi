@@ -45,6 +45,7 @@ AppPlatform :: struct {
     version_effect: AppProviderVersionEffect
     presentation: AppPresentation
     state: AppPlatformState
+    open_effect: AppProviderOpenEffect
 }
 
 AppHost :: struct {
@@ -438,6 +439,14 @@ AppHostEffect :: (context: *void, account: string, locator: *AppLocator, operati
     return host.platform.effect != null && host.platform.effect(host.platform.context, account, locator, operation, reply)
 }
 
+// The temporary child of a HANDLED/REJECTED open retires like any closed
+// guest; AppHostCollect frees it after the frame.
+AppHostOpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> s32 {
+    host := cast(*AppHost)context
+    if host.platform.open_effect == null { return APP_OPEN_DECLARED }
+    return host.platform.open_effect(host.platform.context, account, locator, request, reply)
+}
+
 // authority/expected root identity/digest are verified installation inputs.
 // This function never derives authority from a container manifest or a guest.
 AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
@@ -467,6 +476,7 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     provider := AppProvider.{.context = cast(*void)host, .open = AppHostOpen,
         .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}
     if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
+    if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
     if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime))) ||
     !AppTreeStart(*host.tree, root, account, provider) {
         AppHostClose(cast(*void)host, root)

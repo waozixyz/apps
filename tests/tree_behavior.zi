@@ -17,6 +17,14 @@ closed: s32;
 depth: s32;
 version_calls: s32;
 version_seen: AppsRequest;
+saves: s32;
+open_tree: *AppTree;
+open_decision: s32 = APP_OPEN_DECLARED;
+open_calls: s32;
+open_saves: s32;
+open_reentered: bool;
+open_seen: AppsRequest;
+open_copy: AppLocator;
 
 MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
     bytes: Vec(u8)
@@ -49,7 +57,11 @@ Open :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode
     return true
 }
 
-Save :: (context: *void, node: *AppNode) -> bool { return !fail_save }
+Save :: (context: *void, node: *AppNode) -> bool {
+    if fail_save { return false }
+    saves += 1
+    return true
+}
 Close :: (context: *void, node: *AppNode) { closed += 1; node.runtime = null }
 
 Effect :: (context: *void, account: string, locator: *AppLocator, operation: s32, reply: *AppsReply) -> bool {
@@ -74,6 +86,85 @@ VersionEffect :: (context: *void, account: string, locator: *AppLocator, request
     TextUntilNul(request.version[:]) != "2.0" || TextUntilNul(request.sha256[:]) != DIGEST { return false }
     reply.status = APPS_APPLIED
     return true
+}
+
+// A native consumer copies the verified target; it stages its own root only
+// after the drain, so neither a guest run nor a locator open may reenter.
+OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> s32 {
+    open_calls += 1
+    open_saves = saves
+    open_seen = request.*
+    if !open_tree.draining || open_tree.busy || AppTreeBegin(open_tree, open_tree.active) ||
+    AppTreeOpenLocator(open_tree, locator) || account != "account-a" ||
+    reply.status != APPS_QUEUED || reply.request < 1 { open_reentered = true }
+    AppLocatorClear(*open_copy)
+    open_copy.identity = locator.identity
+    for index: cast(s64)0..locator.chain.count - 1 { unused VecPush(open_copy.chain, locator.chain[index]) }
+    unused CopyCString("leaf-stage-1", reply.receipt[:])
+    // The tree, not the provider, decides the reply status for each decision.
+    reply.status = APPS_APPLIED
+    return open_decision
+}
+
+OpenEffectCheck :: (provider: AppProvider) -> s32 {
+    tree: AppTree
+    open_tree = *tree
+    provider.open_effect = OpenEffect
+    if !AppTreeStart(*tree, Root(), "account-a", provider) { return 50 }
+    original := tree.active
+    // Default: after exactly the caller's save, the verified child opens.
+    saves = 0
+    unused AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+    if open_calls != 1 || open_saves != 1 || open_reentered || AppHandleEqual(tree.active, original) ||
+    tree.nodes.count != 2 || open_seen.operation != APPS_OPEN || TextUntilNul(open_seen.id[:]) != "inbe.chess" { return 51 }
+    if open_copy.chain.count != 2 || TextUntilNul(open_copy.identity.id[:]) != "inbe.chess" ||
+    TextUntilNul(open_copy.identity.authority[:]) != "example.test" ||
+    TextUntilNul(open_copy.chain[0].id[:]) != "arcade" || TextUntilNul(open_copy.chain[0].sha256[:]) != ROOT_DIGEST ||
+    TextUntilNul(open_copy.chain[1].id[:]) != "inbe.chess" || TextUntilNul(open_copy.chain[1].sha256[:]) != DIGEST { return 52 }
+    unused AppTreeQueue(*tree, tree.active, Request(APPS_BACK)); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 53 }
+    // Handled: the parent stays active, only the temporary child closes, and
+    // the copied target outlives the drain for native staging.
+    open_decision = APP_OPEN_HANDLED
+    closed_before := closed
+    reply := AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+    status := AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = reply.request})
+    if open_calls != 2 || open_reentered || !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 ||
+    closed != closed_before + 1 || AppTreeNode(*tree, original).runtime == null ||
+    status.status != APPS_QUEUED || TextUntilNul(status.receipt[:]) != "leaf-stage-1" ||
+    open_copy.chain.count != 2 || TextUntilNul(open_copy.chain[1].sha256[:]) != DIGEST { return 54 }
+    decisions: [2]s32 = .[APP_OPEN_REJECTED, 7]
+    for decision: decisions {
+        open_decision = decision
+        closed_before = closed
+        calls := open_calls
+        reply = AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+        status = AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = reply.request})
+        if open_calls != calls + 1 || !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 ||
+        closed != closed_before + 1 || status.status != APPS_REJECTED || TextUntilNul(status.receipt[:]) != "" { return 55 }
+    }
+    // A failed caller save, failed child verification or stale account never
+    // reaches the provider, and the working page stays active.
+    open_decision = APP_OPEN_HANDLED
+    calls := open_calls
+    fail_save = true
+    reply = AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+    fail_save = false
+    status = AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = reply.request})
+    if open_calls != calls || status.status != APPS_REJECTED || !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 56 }
+    fail_open = true
+    reply = AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess")); unused AppTreeDrain(*tree)
+    fail_open = false
+    status = AppTreeQueue(*tree, original, AppsRequest.{.operation = APPS_STATUS, .request = reply.request})
+    if open_calls != calls || status.status != APPS_REJECTED || !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 57 }
+    unused AppTreeQueue(*tree, original, Request(APPS_OPEN, "inbe.chess"))
+    tree.account_epoch += 1
+    unused AppTreeDrain(*tree)
+    if open_calls != calls || tree.pending[tree.pending.count - 1].reply.status != APPS_REJECTED ||
+    !AppHandleEqual(tree.active, original) || tree.nodes.count != 1 { return 58 }
+    AppLocatorClear(*open_copy)
+    if !AppTreeClose(*tree) { return 59 }
+    return 0
 }
 
 Root :: (child: string = "inbe.chess", protocol: string = "app/1") -> *AppNode {
@@ -220,5 +311,5 @@ Check :: () -> s32 {
     unused AppTreeQueue(*tree, before, Request(APPS_OPEN, "arcade")); unused AppTreeDrain(*tree)
     if !AppHandleEqual(tree.active, before) || tree.nodes.count != 2 { return 28 }
     if !AppTreeClose(*tree) { return 29 }
-    return 0
+    return OpenEffectCheck(provider)
 }
