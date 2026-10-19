@@ -15,10 +15,13 @@
   "options": "Možnosti aplikace",
   "update": "Aktualizovat",
   "rollback": "Vrátit verzi",
-  "update_available": "Dostupná aktualizace",
   "current_version": "Aktuální verze",
   "available_version": "Nová verze",
   "restore_version": "Obnovit verzi",
   "choose_version": "Vyberte uloženou verzi a poté potvrďte návrat.",
-  "cancel": "Zrušit"
+  "cancel": "Zrušit",
+  "properties": "Vlastnosti",
+  "name": "Název",
+  "icon": "Ikona",
+  "save": "Uložit"
 }

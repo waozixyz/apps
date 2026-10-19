@@ -17,12 +17,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Možnosti aplikace" }
         if key == "update" { return "Aktualizovat" }
         if key == "rollback" { return "Vrátit verzi" }
-        if key == "update_available" { return "Dostupná aktualizace" }
         if key == "current_version" { return "Aktuální verze" }
         if key == "available_version" { return "Nová verze" }
         if key == "restore_version" { return "Obnovit verzi" }
         if key == "choose_version" { return "Vyberte uloženou verzi a poté potvrďte návrat." }
         if key == "cancel" { return "Zrušit" }
+        if key == "properties" { return "Vlastnosti" }
+        if key == "name" { return "Název" }
+        if key == "icon" { return "Ikona" }
+        if key == "save" { return "Uložit" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -41,12 +44,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "App-Optionen" }
         if key == "update" { return "Aktualisieren" }
         if key == "rollback" { return "Version zurücksetzen" }
-        if key == "update_available" { return "Update verfügbar" }
         if key == "current_version" { return "Aktuelle Version" }
         if key == "available_version" { return "Neue Version" }
         if key == "restore_version" { return "Version wiederherstellen" }
         if key == "choose_version" { return "Gespeicherte Version auswählen und das Zurücksetzen bestätigen." }
         if key == "cancel" { return "Abbrechen" }
+        if key == "properties" { return "Eigenschaften" }
+        if key == "name" { return "Name" }
+        if key == "icon" { return "Symbol" }
+        if key == "save" { return "Speichern" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -65,12 +71,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Opciones de la aplicación" }
         if key == "update" { return "Actualizar" }
         if key == "rollback" { return "Restaurar versión" }
-        if key == "update_available" { return "Actualización disponible" }
         if key == "current_version" { return "Versión actual" }
         if key == "available_version" { return "Nueva versión" }
         if key == "restore_version" { return "Versión a restaurar" }
         if key == "choose_version" { return "Elige una versión conservada y confirma la restauración." }
         if key == "cancel" { return "Cancelar" }
+        if key == "properties" { return "Propiedades" }
+        if key == "name" { return "Nombre" }
+        if key == "icon" { return "Icono" }
+        if key == "save" { return "Guardar" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -89,12 +98,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Options de l’application" }
         if key == "update" { return "Mettre à jour" }
         if key == "rollback" { return "Rétablir une version" }
-        if key == "update_available" { return "Mise à jour disponible" }
         if key == "current_version" { return "Version actuelle" }
         if key == "available_version" { return "Nouvelle version" }
         if key == "restore_version" { return "Version à rétablir" }
         if key == "choose_version" { return "Choisissez une version conservée, puis confirmez le rétablissement." }
         if key == "cancel" { return "Annuler" }
+        if key == "properties" { return "Propriétés" }
+        if key == "name" { return "Nom" }
+        if key == "icon" { return "Icône" }
+        if key == "save" { return "Enregistrer" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -113,12 +125,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Opsi aplikasi" }
         if key == "update" { return "Perbarui" }
         if key == "rollback" { return "Kembalikan versi" }
-        if key == "update_available" { return "Pembaruan tersedia" }
         if key == "current_version" { return "Versi saat ini" }
         if key == "available_version" { return "Versi baru" }
         if key == "restore_version" { return "Pulihkan versi" }
         if key == "choose_version" { return "Pilih versi yang disimpan, lalu konfirmasi pengembalian." }
         if key == "cancel" { return "Batal" }
+        if key == "properties" { return "Properti" }
+        if key == "name" { return "Nama" }
+        if key == "icon" { return "Ikon" }
+        if key == "save" { return "Simpan" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -137,12 +152,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Opzioni app" }
         if key == "update" { return "Aggiorna" }
         if key == "rollback" { return "Ripristina versione" }
-        if key == "update_available" { return "Aggiornamento disponibile" }
         if key == "current_version" { return "Versione attuale" }
         if key == "available_version" { return "Nuova versione" }
         if key == "restore_version" { return "Versione da ripristinare" }
         if key == "choose_version" { return "Scegli una versione conservata, poi conferma il ripristino." }
         if key == "cancel" { return "Annulla" }
+        if key == "properties" { return "Proprietà" }
+        if key == "name" { return "Nome" }
+        if key == "icon" { return "Icona" }
+        if key == "save" { return "Salva" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -161,12 +179,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "アプリのオプション" }
         if key == "update" { return "更新" }
         if key == "rollback" { return "以前のバージョンに戻す" }
-        if key == "update_available" { return "更新があります" }
         if key == "current_version" { return "現在のバージョン" }
         if key == "available_version" { return "新しいバージョン" }
         if key == "restore_version" { return "復元するバージョン" }
         if key == "choose_version" { return "保存済みのバージョンを選び、復元を確認してください。" }
         if key == "cancel" { return "キャンセル" }
+        if key == "properties" { return "プロパティ" }
+        if key == "name" { return "名前" }
+        if key == "icon" { return "アイコン" }
+        if key == "save" { return "保存" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -185,12 +206,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "앱 옵션" }
         if key == "update" { return "업데이트" }
         if key == "rollback" { return "이전 버전으로 복원" }
-        if key == "update_available" { return "업데이트 있음" }
         if key == "current_version" { return "현재 버전" }
         if key == "available_version" { return "새 버전" }
         if key == "restore_version" { return "복원할 버전" }
         if key == "choose_version" { return "보관된 버전을 선택한 다음 복원을 확인하세요." }
         if key == "cancel" { return "취소" }
+        if key == "properties" { return "속성" }
+        if key == "name" { return "이름" }
+        if key == "icon" { return "아이콘" }
+        if key == "save" { return "저장" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -209,12 +233,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Opções da aplicação" }
         if key == "update" { return "Atualizar" }
         if key == "rollback" { return "Restaurar versão" }
-        if key == "update_available" { return "Atualização disponível" }
         if key == "current_version" { return "Versão atual" }
         if key == "available_version" { return "Nova versão" }
         if key == "restore_version" { return "Versão a restaurar" }
         if key == "choose_version" { return "Escolha uma versão guardada e confirme a restauração." }
         if key == "cancel" { return "Cancelar" }
+        if key == "properties" { return "Propriedades" }
+        if key == "name" { return "Nome" }
+        if key == "icon" { return "Ícone" }
+        if key == "save" { return "Salvar" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -233,12 +260,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "Параметры приложения" }
         if key == "update" { return "Обновить" }
         if key == "rollback" { return "Вернуть версию" }
-        if key == "update_available" { return "Доступно обновление" }
         if key == "current_version" { return "Текущая версия" }
         if key == "available_version" { return "Новая версия" }
         if key == "restore_version" { return "Версия для восстановления" }
         if key == "choose_version" { return "Выберите сохранённую версию и подтвердите восстановление." }
         if key == "cancel" { return "Отмена" }
+        if key == "properties" { return "Свойства" }
+        if key == "name" { return "Название" }
+        if key == "icon" { return "Значок" }
+        if key == "save" { return "Сохранить" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -257,12 +287,15 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "options" { return "应用选项" }
         if key == "update" { return "更新" }
         if key == "rollback" { return "回退版本" }
-        if key == "update_available" { return "有可用更新" }
         if key == "current_version" { return "当前版本" }
         if key == "available_version" { return "新版本" }
         if key == "restore_version" { return "恢复版本" }
         if key == "choose_version" { return "选择保留的版本，然后确认回退。" }
         if key == "cancel" { return "取消" }
+        if key == "properties" { return "属性" }
+        if key == "name" { return "名称" }
+        if key == "icon" { return "图标" }
+        if key == "save" { return "保存" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -280,11 +313,14 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "options" { return "App options" }
     if key == "update" { return "Update" }
     if key == "rollback" { return "Rollback" }
-    if key == "update_available" { return "Update available" }
     if key == "current_version" { return "Current version" }
     if key == "available_version" { return "New version" }
     if key == "restore_version" { return "Restore version" }
     if key == "choose_version" { return "Choose a retained version, then confirm rollback." }
     if key == "cancel" { return "Cancel" }
+    if key == "properties" { return "Properties" }
+    if key == "name" { return "Name" }
+    if key == "icon" { return "Icon" }
+    if key == "save" { return "Save" }
     return key
 }

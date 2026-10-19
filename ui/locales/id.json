@@ -15,10 +15,13 @@
   "options": "Opsi aplikasi",
   "update": "Perbarui",
   "rollback": "Kembalikan versi",
-  "update_available": "Pembaruan tersedia",
   "current_version": "Versi saat ini",
   "available_version": "Versi baru",
   "restore_version": "Pulihkan versi",
   "choose_version": "Pilih versi yang disimpan, lalu konfirmasi pengembalian.",
-  "cancel": "Batal"
+  "cancel": "Batal",
+  "properties": "Properti",
+  "name": "Nama",
+  "icon": "Ikon",
+  "save": "Simpan"
 }

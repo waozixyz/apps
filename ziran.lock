@@ -19,16 +19,16 @@
       "url": "https://github.com/ziranlang/crypto.git"
     },
     {
-      "commit": "85a7b805439c855b17c39031d38ed08d723aad63",
+      "commit": "85d3874c2f1098b15e50e31198fd2df8ede606ca",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "pa75aebe3d37597a1",
+      "id": "pa55893f1e83918bd",
       "name": "kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
     }
   ],
   "root": {
-    "dependencies": {"crypto": "p7a547cc31d71f0e5", "kryon": "pa75aebe3d37597a1"},
+    "dependencies": {"crypto": "p7a547cc31d71f0e5", "kryon": "pa55893f1e83918bd"},
     "name": "Apps"
   },
   "toolchain": {

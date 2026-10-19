@@ -15,10 +15,13 @@
   "options": "App-Optionen",
   "update": "Aktualisieren",
   "rollback": "Version zurücksetzen",
-  "update_available": "Update verfügbar",
   "current_version": "Aktuelle Version",
   "available_version": "Neue Version",
   "restore_version": "Version wiederherstellen",
   "choose_version": "Gespeicherte Version auswählen und das Zurücksetzen bestätigen.",
-  "cancel": "Abbrechen"
+  "cancel": "Abbrechen",
+  "properties": "Eigenschaften",
+  "name": "Name",
+  "icon": "Symbol",
+  "save": "Speichern"
 }

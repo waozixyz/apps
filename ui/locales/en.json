@@ -15,10 +15,13 @@
   "options": "App options",
   "update": "Update",
   "rollback": "Rollback",
-  "update_available": "Update available",
   "current_version": "Current version",
   "available_version": "New version",
   "restore_version": "Restore version",
   "choose_version": "Choose a retained version, then confirm rollback.",
-  "cancel": "Cancel"
+  "cancel": "Cancel",
+  "properties": "Properties",
+  "name": "Name",
+  "icon": "Icon",
+  "save": "Save"
 }

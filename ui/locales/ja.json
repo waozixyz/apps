@@ -15,10 +15,13 @@
   "options": "アプリのオプション",
   "update": "更新",
   "rollback": "以前のバージョンに戻す",
-  "update_available": "更新があります",
   "current_version": "現在のバージョン",
   "available_version": "新しいバージョン",
   "restore_version": "復元するバージョン",
   "choose_version": "保存済みのバージョンを選び、復元を確認してください。",
-  "cancel": "キャンセル"
+  "cancel": "キャンセル",
+  "properties": "プロパティ",
+  "name": "名前",
+  "icon": "アイコン",
+  "save": "保存"
 }

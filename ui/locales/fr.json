@@ -15,10 +15,13 @@
   "options": "Options de l’application",
   "update": "Mettre à jour",
   "rollback": "Rétablir une version",
-  "update_available": "Mise à jour disponible",
   "current_version": "Version actuelle",
   "available_version": "Nouvelle version",
   "restore_version": "Version à rétablir",
   "choose_version": "Choisissez une version conservée, puis confirmez le rétablissement.",
-  "cancel": "Annuler"
+  "cancel": "Annuler",
+  "properties": "Propriétés",
+  "name": "Nom",
+  "icon": "Icône",
+  "save": "Enregistrer"
 }

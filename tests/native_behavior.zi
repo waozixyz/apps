@@ -22,6 +22,7 @@
 #import "kryon/button_props"
 #import "kryon/scroll_widget"
 #import "kryon/scroll_props"
+#import "kryon/text_input_props"
 #import, file "../src/controller.zi";
 #import, file "../src/protocol.zi";
 #import, file "../src/catalog.zi";
@@ -140,6 +141,8 @@ CardPaintGeometry :: (scale: float32) -> bool {
         node := TreeSubmittedNodeAt(ui_session, paint.node)
         if node.kind == WidgetKindDropdown { return false }
         if node.kind != WidgetKindBox { continue }
+        // The update dot on a card's options is not a card.
+        if node.bounds.width == 8.0 * scale && node.bounds.height == 8.0 * scale { continue }
         if paint.color.a != cast(u8)255 || node.bounds.height != 232.0 * scale { return false }
         if fills == 0 { first_card_fill = paint.color }
         fills += 1
@@ -266,8 +269,10 @@ native_queued: s32;
 native_applied: s32;
 native_tiles: s32;
 native_actions: s32;
-native_updates: s32;
+native_dots: s32;
+native_icons: s32;
 native_bad: bool;
+box_codec: WidgetBoxPropsCodec;
 native_icon_mode: bool = true;
 native_label_bounds: Rectangle;
 
@@ -276,6 +281,12 @@ NativeService :: (context: *void, text: string) -> string {
     if !AppsReadRequest(text, *request) { return "{}" }
     if request.operation == APPS_CATALOG { return native_catalog }
     if request.operation == APPS_STATUS { return "{\"v\":1,\"status\":\"applied\",\"request\":1}" }
+    // The app's own icon comes first; reading choices changes nothing.
+    if request.operation == APPS_ICONS {
+        if TextUntilNul(request.id[:]) != "native.breathing" { native_bad = true }
+        native_icons += 1
+        return "{\"v\":1,\"icons\":[{\"id\":\"\",\"shape\":\"S2rr:M4 12H20\"},{\"id\":\"leaf\",\"shape\":\"S2rr:M12 3V21\"}]}"
+    }
     // This is a native root catalog; it has no AppNode, slot, or fake tree.
     // Reentrant runs and disposal cannot invalidate the in-flight VM.
     if AppControllerRun(*native_controller, APP_FRAME) || AppControllerClose(*native_controller) { native_bad = true }
@@ -288,7 +299,8 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
     count: s32, result: *HostValue) -> s32 {
     if TextFromCString(function) == "ButtonHostedHost" && count == 2 && WidgetValidButtonProps(arguments[1]) {
         props := WidgetDecodeButtonProps(arguments[1], *button_codec)
-        if props.label == "Breathing" {
+        // The card itself; its own icon in Properties shares its title.
+        if props.key == AppCardKey("native.breathing") {
             native_tiles += 1
             if native_icon_mode && (props.bounds.height != 88.0 || props.class_name != 501 || !props.selected ||
                 cast(s32)props.tone != 1 || cast(s32)props.emphasis != 0 || cast(s32)props.icon_placement != 2 ||
@@ -299,7 +311,11 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
             if props.bounds.height != 36.0 || !props.icon_only || props.class_name != 502 ||
             cast(s32)props.emphasis != 3 || props.icon_shape != "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01" { native_bad = true }
         }
-        if props.label == "Update available" { native_updates += 1 }
+    }
+    // An update not yet installed or seen is a small dot on the options.
+    if TextFromCString(function) == "BoxHostedHost" && count == 2 && WidgetValidBoxProps(arguments[1]) {
+        box := WidgetDecodeBoxProps(arguments[1], *box_codec)
+        if box.bounds.width == 8.0 && box.bounds.height == 8.0 { native_dots += 1 }
     }
     return WidgetHostCall(context, module, function, arguments, count, result)
 }
@@ -318,7 +334,7 @@ NativeLoadCatalog :: (name: string) -> bool {
 }
 
 NativeDraw :: () -> bool {
-    native_tiles = 0; native_actions = 0; native_updates = 0
+    native_tiles = 0; native_actions = 0; native_dots = 0
     BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
     native_controller.app.session = ui_session
     native_controller.app.bounds = Rectangle.{0.0, 0.0, 480.0, 600.0}
@@ -350,6 +366,34 @@ NativeLabel :: (label: string, kind: s32 = -1) -> s32 {
     return -1
 }
 
+// An icon choice in Properties: a round button inside the dialog.
+NativeIconButton :: (label: string) -> s32 {
+    for index: cast(s32)0..TreeCount(ui_session) - 1 {
+        node := TreeNodeAt(ui_session, index)
+        if node.kind == WidgetKindButton && node.semantic_label == label && node.bounds.width == 40.0 { return index }
+    }
+    return -1
+}
+
+// The first menu entry in tree order.
+NativeFirstSelectable :: () -> string {
+    for index: cast(s32)0..TreeCount(ui_session) - 1 {
+        node := TreeNodeAt(ui_session, index)
+        if node.kind == WidgetKindSelectable { return node.semantic_label }
+    }
+    return ""
+}
+
+// The last menu entry in tree order.
+NativeLastSelectable :: () -> string {
+    last := ""
+    for index: cast(s32)0..TreeCount(ui_session) - 1 {
+        node := TreeNodeAt(ui_session, index)
+        if node.kind == WidgetKindSelectable { last = node.semantic_label }
+    }
+    return last
+}
+
 NativeClick :: (label: string, kind: s32 = -1) -> bool {
     target := NativeLabel(label, kind)
     if target < 0 { return false }
@@ -365,30 +409,66 @@ NativeControllerCheck :: () -> s32 {
     platform := AppControllerPlatform.{.service = NativeService, .widgets = NativeWidgets}
     if !NativeLoadCatalog("native") || !AppControllerOpen(*native_controller, bytes,
         FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256"), platform) { return 51 }
-    if !NativeDraw() || native_updates != 1 || native_queued != 0 || NativeLabel("Updated") >= 0 ||
+    // The options carry the update's dot instead of a separate update symbol.
+    if !NativeDraw() || native_dots != 1 || native_queued != 0 || NativeLabel("Update available") >= 0 ||
     NativeLabel("Native apps") >= 0 || NativeLabel("12.3 kB") < 0 { return 52 }
-    if !NativeClick("Update available") || !NativeDraw() || native_queued != 0 || NativeLabel("Update", WidgetKindButton) < 0 { return 53 }
+    // Opening them shows Update first and marks exactly that offer as seen.
+    if !NativeClick("App options") || !NativeDraw() || native_queued != 1 || native_request.operation != APPS_SEEN ||
+    TextUntilNul(native_request.version[:]) != "2.0" ||
+    TextUntilNul(native_request.sha256[:]) != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ||
+    NativeFirstSelectable() != "Update" { return 53 }
+    // Once seen, the dot goes; Update stays in the menu until it is installed.
+    if !NativeLoadCatalog("seen") || !NativeDraw() || native_dots != 0 || NativeLabel("Update", WidgetKindSelectable) < 0 { return 74 }
+    if !NativeClick("Update", WidgetKindSelectable) || !NativeDraw() || native_queued != 1 ||
+    NativeLabel("Update", WidgetKindButton) < 0 { return 75 }
     // A verified target changing while the confirmation is open disables its
     // old target; the modal cannot silently submit the newly offered bytes.
     if !NativeLoadCatalog("changed-update") || !NativeDraw() { return 54 }
     if NativeClick("Update", WidgetKindButton) { return 55 }
-    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || native_queued != 0 { return 56 }
-    if !NativeLoadCatalog("native") || !NativeDraw() || !NativeClick("Update available") || !NativeDraw() ||
-    !NativeClick("Update", WidgetKindButton) || !NativeDraw() || native_queued != 1 || native_applied != 0 ||
+    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || native_queued != 1 { return 56 }
+    if !NativeLoadCatalog("native") || !NativeDraw() || !NativeClick("App options") || !NativeDraw() ||
+    !NativeClick("Update", WidgetKindSelectable) || !NativeDraw() ||
+    !NativeClick("Update", WidgetKindButton) || !NativeDraw() || native_queued != 3 || native_applied != 0 ||
     native_request.operation != 10 || TextUntilNul(native_request.version[:]) != "2.0" ||
     TextUntilNul(native_request.sha256[:]) != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" { return 57 }
     // Native account storage mutates only after Run returns.
     native_applied += 1
-    if !NativeLoadCatalog("no-update") || !NativeDraw() || native_updates != 0 || NativeLabel("Updated") >= 0 { return 58 }
-    if !NativeClick("App options") || !NativeDraw() || NativeLabel("Rollback", WidgetKindSelectable) < 0 { return 59 }
-    if !NativeClick("Rollback", WidgetKindSelectable) || !NativeDraw() || native_queued != 1 { return 60 }
-    if !NativeClick("0.9", WidgetKindButton) || !NativeDraw() || !NativeDraw() || native_queued != 1 { return 61 }
+    if !NativeLoadCatalog("no-update") || !NativeDraw() || native_dots != 0 || NativeLabel("Updated") >= 0 { return 58 }
+    if !NativeClick("App options") || !NativeDraw() || NativeLabel("Rollback", WidgetKindSelectable) < 0 ||
+    NativeLastSelectable() != "Properties" || native_queued != 3 { return 59 }
+    if !NativeClick("Rollback", WidgetKindSelectable) || !NativeDraw() || native_queued != 3 { return 60 }
+    if !NativeClick("0.9", WidgetKindButton) || !NativeDraw() || !NativeDraw() || native_queued != 3 { return 61 }
     if !NativeClick("Rollback", WidgetKindButton) { return 620 }
     if !NativeDraw() { return 621 }
-    if native_queued != 2 { return 622 }
+    if native_queued != 4 { return 622 }
     if native_request.operation != 11 { return 623 }
     if TextUntilNul(native_request.version[:]) != "0.9" { return 624 }
     if TextUntilNul(native_request.sha256[:]) != "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" { return 625 }
+    // Properties renames the app and chooses one of the offered icons.
+    if !NativeDraw() || !NativeClick("App options") || !NativeDraw() || !NativeClick("Properties", WidgetKindSelectable) ||
+    !NativeDraw() || native_icons != 1 || native_queued != 4 || NativeLabel("Name", WidgetKindTextField) < 0 ||
+    NativeIconButton("Breathing") < 0 || NativeIconButton("leaf") < 0 { return 76 }
+    leaf := NativeIconButton("leaf")
+    if leaf < 0 || !TreeActivateAt(ui_session, leaf) || !NativeDraw() { return 77 }
+    field := NativeLabel("Name", WidgetKindTextField)
+    if field < 0 || !TreeFocusAt(ui_session, field) || !NativeDraw() || !NativeDraw() { return 78 }
+    native_controller.app.input = TextFieldInput.{.select_all = true}
+    if !NativeDraw() { return 79 }
+    native_controller.app.input = TextFieldInput.{.text = "Calm"}
+    if !NativeDraw() { return 80 }
+    native_controller.app.input = TextFieldInput.{}
+    if !NativeDraw() || !NativeClick("Save", WidgetKindButton) || !NativeDraw() || native_queued != 5 ||
+    native_request.operation != APPS_PROPERTIES || TextUntilNul(native_request.id[:]) != "native.breathing" ||
+    TextUntilNul(native_request.title[:]) != "Calm" || TextUntilNul(native_request.icon[:]) != "leaf" ||
+    !NativeDraw() || NativeLabel("Save", WidgetKindButton) >= 0 { return 81 }
+    // Cancel keeps the app's properties; its own title and icon save as empty.
+    if !NativeClick("App options") || !NativeDraw() || !NativeClick("Properties", WidgetKindSelectable) || !NativeDraw() ||
+    !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || !NativeDraw() || native_queued != 5 ||
+    NativeLabel("Save", WidgetKindButton) >= 0 { return 82 }
+    if !NativeClick("App options") || !NativeDraw() || !NativeClick("Properties", WidgetKindSelectable) || !NativeDraw() ||
+    !NativeClick("Save", WidgetKindButton) || !NativeDraw() || native_queued != 6 ||
+    native_request.operation != APPS_PROPERTIES || TextUntilNul(native_request.title[:]) != "" ||
+    TextUntilNul(native_request.icon[:]) != "" { return 83 }
     if !NativeDraw() || !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
     native_icon_mode = false
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
@@ -510,7 +590,7 @@ Check :: () -> s32 {
     host.last_reply != "after" { return 11 }
     // Corrupt revision and wrong expected handshake leave the working leaf.
     active := host.tree.active
-    locator.chain[2].sha256[0] = #char "0"
+    locator.chain[2].sha256[0] = ifx locator.chain[2].sha256[0] == #char "0" then #char "1" else #char "0"
     if AppTreeOpenLocator(*host.tree, *locator) || !AppHandleEqual(host.tree.active, active) { return 12 }
     AppLocatorClear(*locator)
     if AppHostBack(*host) != 1 { return 16 }

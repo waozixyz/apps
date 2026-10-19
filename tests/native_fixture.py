@@ -90,9 +90,11 @@ def main():
     bundle('collection', root, stage('root-stage', 'fixture.root',
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zib': middle}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
-    for name in ('native', 'no-update', 'changed-update', 'preview'):
+    for name in ('native', 'seen', 'no-update', 'changed-update', 'preview'):
         import copy
         candidate = copy.deepcopy(native_catalog)
+        if name == 'seen':
+            candidate['children'][0]['update_seen'] = True
         if name == 'no-update':
             candidate['children'][0]['update_available'] = False
         if name == 'changed-update':
@@ -124,7 +126,7 @@ def main():
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         result.check_returncode()
-    print('Apps native: screenshot/icon cards, hosted menus, explicit update/rollback targets, 12 locales, native controller, nested node/2, resource bounds and stable locators passed')
+    print('Apps native: screenshot/icon cards, hosted menus, update dot and seen offer, properties rename/icon, explicit update/rollback targets, 12 locales, native controller, nested node/2, resource bounds and stable locators passed')
 
 
 if __name__ == '__main__':

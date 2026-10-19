@@ -27,7 +27,9 @@
         "unpin",
         "install_to_launcher",
         "update",
-        "rollback"
+        "rollback",
+        "properties",
+        "seen"
       ],
       "current_version": "1.0",
       "update_available": true,
