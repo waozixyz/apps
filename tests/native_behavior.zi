@@ -57,6 +57,8 @@ invalid_trigger: s32;
 button_codec: WidgetButtonPropsCodec;
 host_version_calls: s32;
 open_decision: s32 = APP_OPEN_DECLARED;
+sound_enabled: bool = true;
+sound_calls: s32;
 host_open_calls: s32;
 host_open_chain: s64;
 host_open_leaf: [65]u8;
@@ -188,7 +190,7 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
 Allows :: (context: *void, node: *AppNode, function: string) -> bool {
     return function == "DocumentReadHost" || function == "DocumentWriteHost" ||
     function == "AppRecordHost" || function == "SaveAppRecordHost" ||
-    TextUntilNul(node.identity.id[:]) == "inbe.chess"
+    (function == "AppSoundHost" && sound_enabled) || TextUntilNul(node.identity.id[:]) == "inbe.chess"
 }
 
 Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
@@ -197,6 +199,12 @@ Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
     if TextUntilNul(node.identity.id[:]) == "fixture.node" {
         if name == "AppRecordHost" && count == 1 {
             result.* = AppHostText(node_stored)
+            return 1
+        }
+        // Sounds come only from the calling app's own verified assets.
+        if name == "AppSoundHost" && count == 1 && AppHostAsset(node, AppArgumentText(arguments[0])).found {
+            sound_calls += 1
+            result.* = HostScalar("bool", 1)
             return 1
         }
         if name == "SaveAppRecordHost" && count == 2 && AppArgumentText(arguments[1]) == "node saved" {
@@ -513,8 +521,10 @@ Check :: () -> s32 {
     runtime.app.key = 42
     if !Draw(*host, 1, 600, false) || node_stored != "node saved" ||
     runtime.legacy.message.name != "node" || runtime.legacy.message.account != "" { return 19 }
+    if sound_calls != 1 { return 73 }
+    sound_enabled = false
     runtime.legacy.frame.width = 2
-    if !Draw(*host, 2, 600, false) { return 20 }
+    if !Draw(*host, 2, 600, false) || sound_calls != 1 { return 20 }
     active = host.tree.active
     runtime.legacy.message.screen = 42
     if AppHostBack(*host) != 1 || !AppHandleEqual(host.tree.active, active) { return 21 }

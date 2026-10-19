@@ -8,6 +8,7 @@ AppRecordHost :: (name: string) -> string #foreign host_api;
 SaveAppRecordHost :: (name: string, value: string) -> bool #foreign host_api;
 AppLocaleHost :: (key: string) -> string #foreign host_api;
 AppKeyHost :: () -> s32 #foreign host_api;
+AppSoundHost :: (path: string) -> bool #foreign host_api;
 
 #program_export
 Main :: () -> s32 {
@@ -22,6 +23,8 @@ Main :: () -> s32 {
             if !SaveAppRecordHost("position", "node saved") { return -3 }
         } else if AppRecordHost("position") != "node saved" { return -4 }
         if frame.width == 1 && (AppKeyHost() != 42 || AppKeyHost() != 0) { return -5 }
+        // Only the first frame's host has audio; the other answers false.
+        if AppSoundHost("assets/node/sound.wav") != (frame.width == 1) { return -6 }
         message.succeeded = true
         // A guest's reply cannot replace host-owned identity or account input.
         message.name = "other"

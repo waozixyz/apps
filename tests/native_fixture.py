@@ -72,6 +72,11 @@ def main():
     (node_assets / 'locales').mkdir(parents=True, exist_ok=True)
     (node_assets / 'catalog.json').write_text(json.dumps(dict(id='fixture.node', name='node', contract_version=1, module_api=2, host_api=12, save_schema=1)))
     (node_assets / 'locales/en.txt').write_text('[node_label]\nNode fixture\n---\n')
+    # Tiny generated PCM tone; a sound is only an opaque packed asset here.
+    import wave
+    with wave.open(str(node_assets / 'sound.wav'), 'wb') as sound:
+        sound.setnchannels(1); sound.setsampwidth(2); sound.setframerate(8000)
+        sound.writeframes(bytes(64))
     bundle('node', node, node_assets.parent)
     entries = [child('fixture.counter', leaf, 'app/1', 'counter'),
                child('fixture.node', node, 'node/2', 'node', 'assets/node.zib')]

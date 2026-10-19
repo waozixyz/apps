@@ -41,7 +41,7 @@ NodeContext :: struct {
 NodeAllows :: (context: *void, module: string, name: string) -> bool {
     node := cast(*NodeContext)context
     return name == "ReadAppHost" || name == "WriteAppHost" || name == "ReadAppUiHost" ||
-    name == "AppLocaleHost" || name == "AppKeyHost" || WidgetHostSupports(module, name) ||
+    name == "AppLocaleHost" || name == "AppKeyHost" || name == "AppSoundHost" || WidgetHostSupports(module, name) ||
     (node.allows != null && node.allows(node.context, name))
 }
 
@@ -109,6 +109,16 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
     if name == "AppKeyHost" && count == 0 && node.message.action == APP_FRAME {
         result.* = HostScalar("s32", node.key)
         node.key = 0
+        return 1
+    }
+    // An optional sound from the app's own packed assets. A host without
+    // audio answers false, so no app fails to load or run over it.
+    if name == "AppSoundHost" && count == 1 && HostScalarValid(arguments[0], "string", cast(s32)HostString) {
+        if node.message.action == APP_FRAME && node.services != null && node.allows != null &&
+        node.allows(node.context, name) && node.services(node.context, module, function, arguments, count, result) == 1 {
+            return 1
+        }
+        result.* = HostScalar("bool", 0)
         return 1
     }
     if WidgetHostSupports(TextFromCString(module), name) {
