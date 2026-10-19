@@ -1,4 +1,5 @@
 #import "node_types"
+#import "kryon/text_input_props"
 
 host_api :: #system_library "host_api";
 ReadAppHost :: () -> AppMessage #foreign host_api;
@@ -11,6 +12,7 @@ AppKeyHost :: () -> s32 #foreign host_api;
 AppSoundHost :: (path: string) -> bool #foreign host_api;
 AppSupportsHost :: (capability: string) -> bool #foreign host_api;
 AppServiceHost :: (name: string, request: string) -> string #foreign host_api;
+AppFieldInputHost :: () -> TextFieldInput #foreign host_api;
 
 #program_export
 Main :: () -> s32 {
@@ -31,6 +33,10 @@ Main :: () -> s32 {
         if AppSupportsHost("echo") != (frame.width == 1) { return -7 }
         echo := ifx frame.width == 1 then "{\"echo\":\"ping\"}" else "{\"status\":\"unavailable\"}"
         if AppServiceHost("echo", "ping") != echo { return -8 }
+        // Typing reaches the focused field as it reaches app/1 apps.
+        typed := AppFieldInputHost()
+        expected := ifx frame.width == 1 then "hi" else ""
+        if typed.text != expected || typed.backspace != (frame.width == 1) { return -9 }
         message.succeeded = true
         // A guest's reply cannot replace host-owned identity or account input.
         message.name = "other"

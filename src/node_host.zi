@@ -11,6 +11,8 @@
 #import "kryon/app_context_host"
 #import "kryon/app_files"
 #import "kryon/widget_host"
+#import "kryon/widget_codec"
+#import "kryon/text_input_props"
 #import, file "protocol.zi";
 #import, file "node_types.zi";
 #import, file "node_codec.zi";
@@ -36,13 +38,17 @@ NodeContext :: struct {
     received: bool
     succeeded: bool
     key: s32
+    // Typing for the text field that has focus, as app/1 apps receive it.
+    input: TextFieldInput
+    input_codec: WidgetTextFieldInputCodec
 }
 
 NodeAllows :: (context: *void, module: string, name: string) -> bool {
     node := cast(*NodeContext)context
     return name == "ReadAppHost" || name == "WriteAppHost" || name == "ReadAppUiHost" ||
     name == "AppLocaleHost" || name == "AppKeyHost" || name == "AppSoundHost" ||
-    name == "AppSupportsHost" || name == "AppServiceHost" || WidgetHostSupports(module, name) ||
+    name == "AppSupportsHost" || name == "AppServiceHost" || name == "AppFieldInputHost" ||
+    WidgetHostSupports(module, name) ||
     (node.allows != null && node.allows(node.context, name))
 }
 
@@ -105,6 +111,11 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
         }
         result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
             .data = HostTextData(key), .length = cast(usize)key.count}
+        return 1
+    }
+    if name == "AppFieldInputHost" && count == 0 {
+        input := ifx node.message.action == APP_FRAME then node.input else TextFieldInput.{}
+        result.* = WidgetEncodeTextFieldInput(input, *node.input_codec)
         return 1
     }
     if name == "AppKeyHost" && count == 0 && node.message.action == APP_FRAME {

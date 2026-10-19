@@ -604,11 +604,13 @@ Check :: () -> s32 {
     if runtime.protocol != APPS_NODE_PROTOCOL { return 18 }
     runtime.legacy.frame.width = 1
     runtime.app.key = 42
+    runtime.app.input = .{.text = "hi", .backspace = true}
     if !Draw(*host, 1, 600, false) || node_stored != "node saved" ||
     runtime.legacy.message.name != "node" || runtime.legacy.message.account != "" { return 19 }
     if sound_calls != 1 { return 73 }
     sound_enabled = false
     runtime.legacy.frame.width = 2
+    runtime.app.input = .{}
     if !Draw(*host, 2, 600, false) || sound_calls != 1 { return 20 }
     active = host.tree.active
     runtime.legacy.message.screen = 42

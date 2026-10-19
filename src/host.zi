@@ -327,6 +327,7 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     result: bool
     if runtime.protocol == APPS_NODE_PROTOCOL {
         runtime.legacy.key = runtime.app.key
+        runtime.legacy.input = runtime.app.input
         if runtime.legacy.message.locale == "" { runtime.legacy.message.locale = TextUntilNul(host.locale[:]) }
         action: s32 = ifx mode == APP_BACK then Node.APP_BACK else ifx mode == APP_NODE_ROUTE then Node.APP_ROUTE else Node.APP_FRAME
         if mode == APP_FRAME || mode == APP_BACK || mode == APP_NODE_ROUTE {
