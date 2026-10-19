@@ -74,6 +74,9 @@ icon_mode: bool;
 tile_class: s32;
 action_class: s32;
 muted_class: s32;
+// The host's revision of the catalog parsed into these cards, or 0. Parsing
+// the whole catalog every frame cost a phone most of each frame.
+catalog_revision: s64;
 scroll_offset: s32;
 request: s64;
 status: [32]u8;
@@ -140,7 +143,18 @@ AppsSupported :: (card: *AppCard, operation: s32) -> bool {
 }
 
 AppsReadCatalog :: () -> bool {
-    text := AppService("apps", "{\"v\":1,\"op\":\"catalog\"}")
+    text: string
+    if catalog_revision > 0 {
+        bytes: Vec(u8)
+        BuilderPrint(*bytes, "{\"v\":1,\"op\":\"catalog\",\"revision\":%}", catalog_revision)
+        text = AppService("apps", TextView(VecSlice(bytes, 0, bytes.count)))
+        VecFree(bytes)
+        // The cards already hold this revision.
+        if AppsBool(text, FieldAt(text, 0, "unchanged")) { return true }
+    } else {
+        text = AppService("apps", "{\"v\":1,\"op\":\"catalog\"}")
+    }
+    catalog_revision = 0
     version := ReadNumber(text, FieldAt(text, 0, "v"))
     if !version.valid || version.value != 1.0 || !Rules.AppsReadText(text, 0, "title", title[:]) ||
     !Rules.AppsReadText(text, 0, "locale", locale[:]) { return false }
@@ -214,6 +228,12 @@ AppsReadCatalog :: () -> bool {
         if !VecPush(cards, card) { return false }
         at = Space(text, ValueEnd(text, at, 0))
         if index + 1 < count { at = Space(text, at + 1) }
+    }
+    // Hosts without revisions are asked for the whole catalog every frame.
+    revision := ReadNumber(text, FieldAt(text, 0, "revision"))
+    if revision.valid && revision.value >= 1.0 && revision.value <= 2147483647.0 &&
+    cast(float64)cast(s64)revision.value == revision.value {
+        catalog_revision = cast(s64)revision.value
     }
     return true
 }

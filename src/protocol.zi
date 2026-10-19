@@ -45,6 +45,8 @@ AppsRequest :: struct {
     operation: s32
     id: [128]u8
     request: s64
+    // Catalog only: the revision the app already holds; 0 asks for the whole catalog.
+    revision: s64
     // Version actions identify exact native-verified content, not a version alone.
     version: [64]u8
     sha256: [65]u8
@@ -211,7 +213,7 @@ AppsOperation :: (name: string) -> s32 {
 
 AppsReadRequest :: (text: string, request: *AppsRequest) -> bool {
     if text.count > 2048 || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
-    keys: [8]string = .["v", "op", "id", "request", "version", "sha256", "title", "icon"]
+    keys: [9]string = .["v", "op", "id", "request", "version", "sha256", "title", "icon", "revision"]
     if !AppsObjectValid(text, 0, keys[:]) { return false }
     version := ReadNumber(text, FieldAt(text, 0, "v"))
     if !version.valid || version.value != 1.0 { return false }
@@ -226,6 +228,13 @@ AppsReadRequest :: (text: string, request: *AppsRequest) -> bool {
         parsed.request = cast(s64)sequence.value
         if cast(float64)parsed.request != sequence.value || FieldAt(text, 0, "id") >= 0 { return false }
     } else if FieldAt(text, 0, "request") >= 0 { return false }
+    if FieldAt(text, 0, "revision") >= 0 {
+        revision := ReadNumber(text, FieldAt(text, 0, "revision"))
+        if parsed.operation != APPS_CATALOG || !revision.valid || revision.value < 1.0 ||
+        revision.value > 2147483647.0 { return false }
+        parsed.revision = cast(s64)revision.value
+        if cast(float64)parsed.revision != revision.value { return false }
+    }
     if parsed.operation >= APPS_OPEN && parsed.operation <= APPS_ICONS && parsed.operation != APPS_BACK && parsed.operation != APPS_STATUS {
         if !AppsReadText(text, 0, "id", parsed.id[:]) || !AppIdValid(TextUntilNul(parsed.id[:])) { return false }
     } else if FieldAt(text, 0, "id") >= 0 { return false }

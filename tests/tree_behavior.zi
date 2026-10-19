@@ -193,6 +193,14 @@ Check :: () -> s32 {
     AppsReadRequest("{\"v\":1,\"v\":2,\"op\":\"back\"}", *request) ||
     AppsReadRequest("{\"v\":2,\"op\":\"back\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"../other\"}", *request) { return 2 }
+    // A catalog request may name the revision the app already holds; no other request may.
+    if !AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":7}", *request) ||
+    request.operation != APPS_CATALOG || request.revision != 7 { return 32 }
+    if !AppsReadRequest("{\"v\":1,\"op\":\"catalog\"}", *request) || request.revision != 0 { return 33 }
+    if AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":0}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":1.5}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":\"7\"}", *request) ||
+    AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"revision\":7}", *request) { return 34 }
     if !AppBundlePathValid("assets/games/chess.zib") || AppBundlePathValid("assets/../other.zib") ||
     AppBundlePathValid("/assets/child.zib") || AppBundlePathValid("assets/%2e%2e/child.zib") ||
     AppBundlePathValid("assets//child.zib") { return 3 }
