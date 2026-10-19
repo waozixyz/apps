@@ -170,18 +170,32 @@ Main :: () -> s32 {
         return 2
     }
     if !Frames("list", frames) { return 3 }
+    // Each entry opens a path of children, such as a collection's game.
     games := Environment("BENCH_GAMES")
     at: s64 = 0
     while at < games.count {
         end := at
         while end < games.count && games[end] != #char "," { end += 1 }
-        game := games[at:end]
-        if !Open(game) { print("% did not open\n", game); return 4 }
-        active := AppTreeNode(*host.tree, host.tree.active)
-        print("active %\n", TextUntilNul(active.identity.id[:]))
-        if !Frames(game, frames) { return 5 }
-        unused AppHostBack(*host)
+        path := games[at:end]
+        depth: s32 = 0
+        step: s64 = 0
+        while step < path.count {
+            stop := step
+            while stop < path.count && path[stop] != #char "/" { stop += 1 }
+            child := path[step:stop]
+            active := AppTreeNode(*host.tree, host.tree.active)
+            if !Open(child) || !Draw(411, 813) { print("% did not open: %\n", child, host.last_reply); return 4 }
+            active = AppTreeNode(*host.tree, host.tree.active)
+            if TextUntilNul(active.identity.id[:]) != child { print("% did not open: %\n", child, host.last_reply); return 4 }
+            depth += 1
+            step = stop + 1
+        }
+        if !Frames(path, frames) { return 5 }
+        for back: 0..depth - 1 { unused AppHostBack(*host) }
         at = end + 1
     }
+    // Closing the apps writes the VM's profile, when one is asked for.
+    unused AppHostStop(*host)
+    AppHostCollect(*host)
     return 0
 }
