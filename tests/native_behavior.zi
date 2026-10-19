@@ -515,6 +515,10 @@ Check :: () -> s32 {
     first := Space(catalog_text, children + 1)
     if !MatchLiteral(catalog_text, Space(catalog_text, FieldAt(catalog_text, first, "update_available")), "true") ||
     ReadNumber(catalog_text, FieldAt(catalog_text, first, "bytes")).value != 12345.0 { return 66 }
+    // A controller holding the current catalog is not sent it again.
+    revision := cast(s64)ReadNumber(catalog_text, FieldAt(catalog_text, 0, "revision")).value
+    if revision < 1 || !MatchLiteral(AppArgumentText(AppHostCatalog(runtime.frontend, revision)), 0, "{\"v\":1,\"unchanged\":true}") ||
+    AppArgumentText(AppHostCatalog(runtime.frontend, revision + 1)) == "{\"v\":1,\"unchanged\":true}" { return 74 }
     active_root := host.tree.active
     if !Command(*host, "{\"v\":1,\"op\":\"update\",\"id\":\"fixture.middle\",\"version\":\"2.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}") ||
     host_version_calls != 1 || !AppHandleEqual(host.tree.active, active_root) { return 67 }

@@ -1,0 +1,187 @@
+// Times a collection's frames under the Ziran VM without a window, as Inbe
+// runs them: the collection's list, then each game it names. Painting goes
+// to empty rasterizers, so the time is the bundles' own work and the host's.
+#import "std/vec"
+#import "std/file"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "std/c_string"
+#import "std/bundle_host"
+#import "std/json_scan"
+#import "kryon/hosted_values"
+#import "kryon/app_context_host"
+#import "kryon/app_protocol"
+#import "kryon/app_files"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/drawing_props"
+#import "kryon/Frame"
+#import "kryon/tree"
+#import "kryon/paint_queue"
+#import "kryon/widget_host"
+#import "kryon/text_input_props"
+#import, file "../src/protocol.zi";
+#import, file "../src/tree.zi";
+#import, file "../src/host.zi";
+using HostValueKind;
+using FrameStatus;
+
+libc :: #system_library "libc";
+GetEnvironment :: (name: *u8) -> *u8 #foreign libc "getenv";
+BenchSeconds :: () -> float64 #foreign libc "bench_seconds";
+
+Environment :: (name: string) -> string {
+    key: [64]u8
+    if !CopyCString(name, key[:]) { return "" }
+    return TextFromCString(GetEnvironment(*key[0]))
+}
+
+#program_export
+MeasureGlyphWidth :: (value: string, font: s32, typeface: string) -> s32 { return cast(s32)value.count * font / 2 }
+#program_export
+MeasureGlyphLineHeight :: (font: s32, typeface: string) -> s32 { return font }
+#program_export
+ImageWidth :: (path: string) -> s32 { return 64 }
+#program_export
+ImageHeight :: (path: string) -> s32 { return 64 }
+#program_export
+SystemClipboardOpenHost :: () -> s32 { return -1 }
+#program_export
+SystemClipboardByteHost :: (index: s32) -> s32 { return -1 }
+#program_export
+SystemClipboardWriteHost :: (text: string) -> bool { return false }
+#program_export
+RasterRoundedRectangle :: (bounds: Rectangle, radius: float32, segments: s32, color: Color) {}
+#program_export
+RasterRoundedRectangleOutline :: (bounds: Rectangle, radius: float32, segments: s32, width: float32, color: Color) {}
+#program_export
+RasterLine :: (line: Rectangle, color: Color) {}
+#program_export
+RasterText :: (value: string, x: s32, y: s32, font: s32, color: Color) {}
+#program_export
+RasterTextClipped :: (value: string, x: s32, y: s32, font: s32, color: Color, clip: Rectangle) {}
+#program_export
+RasterImage :: (path: string, texture: u32, source: Rectangle, destination: Rectangle,
+    clip: Rectangle, origin: Vector2, rotation: float32, radius: float32, tint: Color) {}
+#program_export
+RasterImageMesh :: (path: string, texture: u32, source: Rectangle, points: []Vector2,
+    columns: s32, rows: s32, clip: Rectangle, tint: Color) {}
+
+bench_host: *AppHost;
+bench_session: Session;
+
+AllowImage :: (path: string) -> bool {
+    return path == "" || AppHostAsset(AppHostActiveRuntime(bench_host).node, path).found
+}
+
+ResolveImage :: (path: string) -> string { return path }
+
+// As Inbe's node tree: records and the locale, nothing else.
+Allows :: (context: *void, node: *AppNode, function: string) -> bool {
+    return function == "AppRecordHost" || function == "SaveAppRecordHost" || function == "AppLocaleHost"
+}
+
+Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    name := TextFromCString(function)
+    if name == "AppRecordHost" && count == 1 {
+        result.* = AppHostText("")
+        return 1
+    }
+    if name == "SaveAppRecordHost" && count == 2 {
+        result.* = HostScalar("bool", 1)
+        return 1
+    }
+    if name == "AppLocaleHost" && count == 1 {
+        result.* = AppHostText(AppArgumentText(arguments[0]))
+        return 1
+    }
+    return 0
+}
+
+Widgets :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    return WidgetHostCall(context, module, function, arguments, count, result)
+}
+
+State :: (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool {
+    state.* = AppState.{.installed = true, .bytes = 1000000}
+    return true
+}
+
+Save :: (context: *void, node: *AppNode) -> bool { return true }
+
+Draw :: (width: s32, height: s32) -> bool {
+    host := bench_host
+    bounds := Rectangle.{0.0, 0.0, cast(float32)width, cast(float32)height}
+    BeginFrame(bench_session, cast(u64)1, bounds)
+    runtime := AppHostActiveRuntime(host)
+    runtime.app.session = bench_session
+    runtime.app.bounds = bounds
+    runtime.app.font = 18
+    runtime.app.scale = 1.75
+    runtime.legacy.frame.session = bench_session
+    runtime.legacy.frame.width = width
+    runtime.legacy.frame.height = height
+    runtime.legacy.frame.scale = 1.75
+    runtime.legacy.frame.font = 18
+    unused TreeSubmitCurrent(bench_session, cast(u64)2, 0, bounds)
+    WidgetHostBegin(bench_session, AllowImage, ResolveImage)
+    ran := AppHostRun(host, APP_FRAME)
+    WidgetHostEnd()
+    ended := EndFrame(bench_session) == cast(FrameStatus)FrameOk
+    AppHostCollect(host)
+    return ran && ended
+}
+
+// Milliseconds a frame takes on average over `frames` frames, after a few
+// to warm up.
+Frames :: (label: string, frames: s32) -> bool {
+    for warm: 0..4 { if !Draw(411, 813) { print("% failed to draw\n", label); return false } }
+    started := BenchSeconds()
+    for frame: 0..frames - 1 { if !Draw(411, 813) { print("% failed to draw\n", label); return false } }
+    elapsed := BenchSeconds() - started
+    print("% % ms per frame\n", label, elapsed * 1000.0 / cast(float64)frames)
+    return true
+}
+
+Open :: (id: string) -> bool {
+    node := AppTreeNode(*bench_host.tree, bench_host.tree.active)
+    runtime := cast(*AppRuntime)node.runtime
+    out: Vec(u8)
+    BuilderPrint(*out, "{\"v\":1,\"op\":\"open\",\"id\":\"%\"}", id)
+    runtime.app.command = BuilderFinish(out)
+    return AppHostRun(bench_host, APP_COMMAND)
+}
+
+#program_export
+Main :: () -> s32 {
+    bytes, found := ReadEntireFile(Environment("BENCH_BUNDLE"))
+    if !found { print("BENCH_BUNDLE unreadable\n"); return 1 }
+    frames := cast(s32)ReadNumber(Environment("BENCH_FRAMES"), 0).value
+    if frames <= 0 { frames = 200 }
+    host: AppHost
+    bench_host = *host
+    bench_session = SessionOpen()
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
+    if !AppHostStart(*host, bytes, "inbe", Environment("BENCH_ID"), Environment("BENCH_EXPECTED"),
+        Environment("BENCH_SHA256"), "account-a", platform, Environment("BENCH_CONTROLLER")) {
+        print("the collection did not start\n")
+        return 2
+    }
+    if !Frames("list", frames) { return 3 }
+    games := Environment("BENCH_GAMES")
+    at: s64 = 0
+    while at < games.count {
+        end := at
+        while end < games.count && games[end] != #char "," { end += 1 }
+        game := games[at:end]
+        if !Open(game) { print("% did not open\n", game); return 4 }
+        active := AppTreeNode(*host.tree, host.tree.active)
+        print("active %\n", TextUntilNul(active.identity.id[:]))
+        if !Frames(game, frames) { return 5 }
+        unused AppHostBack(*host)
+        at = end + 1
+    }
+    return 0
+}

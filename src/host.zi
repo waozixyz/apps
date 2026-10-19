@@ -73,6 +73,11 @@ AppRuntime :: struct {
     retired: bool
     byte_charge: s64
     busy: bool
+    // The catalog this controller last received and its revision. A
+    // controller that already holds it is told so instead of parsing it
+    // again in the VM on every frame.
+    catalog: string
+    catalog_revision: s64
 }
 
 AppHostBytesMatch :: (bytes: string, digest: string) -> bool {
@@ -112,7 +117,7 @@ AppHostReply :: (host: *AppHost, reply: AppsReply) -> HostValue {
     return AppHostText(host.reply)
 }
 
-AppHostCatalog :: (runtime: *AppRuntime) -> HostValue {
+AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
     host := runtime.host
     node := runtime.node
     bytes: Vec(u8)
@@ -153,9 +158,26 @@ AppHostCatalog :: (runtime: *AppRuntime) -> HostValue {
         BuilderPrint(*bytes, "}")
         item = item.next
     }
-    BuilderPrint(*bytes, "]}")
+    BuilderPrint(*bytes, "]")
+    body := BuilderFinish(bytes)
+    if body == runtime.catalog {
+        AppFileFree(body)
+        if revision > 0 && revision == runtime.catalog_revision {
+            unchanged: Vec(u8)
+            BuilderPrint(*unchanged, "{\"v\":1,\"unchanged\":true}")
+            AppFileFree(host.reply)
+            host.reply = BuilderFinish(unchanged)
+            return AppHostText(host.reply)
+        }
+    } else {
+        AppFileFree(runtime.catalog)
+        runtime.catalog = body
+        runtime.catalog_revision += 1
+    }
+    reply: Vec(u8)
+    BuilderPrint(*reply, "%,\"revision\":%}", runtime.catalog, runtime.catalog_revision)
     AppFileFree(host.reply)
-    host.reply = BuilderFinish(bytes)
+    host.reply = BuilderFinish(reply)
     return AppHostText(host.reply)
 }
 
@@ -173,7 +195,7 @@ AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValu
             result.* = AppHostReply(runtime.host, AppRejected("invalid request"))
             return 1
         }
-        if request.operation == APPS_CATALOG { result.* = AppHostCatalog(runtime); return 1 }
+        if request.operation == APPS_CATALOG { result.* = AppHostCatalog(runtime, request.revision); return 1 }
         reply := AppTreeQueue(*runtime.host.tree, runtime.host.tree.running, request)
         result.* = AppHostReply(runtime.host, reply)
         return 1
@@ -422,9 +444,11 @@ AppHostCollect :: (host: *AppHost) {
         host.retired_bytes -= runtime.byte_charge
         if runtime.frontend != null {
             HostedAppClose(AppContextRuntime(*runtime.frontend.app))
+            AppFileFree(runtime.frontend.catalog)
             free(runtime.frontend)
         }
         HostedAppClose(AppContextRuntime(*runtime.app))
+        AppFileFree(runtime.catalog)
         free(runtime)
         runtime = next
     }
