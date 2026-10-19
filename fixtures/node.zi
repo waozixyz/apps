@@ -9,6 +9,8 @@ SaveAppRecordHost :: (name: string, value: string) -> bool #foreign host_api;
 AppLocaleHost :: (key: string) -> string #foreign host_api;
 AppKeyHost :: () -> s32 #foreign host_api;
 AppSoundHost :: (path: string) -> bool #foreign host_api;
+AppSupportsHost :: (capability: string) -> bool #foreign host_api;
+AppServiceHost :: (name: string, request: string) -> string #foreign host_api;
 
 #program_export
 Main :: () -> s32 {
@@ -25,6 +27,10 @@ Main :: () -> s32 {
         if frame.width == 1 && (AppKeyHost() != 42 || AppKeyHost() != 0) { return -5 }
         // Only the first frame's host has audio; the other answers false.
         if AppSoundHost("assets/node/sound.wav") != (frame.width == 1) { return -6 }
+        // Its echo service too; without it the service answers unavailable.
+        if AppSupportsHost("echo") != (frame.width == 1) { return -7 }
+        echo := ifx frame.width == 1 then "{\"echo\":\"ping\"}" else "{\"status\":\"unavailable\"}"
+        if AppServiceHost("echo", "ping") != echo { return -8 }
         message.succeeded = true
         // A guest's reply cannot replace host-owned identity or account input.
         message.name = "other"

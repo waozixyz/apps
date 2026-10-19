@@ -193,7 +193,7 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
 Allows :: (context: *void, node: *AppNode, function: string) -> bool {
     return function == "DocumentReadHost" || function == "DocumentWriteHost" ||
     function == "AppRecordHost" || function == "SaveAppRecordHost" ||
-    (function == "AppSoundHost" && sound_enabled) || TextUntilNul(node.identity.id[:]) == "inbe.chess"
+    ((function == "AppSoundHost" || function == "echo") && sound_enabled) || TextUntilNul(node.identity.id[:]) == "inbe.chess"
 }
 
 Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
@@ -208,6 +208,11 @@ Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
         if name == "AppSoundHost" && count == 1 && AppHostAsset(node, AppArgumentText(arguments[0])).found {
             sound_calls += 1
             result.* = HostScalar("bool", 1)
+            return 1
+        }
+        if name == "AppServiceHost" && count == 2 && AppArgumentText(arguments[0]) == "echo" &&
+        AppArgumentText(arguments[1]) == "ping" {
+            result.* = AppHostText("{\"echo\":\"ping\"}")
             return 1
         }
         if name == "SaveAppRecordHost" && count == 2 && AppArgumentText(arguments[1]) == "node saved" {

@@ -41,7 +41,8 @@ NodeContext :: struct {
 NodeAllows :: (context: *void, module: string, name: string) -> bool {
     node := cast(*NodeContext)context
     return name == "ReadAppHost" || name == "WriteAppHost" || name == "ReadAppUiHost" ||
-    name == "AppLocaleHost" || name == "AppKeyHost" || name == "AppSoundHost" || WidgetHostSupports(module, name) ||
+    name == "AppLocaleHost" || name == "AppKeyHost" || name == "AppSoundHost" ||
+    name == "AppSupportsHost" || name == "AppServiceHost" || WidgetHostSupports(module, name) ||
     (node.allows != null && node.allows(node.context, name))
 }
 
@@ -119,6 +120,23 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
             return 1
         }
         result.* = HostScalar("bool", 0)
+        return 1
+    }
+    // Optional services, as for app/1: a host without the named service
+    // answers that it is unavailable, so importing one never fails a start.
+    if name == "AppSupportsHost" && count == 1 && HostScalarValid(arguments[0], "string", cast(s32)HostString) {
+        available := node.allows != null && node.allows(node.context, AppArgumentText(arguments[0]))
+        result.* = HostScalar("bool", ifx available then 1 else 0)
+        return 1
+    }
+    if name == "AppServiceHost" && count == 2 && HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
+    HostScalarValid(arguments[1], "string", cast(s32)HostString) {
+        if node.services != null && node.allows != null && node.allows(node.context, AppArgumentText(arguments[0])) {
+            return node.services(node.context, module, function, arguments, count, result)
+        }
+        unavailable := "{\"status\":\"unavailable\"}"
+        result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+            .data = HostTextData(unavailable), .length = cast(usize)unavailable.count}
         return 1
     }
     if WidgetHostSupports(TextFromCString(module), name) {
