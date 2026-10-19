@@ -87,6 +87,37 @@ AppHostBytesMatch :: (bytes: string, digest: string) -> bool {
     return TextUntilNul(actual[:]) == digest
 }
 
+// Digests of the bundles found inside bundles already verified. A bundle's
+// assets are fixed by its digest, so a child or controller checked once
+// under it is not hashed again when it reopens: on a phone, hashing every
+// child of a large collection on each open took seconds.
+AppVerifiedAsset :: struct {
+    container: [65]u8
+    path: [512]u8
+    digest: [65]u8
+}
+app_verified_assets: Vec(AppVerifiedAsset);
+
+AppHostAssetMatches :: (container: *AppNode, path: string, bytes: string, digest: string) -> bool {
+    owner := TextUntilNul(container.entry.sha256[:])
+    for index: cast(s64)0..app_verified_assets.count - 1 {
+        known := *app_verified_assets[index]
+        if TextUntilNul(known.container[:]) == owner && TextUntilNul(known.path[:]) == path {
+            return TextUntilNul(known.digest[:]) == digest
+        }
+    }
+    actual: [65]u8
+    descriptor := cast(*TextDescriptor)(*bytes)
+    Sha256Hex(descriptor.data, bytes.count, *actual[0])
+    entry: AppVerifiedAsset
+    if AppDigestValid(owner) && app_verified_assets.count < 256 &&
+    CopyCString(owner, entry.container[:]) && CopyCString(path, entry.path[:]) {
+        entry.digest = actual
+        unused VecPush(app_verified_assets, entry)
+    }
+    return TextUntilNul(actual[:]) == digest
+}
+
 AppHostAllows :: (context: *void, function: string) -> bool {
     runtime := cast(*AppRuntime)context
     if runtime.retired { return false }
@@ -254,8 +285,9 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
         if icon != "" && !AppHostAsset(node, icon).found { return false }
         item = item.next
     }
-    resource := HostedAppAsset(AppContextRuntime(*runtime.app), TextUntilNul(node.catalog.harness[:]))
-    if !resource.found || !AppHostBytesMatch(resource.data, TextUntilNul(host.harness_sha256[:])) { return false }
+    harness := TextUntilNul(node.catalog.harness[:])
+    resource := HostedAppAsset(AppContextRuntime(*runtime.app), harness)
+    if !resource.found || !AppHostAssetMatches(node, harness, resource.data, TextUntilNul(host.harness_sha256[:])) { return false }
     limit := ifx host.tree.byte_limit > 0 then host.tree.byte_limit else APP_HOST_BYTE_LIMIT
     if resource.data.count + 65536 > limit - host.tree.bytes - host.retired_bytes - node.bytes { return false }
     runtime.frontend = AppHostRuntime(host, node, resource.data, "apps", true)
@@ -277,8 +309,9 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
 AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
     host := cast(*AppHost)context
     parent_runtime := cast(*AppRuntime)parent.runtime
-    resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), TextUntilNul(entry.bundle[:]))
-    if !resource.found || !AppHostBytesMatch(resource.data, TextUntilNul(entry.sha256[:])) { return false }
+    bundle := TextUntilNul(entry.bundle[:])
+    resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), bundle)
+    if !resource.found || !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:])) { return false }
     if resource.data.count + 65536 + cast(s64)size_of(AppNode) > host.tree.byte_limit - host.tree.bytes - host.retired_bytes { return false }
     if entry.protocol != APPS_CONTEXT_PROTOCOL && entry.protocol != APPS_COLLECTION_PROTOCOL &&
     entry.protocol != APPS_NODE_PROTOCOL { return false }
@@ -474,12 +507,15 @@ AppHostOpenEffect :: (context: *void, account: string, locator: *AppLocator, req
 
 // authority/expected root identity/digest are verified installation inputs.
 // This function never derives authority from a container manifest or a guest.
+// A platform that has just hashed bytes itself passes verified and spares
+// the second pass over the whole bundle.
 AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     expected_id: string, digest: string, account: string, platform: AppPlatform,
-    harness_digest: string = "", locale: string = "en", protocol: s32 = APPS_CONTEXT_PROTOCOL) -> bool {
+    harness_digest: string = "", locale: string = "en", protocol: s32 = APPS_CONTEXT_PROTOCOL,
+    verified: bool = false) -> bool {
     if host.tree.nodes.count != 0 || authority == "" || authority.count >= 256 || !Rules.AppIdValid(id) || !Rules.AppIdValid(expected_id) ||
     bytes.count + 65536 + cast(s64)size_of(AppNode) > APP_HOST_BYTE_LIMIT ||
-    !AppDigestValid(digest) || !AppHostBytesMatch(bytes, digest) { return false }
+    !AppDigestValid(digest) || (!verified && !AppHostBytesMatch(bytes, digest)) { return false }
     root := New(AppNode)
     if root == null { return false }
     unused CopyCString(authority, root.identity.authority[:])

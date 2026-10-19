@@ -548,6 +548,12 @@ Check :: () -> s32 {
     unused CopyCString("other", node_entry.expected_id[:])
     rejected := AppTreeOpenChild(*host.tree, host.tree.active, *node_entry)
     if AppTreeNode(*host.tree, rejected) != null || AppHostActiveRuntime(*host) != runtime { return 31 }
+    // The node bundle's digest is remembered from its install above; a
+    // catalog entry declaring another digest for it still never opens.
+    node_entry = AppCatalogAt(*middle.catalog, AppCatalogFind(*middle.catalog, "fixture.node")).*
+    node_entry.sha256[0] = ifx node_entry.sha256[0] == #char "0" then #char "1" else #char "0"
+    rejected = AppTreeOpenChild(*host.tree, host.tree.active, *node_entry)
+    if AppTreeNode(*host.tree, rejected) != null || AppHostActiveRuntime(*host) != runtime { return 626 }
     // Native OPEN boundary over real bundles: the counter's exact verified
     // chain reaches the provider; HANDLED and REJECTED keep the middle page
     // and retire only the temporary counter VM.
