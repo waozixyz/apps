@@ -54,6 +54,9 @@ AppHost :: struct {
     reply: string
     last_reply: string
     harness_sha256: [65]u8
+    // Earlier shared controllers the platform still trusts, so collections
+    // published with one keep opening after the controller changes.
+    harness_previous: [4][65]u8
     locale: [16]u8
     retired: *AppRuntime
     retired_bytes: s64
@@ -287,7 +290,13 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
     }
     harness := TextUntilNul(node.catalog.harness[:])
     resource := HostedAppAsset(AppContextRuntime(*runtime.app), harness)
-    if !resource.found || !AppHostAssetMatches(node, harness, resource.data, TextUntilNul(host.harness_sha256[:])) { return false }
+    if !resource.found { return false }
+    trusted := AppHostAssetMatches(node, harness, resource.data, TextUntilNul(host.harness_sha256[:]))
+    for index: 0..3 {
+        previous := TextUntilNul(host.harness_previous[index][:])
+        trusted = trusted || (previous != "" && AppHostAssetMatches(node, harness, resource.data, previous))
+    }
+    if !trusted { return false }
     limit := ifx host.tree.byte_limit > 0 then host.tree.byte_limit else APP_HOST_BYTE_LIMIT
     if resource.data.count + 65536 > limit - host.tree.bytes - host.retired_bytes - node.bytes { return false }
     runtime.frontend = AppHostRuntime(host, node, resource.data, "apps", true)
@@ -503,6 +512,20 @@ AppHostOpenEffect :: (context: *void, account: string, locator: *AppLocator, req
     host := cast(*AppHost)context
     if host.platform.open_effect == null { return APP_OPEN_DECLARED }
     return host.platform.open_effect(host.platform.context, account, locator, request, reply)
+}
+
+// Trusts an earlier shared controller as well as the current one, for
+// collections published before the controller changed. Call before
+// AppHostStart; at most four are kept.
+AppHostTrustHarness :: (host: *AppHost, digest: string) -> bool {
+    if !AppDigestValid(digest) { return false }
+    for index: 0..3 {
+        if TextUntilNul(host.harness_previous[index][:]) == digest { return true }
+        if host.harness_previous[index][0] == 0 {
+            return CopyCString(digest, host.harness_previous[index][:])
+        }
+    }
+    return false
 }
 
 // authority/expected root identity/digest are verified installation inputs.

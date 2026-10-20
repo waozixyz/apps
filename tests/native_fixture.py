@@ -90,7 +90,7 @@ def main():
     bundle('collection', root, stage('root-stage', 'fixture.root',
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zib': middle}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
-    for name in ('native', 'seen', 'no-update', 'changed-update', 'preview'):
+    for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -99,6 +99,9 @@ def main():
             candidate['children'][0]['update_available'] = False
         if name == 'changed-update':
             candidate['children'][0]['available_sha256'] = 'd' * 64
+        if name in ('download', 'downloading'):
+            candidate['children'][1].update(on_device=False, downloading=name == 'downloading',
+                                            bytes=4096, actions=['open', 'install'])
         if name == 'preview':
             candidate['presentation']['mode'] = 'preview'
             for card in candidate['children']:

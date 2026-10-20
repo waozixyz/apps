@@ -23,5 +23,7 @@
   "properties": "Properti",
   "name": "Nama",
   "icon": "Ikon",
-  "save": "Simpan"
+  "save": "Simpan",
+  "download": "Unduh",
+  "downloading": "Mengunduh"
 }

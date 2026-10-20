@@ -23,5 +23,7 @@
   "properties": "プロパティ",
   "name": "名前",
   "icon": "アイコン",
-  "save": "保存"
+  "save": "保存",
+  "download": "ダウンロード",
+  "downloading": "ダウンロード中"
 }

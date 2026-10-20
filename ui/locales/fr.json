@@ -23,5 +23,7 @@
   "properties": "Propriétés",
   "name": "Nom",
   "icon": "Icône",
-  "save": "Enregistrer"
+  "save": "Enregistrer",
+  "download": "Télécharger",
+  "downloading": "Téléchargement"
 }

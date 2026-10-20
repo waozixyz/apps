@@ -23,5 +23,7 @@
   "properties": "Vlastnosti",
   "name": "Název",
   "icon": "Ikona",
-  "save": "Uložit"
+  "save": "Uložit",
+  "download": "Stáhnout",
+  "downloading": "Stahování"
 }

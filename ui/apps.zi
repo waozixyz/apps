@@ -39,6 +39,7 @@ using ButtonEmphasis;
 using IconPlacement;
 
 APP_ELLIPSIS :: "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
+APP_DOWNLOAD :: "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
 
 AppCard :: struct {
     id: [128]u8
@@ -51,6 +52,11 @@ AppCard :: struct {
     icon: [512]u8
     icon_shape: [16384]u8
     installed: bool
+    // Whether the app's package is on this device; one that is not shows
+    // the download symbol instead of its options, and says so while it
+    // downloads.
+    on_device: bool
+    downloading: bool
     favorite: bool
     launcher: s32
     selected: bool
@@ -185,6 +191,9 @@ AppsReadCatalog :: () -> bool {
         if TextUntilNul(card.icon[:]) != "" && !Rules.AppPreviewPathValid(TextUntilNul(card.icon[:])) { return false }
         if TextUntilNul(card.current_version[:]) == "" { unused AppsOptionalText(text, at, "version", card.current_version[:]) }
         card.installed = AppsBool(text, FieldAt(text, at, "installed"))
+        // Hosts from before these fields only list apps on the device.
+        card.on_device = FieldAt(text, at, "on_device") < 0 || AppsBool(text, FieldAt(text, at, "on_device"))
+        card.downloading = !card.on_device && AppsBool(text, FieldAt(text, at, "downloading"))
         card.favorite = AppsBool(text, FieldAt(text, at, "favorite"))
         card.launcher = cast(s32)AppsNumber(text, FieldAt(text, at, "launcher"))
         card.selected = AppsBool(text, FieldAt(text, at, "selected"))
@@ -632,7 +641,10 @@ AppsFrame :: () -> bool {
         if Button(session, tile) != 0 { AppsAct("open", card.id) }
         if icon_mode {
             size_text: [32]u8
-            if AppsSize(card.bytes, size_text[:]) {
+            if card.downloading {
+                unused CopyCString(AppsLabel(language, "downloading"), size_text[:])
+            }
+            if card.downloading || AppsSize(card.bytes, size_text[:]) {
                 Text(session, TextProps.{.key = key + cast(u64)4, .text = TextUntilNul(size_text[:]), .font = cast(s32)(11.0 * scale),
                         .bounds = Rectangle.{x + 8.0 * scale, y + card_height - 16.0 * scale, card_width - 16.0 * scale, 12.0 * scale},
                         .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})
@@ -643,7 +655,12 @@ AppsFrame :: () -> bool {
             .bounds = Rectangle.{x + card_width - 40.0 * scale, y + 4.0 * scale, 36.0 * scale, 36.0 * scale},
             .disabled = card.disabled, .fit_content = true}
         if card.selected { action.tone = cast(ButtonTone)ButtonToneAccent }
-        if Button(session, action) != 0 {
+        if !card.on_device {
+            action.label = AppsLabel(language, "download")
+            action.icon_shape = APP_DOWNLOAD
+            action.disabled = card.disabled || card.downloading || !AppsSupported(card, Rules.APPS_INSTALL)
+            if Button(session, action) != 0 { AppsAct("install", card.id) }
+        } else if Button(session, action) != 0 {
             menu_id = card.id; menu_x = action.bounds.x; menu_y = action.bounds.y + action.bounds.height
             // Opening the menu shows its Update entry, so the dot has been seen.
             if card.update_available && !card.update_seen && AppsSupported(card, Rules.APPS_SEEN) {

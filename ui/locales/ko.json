@@ -23,5 +23,7 @@
   "properties": "속성",
   "name": "이름",
   "icon": "아이콘",
-  "save": "저장"
+  "save": "저장",
+  "download": "다운로드",
+  "downloading": "다운로드 중"
 }

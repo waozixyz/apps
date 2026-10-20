@@ -311,10 +311,15 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
                 cast(s32)props.tone != 1 || cast(s32)props.emphasis != 0 || cast(s32)props.icon_placement != 2 ||
                 props.image.asset_path != "assets/preview.png") { native_bad = true }
         }
-        if props.label == "App options" {
+        // Each card has its options, or the download symbol while it is not
+        // on the device.
+        if props.label == "App options" || props.label == "Download" {
             native_actions += 1
+            download := "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
+            options := "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
+            shape := ifx props.label == "Download" then download else options
             if props.bounds.height != 36.0 || !props.icon_only || props.class_name != 502 ||
-            cast(s32)props.emphasis != 3 || props.icon_shape != "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01" { native_bad = true }
+            cast(s32)props.emphasis != 3 || props.icon_shape != shape { native_bad = true }
         }
     }
     // An update not yet installed or seen is a small dot on the options.
@@ -475,6 +480,16 @@ NativeControllerCheck :: () -> s32 {
     native_request.operation != APPS_PROPERTIES || TextUntilNul(native_request.title[:]) != "" ||
     TextUntilNul(native_request.icon[:]) != "" { return 83 }
     if !NativeDraw() || !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
+    // An app not on this device has the download symbol instead of its
+    // options, which installs it, and says so while it downloads.
+    queued := native_queued
+    if !NativeLoadCatalog("download") || !NativeDraw() { return 630 }
+    if NativeLabel("4.1 kB") < 0 { return 632 }
+    if !NativeClick("Download") { return 633 }
+    if !NativeDraw() || native_queued != queued + 1 { return 634 }
+    if native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 635 }
+    if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading") < 0 ||
+    NativeLabel("4.1 kB") >= 0 || NativeClick("Download") { return 631 }
     native_icon_mode = false
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
     if !AppControllerClose(*native_controller) { return 65 }
@@ -641,5 +656,15 @@ Check :: () -> s32 {
     AppHostCollect(*host)
     if !AppHostStop(*host) { return 13 }
     if AppHostStart(*host, bytes, "fixture.test", "fixture.root", "wrong", digest, "account-a", platform, harness_digest) { return 14 }
+    // A collection published with an earlier controller opens only while
+    // the platform still trusts that controller.
+    newer := "0000000000000000000000000000000000000000000000000000000000000000"
+    untrusted: AppHost
+    if AppHostStart(*untrusted, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 627 }
+    unused AppHostStop(*untrusted)
+    trusting: AppHost
+    if !AppHostTrustHarness(*trusting, harness_digest) || AppHostTrustHarness(*trusting, "not a digest") ||
+    !AppHostStart(*trusting, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 628 }
+    if !AppHostStop(*trusting) { return 629 }
     return NativeControllerCheck()
 }

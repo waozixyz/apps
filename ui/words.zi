@@ -26,6 +26,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Název" }
         if key == "icon" { return "Ikona" }
         if key == "save" { return "Uložit" }
+        if key == "download" { return "Stáhnout" }
+        if key == "downloading" { return "Stahování" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -53,6 +55,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Name" }
         if key == "icon" { return "Symbol" }
         if key == "save" { return "Speichern" }
+        if key == "download" { return "Herunterladen" }
+        if key == "downloading" { return "Wird geladen" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -80,6 +84,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Nombre" }
         if key == "icon" { return "Icono" }
         if key == "save" { return "Guardar" }
+        if key == "download" { return "Descargar" }
+        if key == "downloading" { return "Descargando" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -107,6 +113,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Nom" }
         if key == "icon" { return "Icône" }
         if key == "save" { return "Enregistrer" }
+        if key == "download" { return "Télécharger" }
+        if key == "downloading" { return "Téléchargement" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -134,6 +142,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Nama" }
         if key == "icon" { return "Ikon" }
         if key == "save" { return "Simpan" }
+        if key == "download" { return "Unduh" }
+        if key == "downloading" { return "Mengunduh" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -161,6 +171,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Nome" }
         if key == "icon" { return "Icona" }
         if key == "save" { return "Salva" }
+        if key == "download" { return "Scarica" }
+        if key == "downloading" { return "Download in corso" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -188,6 +200,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "名前" }
         if key == "icon" { return "アイコン" }
         if key == "save" { return "保存" }
+        if key == "download" { return "ダウンロード" }
+        if key == "downloading" { return "ダウンロード中" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -215,6 +229,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "이름" }
         if key == "icon" { return "아이콘" }
         if key == "save" { return "저장" }
+        if key == "download" { return "다운로드" }
+        if key == "downloading" { return "다운로드 중" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -242,6 +258,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Nome" }
         if key == "icon" { return "Ícone" }
         if key == "save" { return "Salvar" }
+        if key == "download" { return "Baixar" }
+        if key == "downloading" { return "Baixando" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -269,6 +287,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "Название" }
         if key == "icon" { return "Значок" }
         if key == "save" { return "Сохранить" }
+        if key == "download" { return "Скачать" }
+        if key == "downloading" { return "Загрузка" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -296,6 +316,8 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "name" { return "名称" }
         if key == "icon" { return "图标" }
         if key == "save" { return "保存" }
+        if key == "download" { return "下载" }
+        if key == "downloading" { return "正在下载" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -322,5 +344,7 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "name" { return "Name" }
     if key == "icon" { return "Icon" }
     if key == "save" { return "Save" }
+    if key == "download" { return "Download" }
+    if key == "downloading" { return "Downloading" }
     return key
 }
