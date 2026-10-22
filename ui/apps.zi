@@ -40,6 +40,7 @@ using IconPlacement;
 using ContentAlignment;
 
 APP_ELLIPSIS :: "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
+APP_REORDER :: "S2rr:M8 5H8.01M16 5H16.01M8 12H8.01M16 12H16.01M8 19H8.01M16 19H16.01"
 APP_DOWNLOAD :: "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
 
 AppCard :: struct {
@@ -59,6 +60,7 @@ AppCard :: struct {
     on_device: bool
     downloading: bool
     favorite: bool
+    reorderable: bool
     launcher: s32
     selected: bool
     disabled: bool
@@ -80,6 +82,8 @@ can_back: bool;
 icon_mode: bool;
 list_mode: bool;
 section_break: s32;
+has_section_break: bool;
+presentation_columns: s32;
 tile_class: s32;
 action_class: s32;
 muted_class: s32;
@@ -173,7 +177,9 @@ AppsReadCatalog :: () -> bool {
     if !AppsOptionalText(text, presentation, "mode", mode[:]) { return false }
     list_mode = TextUntilNul(mode[:]) == "list"
     icon_mode = list_mode || TextUntilNul(mode[:]) == "icon"
+    has_section_break = FieldAt(text, presentation, "section_break") >= 0
     section_break = cast(s32)AppsNumber(text, FieldAt(text, presentation, "section_break"))
+    presentation_columns = cast(s32)AppsNumber(text, FieldAt(text, presentation, "columns"))
     tile_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "tile_class"))
     action_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "action_class"))
     muted_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "muted_class"))
@@ -200,6 +206,7 @@ AppsReadCatalog :: () -> bool {
         card.on_device = FieldAt(text, at, "on_device") < 0 || AppsBool(text, FieldAt(text, at, "on_device"))
         card.downloading = !card.on_device && AppsBool(text, FieldAt(text, at, "downloading"))
         card.favorite = AppsBool(text, FieldAt(text, at, "favorite"))
+        card.reorderable = AppsBool(text, FieldAt(text, at, "reorderable"))
         card.launcher = cast(s32)AppsNumber(text, FieldAt(text, at, "launcher"))
         card.selected = AppsBool(text, FieldAt(text, at, "selected"))
         card.disabled = AppsBool(text, FieldAt(text, at, "disabled"))
@@ -604,6 +611,7 @@ AppsFrame :: () -> bool {
         columns = cast(s32)((area.width + gap) / (140.0 * scale + gap))
         if columns < 1 { columns = 1 }
         if columns > 6 { columns = 6 }
+        if presentation_columns >= 1 && presentation_columns <= 6 { columns = presentation_columns }
         card_height = 88.0 * scale
     }
     if list_mode {
@@ -625,9 +633,14 @@ AppsFrame :: () -> bool {
     if cards.count == 0 { AppsText(session, cast(u64)6, area, AppsLabel(language, "empty"), font) }
     for index: cast(s32)0..cast(s32)cards.count - 1 {
         card := *cards[index]
-        x := area.x + cast(float32)(index % columns) * (card_width + gap)
-        y := area.y + cast(float32)(index / columns) * (card_height + gap)
-        if list_mode && index >= section_break { y += 36.0 * scale }
+        position := index
+        section_y: float32
+        if icon_mode && has_section_break && index >= section_break {
+            position -= section_break
+            section_y = cast(float32)((section_break + columns - 1) / columns) * (card_height + gap) + 36.0 * scale
+        }
+        x := area.x + cast(float32)(position % columns) * (card_width + gap)
+        y := area.y + cast(float32)(position / columns) * (card_height + gap) + section_y
         key := Rules.AppCardKey(TextUntilNul(card.id[:]))
         tile := ButtonProps.{.key = key, .label = TextUntilNul(card.title[:]), .class_name = tile_class,
             .bounds = Rectangle.{x, y, card_width, card_height}, .disabled = card.disabled,
@@ -640,6 +653,10 @@ AppsFrame :: () -> bool {
             if list_mode {
                 tile.content_alignment = cast(ContentAlignment)ContentAlignmentStart
                 tile.bounds.width -= 48.0 * scale
+                if card.reorderable {
+                    tile.bounds.x += 44.0 * scale
+                    tile.bounds.width -= 44.0 * scale
+                }
             }
         } else {
             fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
@@ -655,6 +672,13 @@ AppsFrame :: () -> bool {
         if list_mode && card.downloading { tile.detail = AppsLabel(language, "downloading") }
         tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
         if Button(session, tile) != 0 { AppsAct("open", card.id) }
+        if icon_mode && card.reorderable {
+            unused Button(session, ButtonProps.{.key = Rules.AppReorderKey(TextUntilNul(card.id[:])),
+                    .label = AppsLabel(language, "move_app"), .icon_shape = APP_REORDER,
+                    .icon_only = true, .disabled = card.disabled, .class_name = action_class,
+                    .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost,
+                    .bounds = Rectangle.{x, y + (ifx list_mode then 10.0 * scale else 0.0), 44.0 * scale, 44.0 * scale}})
+        }
         if icon_mode {
             size_text: [32]u8
             if card.downloading {

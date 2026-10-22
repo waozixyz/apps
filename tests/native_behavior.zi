@@ -279,6 +279,9 @@ native_icons: s32;
 native_bad: bool;
 box_codec: WidgetBoxPropsCodec;
 native_icon_mode: bool = true;
+native_handle_bounds: Rectangle;
+native_tile_bounds: Rectangle;
+native_other_bounds: Rectangle;
 native_label_bounds: Rectangle;
 
 NativeService :: (context: *void, text: string) -> string {
@@ -306,11 +309,14 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
         props := WidgetDecodeButtonProps(arguments[1], *button_codec)
         // The card itself; its own icon in Properties shares its title.
         if props.key == AppCardKey("native.breathing") {
+            native_tile_bounds = props.bounds
             native_tiles += 1
             if native_icon_mode && (props.bounds.height != 88.0 || props.class_name != 501 || !props.selected ||
                 cast(s32)props.tone != 1 || cast(s32)props.emphasis != 0 || cast(s32)props.icon_placement != 2 ||
                 props.image.asset_path != "assets/preview.png") { native_bad = true }
         }
+        if props.key == AppReorderKey("native.breathing") { native_handle_bounds = props.bounds }
+        if props.key == AppCardKey("native.clock") { native_other_bounds = props.bounds }
         // Each card has its options, or the download symbol while it is not
         // on the device.
         if props.label == "App options" || props.label == "Download" {
@@ -491,6 +497,13 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading") < 0 ||
     NativeLabel("4.1 kB") >= 0 || NativeClick("Download") { return 631 }
     native_icon_mode = false
+    if !NativeLoadCatalog("reorder-list") || !NativeDraw() || NativeLabel("Move app") < 0 ||
+    native_tile_bounds.x < native_handle_bounds.x + native_handle_bounds.width ||
+    native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 84 }
+    hit := TreeHitAt(ui_session, native_handle_bounds.x + 22.0, native_handle_bounds.y + 22.0)
+    if hit < 0 || TreeNodeAt(ui_session, hit).key != AppReorderKey("native.breathing") { return 85 }
+    if !NativeLoadCatalog("reorder-grid") || !NativeDraw() || NativeLabel("Move app") < 0 ||
+    native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 86 }
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
     if !AppControllerClose(*native_controller) { return 65 }
     AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""

@@ -28,6 +28,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Uložit" }
         if key == "download" { return "Stáhnout" }
         if key == "downloading" { return "Stahování" }
+        if key == "move_app" { return "Přesunout aplikaci" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -57,6 +58,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Speichern" }
         if key == "download" { return "Herunterladen" }
         if key == "downloading" { return "Wird geladen" }
+        if key == "move_app" { return "App verschieben" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -86,6 +88,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Guardar" }
         if key == "download" { return "Descargar" }
         if key == "downloading" { return "Descargando" }
+        if key == "move_app" { return "Mover aplicación" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -115,6 +118,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Enregistrer" }
         if key == "download" { return "Télécharger" }
         if key == "downloading" { return "Téléchargement" }
+        if key == "move_app" { return "Déplacer l’application" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -144,6 +148,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Simpan" }
         if key == "download" { return "Unduh" }
         if key == "downloading" { return "Mengunduh" }
+        if key == "move_app" { return "Pindahkan aplikasi" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -173,6 +178,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Salva" }
         if key == "download" { return "Scarica" }
         if key == "downloading" { return "Download in corso" }
+        if key == "move_app" { return "Sposta app" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -202,6 +208,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "保存" }
         if key == "download" { return "ダウンロード" }
         if key == "downloading" { return "ダウンロード中" }
+        if key == "move_app" { return "アプリを移動" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -231,6 +238,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "저장" }
         if key == "download" { return "다운로드" }
         if key == "downloading" { return "다운로드 중" }
+        if key == "move_app" { return "앱 이동" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -260,6 +268,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Salvar" }
         if key == "download" { return "Baixar" }
         if key == "downloading" { return "Baixando" }
+        if key == "move_app" { return "Mover aplicativo" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -289,6 +298,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "Сохранить" }
         if key == "download" { return "Скачать" }
         if key == "downloading" { return "Загрузка" }
+        if key == "move_app" { return "Переместить приложение" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -318,6 +328,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "save" { return "保存" }
         if key == "download" { return "下载" }
         if key == "downloading" { return "正在下载" }
+        if key == "move_app" { return "移动应用" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -346,5 +357,6 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "save" { return "Save" }
     if key == "download" { return "Download" }
     if key == "downloading" { return "Downloading" }
+    if key == "move_app" { return "Move app" }
     return key
 }

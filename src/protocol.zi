@@ -283,3 +283,8 @@ AppCardKey :: (id: string) -> u64 {
     for byte: id { hash = (hash ^ cast(u64)byte) * cast(u64)16777619 }
     return (hash & cast(u64)72057594037927935) * cast(u64)16 + cast(u64)100
 }
+
+// The dedicated reorder handle never shares the tile's tap or menu key.
+AppReorderKey :: (id: string) -> u64 {
+    return AppCardKey(id) + cast(u64)7
+}
