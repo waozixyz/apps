@@ -37,6 +37,7 @@ using TextAlign;
 using ButtonTone;
 using ButtonEmphasis;
 using IconPlacement;
+using ContentAlignment;
 
 APP_ELLIPSIS :: "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
 APP_DOWNLOAD :: "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
@@ -77,6 +78,8 @@ title: [256]u8;
 locale: [16]u8;
 can_back: bool;
 icon_mode: bool;
+list_mode: bool;
+section_break: s32;
 tile_class: s32;
 action_class: s32;
 muted_class: s32;
@@ -168,7 +171,9 @@ AppsReadCatalog :: () -> bool {
     presentation := FieldAt(text, 0, "presentation")
     mode: [16]u8
     if !AppsOptionalText(text, presentation, "mode", mode[:]) { return false }
-    icon_mode = TextUntilNul(mode[:]) == "icon"
+    list_mode = TextUntilNul(mode[:]) == "list"
+    icon_mode = list_mode || TextUntilNul(mode[:]) == "icon"
+    section_break = cast(s32)AppsNumber(text, FieldAt(text, presentation, "section_break"))
     tile_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "tile_class"))
     action_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "action_class"))
     muted_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "muted_class"))
@@ -601,6 +606,11 @@ AppsFrame :: () -> bool {
         if columns > 6 { columns = 6 }
         card_height = 88.0 * scale
     }
+    if list_mode {
+        columns = 1
+        card_height = 64.0 * scale
+        gap = 4.0 * scale
+    }
     card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
     rows := (cast(s32)cards.count + columns - 1) / columns
     opened: bool
@@ -617,6 +627,7 @@ AppsFrame :: () -> bool {
         card := *cards[index]
         x := area.x + cast(float32)(index % columns) * (card_width + gap)
         y := area.y + cast(float32)(index / columns) * (card_height + gap)
+        if list_mode && index >= section_break { y += 36.0 * scale }
         key := Rules.AppCardKey(TextUntilNul(card.id[:]))
         tile := ButtonProps.{.key = key, .label = TextUntilNul(card.title[:]), .class_name = tile_class,
             .bounds = Rectangle.{x, y, card_width, card_height}, .disabled = card.disabled,
@@ -625,7 +636,11 @@ AppsFrame :: () -> bool {
         if icon_mode {
             tile.icon_shape = TextUntilNul(card.icon_shape[:])
             tile.image = ImageProps.{.asset_path = TextUntilNul(card.icon[:]), .alt_text = TextUntilNul(card.title[:])}
-            tile.icon_placement = cast(IconPlacement)IconPlacementAbove
+            tile.icon_placement = cast(IconPlacement)(ifx list_mode then IconPlacementLeading else IconPlacementAbove)
+            if list_mode {
+                tile.content_alignment = cast(ContentAlignment)ContentAlignmentStart
+                tile.bounds.width -= 48.0 * scale
+            }
         } else {
             fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
             unused Box(session, BoxProps.{.key = key + cast(u64)1, .bounds = tile.bounds, .radius = 12.0 * scale, .fill = fill})
@@ -637,6 +652,7 @@ AppsFrame :: () -> bool {
             AppsText(session, key + cast(u64)3, Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
             tile.invisible = true
         }
+        if list_mode && card.downloading { tile.detail = AppsLabel(language, "downloading") }
         tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
         if Button(session, tile) != 0 { AppsAct("open", card.id) }
         if icon_mode {
@@ -644,7 +660,7 @@ AppsFrame :: () -> bool {
             if card.downloading {
                 unused CopyCString(AppsLabel(language, "downloading"), size_text[:])
             }
-            if card.downloading || AppsSize(card.bytes, size_text[:]) {
+            if !list_mode && (card.downloading || AppsSize(card.bytes, size_text[:])) {
                 Text(session, TextProps.{.key = key + cast(u64)4, .text = TextUntilNul(size_text[:]), .font = cast(s32)(11.0 * scale),
                         .bounds = Rectangle.{x + 8.0 * scale, y + card_height - 16.0 * scale, card_width - 16.0 * scale, 12.0 * scale},
                         .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})
@@ -652,7 +668,7 @@ AppsFrame :: () -> bool {
         }
         action := ButtonProps.{.key = key + cast(u64)5, .label = AppsLabel(language, "options"), .icon_shape = APP_ELLIPSIS,
             .icon_only = true, .class_name = action_class, .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost,
-            .bounds = Rectangle.{x + card_width - 40.0 * scale, y + 4.0 * scale, 36.0 * scale, 36.0 * scale},
+            .bounds = Rectangle.{x + card_width - 40.0 * scale, y + (ifx list_mode then 14.0 * scale else 4.0 * scale), 36.0 * scale, 36.0 * scale},
             .disabled = card.disabled, .fit_content = true}
         if card.selected { action.tone = cast(ButtonTone)ButtonToneAccent }
         if !card.on_device {
