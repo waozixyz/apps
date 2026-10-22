@@ -85,6 +85,9 @@ can_back: bool;
 icon_mode: bool;
 cover_mode: bool;
 cover_state: CarouselState;
+// The launcher transition advances with rendered frames; no game clock or
+// optional host time capability is required by icon/list-only controllers.
+cover_time: float64;
 list_mode: bool;
 has_reorder_handles: bool;
 section_break: s32;
@@ -616,8 +619,9 @@ AppsFrame :: () -> bool {
                 .action = AppsLabel(language, ifx action != "" then action else "open"),
                 .disabled = card.disabled || !AppsSupported(card, Rules.APPS_OPEN)}
         }
+        cover_time += 1.0 / 60.0
         entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
-                .label = TextUntilNul(title[:]), .now = AppNow(), .key_pressed = AppKey(), .scale = scale, .dark = AppDark(),
+                .label = TextUntilNul(title[:]), .now = cover_time, .key_pressed = AppKey(), .scale = scale, .dark = AppDark(),
                 .previous_label = AppsLabel(language, "previous"), .next_label = AppsLabel(language, "next")},
             cover_items[:cards.count], *cover_state)
         if entered >= 0 { AppsAct("open", cards[entered].id) }
