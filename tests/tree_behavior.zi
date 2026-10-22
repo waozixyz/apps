@@ -212,6 +212,12 @@ Check :: () -> s32 {
     if AppsReadRequest("{\"v\":1,\"op\":\"rollback\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bad\"}", *request) { return 41 }
+    covered: AppEntry
+    cover_json := "{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zib\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/cover.png\",\"landscape\":\"assets/wide.png\",\"logo\":\"assets/logo.png\",\"caption\":\"Game\",\"action\":\"play\"}}"
+    if !AppReadEntry(cover_json, 0, *covered) || TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 60 }
+    // A malformed optional cover cannot overwrite the previously valid entry.
+    if AppReadEntry("{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zib\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/../other.png\"}}", 0, *covered) ||
+    TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 61 }
     provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
     tree: AppTree
     root := Root()

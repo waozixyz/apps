@@ -28,6 +28,8 @@
 #import "kryon/session"
 #import "kryon/geometry"
 #import "kryon/tree"
+#import "kryon/carousel"
+Cover :: #import "catalog";
 Rules :: #import "protocol";
 #import, file "words.zi";
 
@@ -46,6 +48,7 @@ APP_DOWNLOAD :: "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
 AppCard :: struct {
     id: [128]u8
     title: [256]u8
+    cover: Cover.AppCover
     // Present while the person's own title replaces the app's title.
     original_title: [256]u8
     // The offered icon the person chose; empty shows the app's own icon.
@@ -80,6 +83,8 @@ title: [256]u8;
 locale: [16]u8;
 can_back: bool;
 icon_mode: bool;
+cover_mode: bool;
+cover_state: CarouselState;
 list_mode: bool;
 has_reorder_handles: bool;
 section_break: s32;
@@ -189,6 +194,7 @@ AppsReadCatalog :: () -> bool {
     if count < 0 || count > 4096 { return false }
     VecClear(cards)
     has_reorder_handles = false
+    cover_mode = false
     at := Space(text, children + 1)
     for index: cast(s32)0..count - 1 {
         card: AppCard
@@ -200,6 +206,15 @@ AppsReadCatalog :: () -> bool {
         !AppsOptionalText(text, at, "original_title", card.original_title[:]) ||
         !AppsOptionalText(text, at, "icon_choice", card.icon_choice[:]) ||
         !AppsOptionalText(text, at, "current_version", card.current_version[:]) { return false }
+        cover := FieldAt(text, at, "cover")
+        if cover >= 0 {
+            if !Rules.AppsReadText(text, cover, "portrait", card.cover.portrait[:]) ||
+            !AppsOptionalText(text, cover, "landscape", card.cover.landscape[:]) ||
+            !AppsOptionalText(text, cover, "logo", card.cover.logo[:]) ||
+            !AppsOptionalText(text, cover, "caption", card.cover.caption[:]) ||
+            !AppsOptionalText(text, cover, "action", card.cover.action[:]) { return false }
+            cover_mode = true
+        }
         if TextUntilNul(card.preview[:]) != "" && !Rules.AppPreviewPathValid(TextUntilNul(card.preview[:])) { return false }
         if TextUntilNul(card.icon[:]) != "" && !Rules.AppPreviewPathValid(TextUntilNul(card.icon[:])) { return false }
         if TextUntilNul(card.current_version[:]) == "" { unused AppsOptionalText(text, at, "version", card.current_version[:]) }
@@ -588,6 +603,32 @@ AppsFrame :: () -> bool {
         BuilderPrint(*bytes, "{\"v\":1,\"op\":\"status\",\"request\":%}", request)
         AppsResponse(AppService("apps", TextView(VecSlice(bytes, 0, bytes.count))))
         VecFree(bytes)
+    }
+    if cover_mode && !icon_mode {
+        cover_items: [4096]CarouselItem
+        for index: cast(s32)0..cast(s32)cards.count - 1 {
+            card := *cards[index]
+            action := TextUntilNul(card.cover.action[:])
+            cover_items[index] = CarouselItem.{.label = TextUntilNul(card.title[:]),
+                .portrait = ifx card.cover.portrait[0] != 0 then TextUntilNul(card.cover.portrait[:]) else TextUntilNul(card.preview[:]),
+                .landscape = TextUntilNul(card.cover.landscape[:]), .logo = TextUntilNul(card.cover.logo[:]),
+                .caption = TextUntilNul(card.cover.caption[:]),
+                .action = AppsLabel(language, ifx action != "" then action else "open"),
+                .disabled = card.disabled || !AppsSupported(card, Rules.APPS_OPEN)}
+        }
+        entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
+                .label = TextUntilNul(title[:]), .now = AppNow(), .key_pressed = AppKey(), .scale = scale, .dark = AppDark(),
+                .previous_label = AppsLabel(language, "previous"), .next_label = AppsLabel(language, "next")},
+            cover_items[:cards.count], *cover_state)
+        if entered >= 0 { AppsAct("open", cards[entered].id) }
+        if can_back && Button(session, ButtonProps.{.key = cast(u64)2, .label = AppsLabel(language, "back"),
+                .bounds = Rectangle.{bounds.x + 12.0 * scale, bounds.y + 12.0 * scale, 84.0 * scale, 44.0 * scale},
+                .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0 { AppsAct("back", empty_target) }
+        if TextUntilNul(status[:]) == "rejected" {
+            AppsText(session, cast(u64)4, Rectangle.{bounds.x + 20.0 * scale, bounds.y + bounds.height - 64.0 * scale,
+                    bounds.width - 40.0 * scale, 44.0 * scale}, AppsLabel(language, "rejected"), font)
+        }
+        return true
     }
     gap := 12.0 * scale
     area := bounds

@@ -26,5 +26,8 @@
   "save": "Speichern",
   "download": "Herunterladen",
   "downloading": "Wird geladen",
-  "move_app": "App verschieben"
+  "move_app": "App verschieben",
+  "play": "Spielen",
+  "previous": "Zurück",
+  "next": "Weiter"
 }

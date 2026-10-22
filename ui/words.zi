@@ -29,6 +29,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Stáhnout" }
         if key == "downloading" { return "Stahování" }
         if key == "move_app" { return "Přesunout aplikaci" }
+        if key == "play" { return "Hrát" }
+        if key == "previous" { return "Předchozí" }
+        if key == "next" { return "Další" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -59,6 +62,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Herunterladen" }
         if key == "downloading" { return "Wird geladen" }
         if key == "move_app" { return "App verschieben" }
+        if key == "play" { return "Spielen" }
+        if key == "previous" { return "Zurück" }
+        if key == "next" { return "Weiter" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -89,6 +95,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Descargar" }
         if key == "downloading" { return "Descargando" }
         if key == "move_app" { return "Mover aplicación" }
+        if key == "play" { return "Jugar" }
+        if key == "previous" { return "Anterior" }
+        if key == "next" { return "Siguiente" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -119,6 +128,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Télécharger" }
         if key == "downloading" { return "Téléchargement" }
         if key == "move_app" { return "Déplacer l’application" }
+        if key == "play" { return "Jouer" }
+        if key == "previous" { return "Précédent" }
+        if key == "next" { return "Suivant" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -149,6 +161,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Unduh" }
         if key == "downloading" { return "Mengunduh" }
         if key == "move_app" { return "Pindahkan aplikasi" }
+        if key == "play" { return "Main" }
+        if key == "previous" { return "Sebelumnya" }
+        if key == "next" { return "Berikutnya" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -179,6 +194,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Scarica" }
         if key == "downloading" { return "Download in corso" }
         if key == "move_app" { return "Sposta app" }
+        if key == "play" { return "Gioca" }
+        if key == "previous" { return "Precedente" }
+        if key == "next" { return "Successivo" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -209,6 +227,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "ダウンロード" }
         if key == "downloading" { return "ダウンロード中" }
         if key == "move_app" { return "アプリを移動" }
+        if key == "play" { return "プレイ" }
+        if key == "previous" { return "前へ" }
+        if key == "next" { return "次へ" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -239,6 +260,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "다운로드" }
         if key == "downloading" { return "다운로드 중" }
         if key == "move_app" { return "앱 이동" }
+        if key == "play" { return "플레이" }
+        if key == "previous" { return "이전" }
+        if key == "next" { return "다음" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -269,6 +293,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Baixar" }
         if key == "downloading" { return "Baixando" }
         if key == "move_app" { return "Mover aplicativo" }
+        if key == "play" { return "Jogar" }
+        if key == "previous" { return "Anterior" }
+        if key == "next" { return "Próximo" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -299,6 +326,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "Скачать" }
         if key == "downloading" { return "Загрузка" }
         if key == "move_app" { return "Переместить приложение" }
+        if key == "play" { return "Играть" }
+        if key == "previous" { return "Назад" }
+        if key == "next" { return "Далее" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -329,6 +359,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "download" { return "下载" }
         if key == "downloading" { return "正在下载" }
         if key == "move_app" { return "移动应用" }
+        if key == "play" { return "开始游戏" }
+        if key == "previous" { return "上一个" }
+        if key == "next" { return "下一个" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -358,5 +391,8 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "download" { return "Download" }
     if key == "downloading" { return "Downloading" }
     if key == "move_app" { return "Move app" }
+    if key == "play" { return "Play" }
+    if key == "previous" { return "Previous" }
+    if key == "next" { return "Next" }
     return key
 }

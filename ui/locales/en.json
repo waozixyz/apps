@@ -26,5 +26,8 @@
   "save": "Save",
   "download": "Download",
   "downloading": "Downloading",
-  "move_app": "Move app"
+  "move_app": "Move app",
+  "play": "Play",
+  "previous": "Previous",
+  "next": "Next"
 }

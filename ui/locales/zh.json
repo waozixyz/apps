@@ -26,5 +26,8 @@
   "save": "保存",
   "download": "下载",
   "downloading": "正在下载",
-  "move_app": "移动应用"
+  "move_app": "移动应用",
+  "play": "开始游戏",
+  "previous": "上一个",
+  "next": "下一个"
 }

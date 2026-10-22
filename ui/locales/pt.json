@@ -26,5 +26,8 @@
   "save": "Salvar",
   "download": "Baixar",
   "downloading": "Baixando",
-  "move_app": "Mover aplicativo"
+  "move_app": "Mover aplicativo",
+  "play": "Jogar",
+  "previous": "Anterior",
+  "next": "Próximo"
 }

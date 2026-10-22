@@ -180,6 +180,19 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.icon[:]))
         BuilderPrint(*bytes, ",\"icon_shape\":")
         AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.icon_shape[:]))
+        if item.entry.cover.portrait[0] != 0 {
+            BuilderPrint(*bytes, ",\"cover\":{\"portrait\":")
+            AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.cover.portrait[:]))
+            BuilderPrint(*bytes, ",\"landscape\":")
+            AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.cover.landscape[:]))
+            BuilderPrint(*bytes, ",\"logo\":")
+            AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.cover.logo[:]))
+            BuilderPrint(*bytes, ",\"caption\":")
+            AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.cover.caption[:]))
+            BuilderPrint(*bytes, ",\"action\":")
+            AppHostWriteQuoted(*bytes, TextUntilNul(item.entry.cover.action[:]))
+            BuilderPrint(*bytes, "}")
+        }
         identity := AppIdentity.{.authority = node.identity.authority, .id = item.entry.id}
         state: AppState
         if host.platform.state != null && !host.platform.state(host.platform.context, TextUntilNul(host.tree.account[:]), *identity, *state) {
@@ -286,6 +299,9 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
         if preview != "" && !AppHostAsset(node, preview).found { return false }
         icon := TextUntilNul(item.entry.icon[:])
         if icon != "" && !AppHostAsset(node, icon).found { return false }
+        covers: [3]string = .[TextUntilNul(item.entry.cover.portrait[:]),
+        TextUntilNul(item.entry.cover.landscape[:]), TextUntilNul(item.entry.cover.logo[:])]
+        for path: covers { if path != "" && !AppHostAsset(node, path).found { return false } }
         item = item.next
     }
     harness := TextUntilNul(node.catalog.harness[:])

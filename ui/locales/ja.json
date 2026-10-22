@@ -26,5 +26,8 @@
   "save": "保存",
   "download": "ダウンロード",
   "downloading": "ダウンロード中",
-  "move_app": "アプリを移動"
+  "move_app": "アプリを移動",
+  "play": "プレイ",
+  "previous": "前へ",
+  "next": "次へ"
 }

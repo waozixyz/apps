@@ -5,6 +5,14 @@
 APP_MANIFEST_BYTE_LIMIT :: 1048576
 APP_CATALOG_ENTRY_LIMIT :: 4096
 
+AppCover :: struct {
+    portrait: [512]u8
+    landscape: [512]u8
+    logo: [512]u8
+    caption: [256]u8
+    action: [64]u8
+}
+
 AppEntry :: struct {
     id: [128]u8
     title: [256]u8
@@ -16,6 +24,7 @@ AppEntry :: struct {
     version: [64]u8
     sha256: [65]u8
     protocol: s32
+    cover: AppCover
 }
 
 AppCatalog :: struct {
@@ -72,7 +81,7 @@ AppCatalogClear :: (catalog: *AppCatalog) {
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [10]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape"]
+    keys: [11]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -96,6 +105,21 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
         if icon != "" && !AppPreviewPathValid(icon) { return false }
     }
     if FieldAt(text, at, "icon_shape") >= 0 && !AppsReadText(text, at, "icon_shape", parsed.icon_shape[:]) { return false }
+    cover := FieldAt(text, at, "cover")
+    if cover >= 0 {
+        cover_keys: [5]string = .["portrait", "landscape", "logo", "caption", "action"]
+        if !AppsObjectValid(text, cover, cover_keys[:]) ||
+        !AppsReadText(text, cover, "portrait", parsed.cover.portrait[:]) ||
+        !AppPreviewPathValid(TextUntilNul(parsed.cover.portrait[:])) { return false }
+        if FieldAt(text, cover, "landscape") >= 0 &&
+        (!AppsReadText(text, cover, "landscape", parsed.cover.landscape[:]) ||
+            !AppPreviewPathValid(TextUntilNul(parsed.cover.landscape[:]))) { return false }
+        if FieldAt(text, cover, "logo") >= 0 &&
+        (!AppsReadText(text, cover, "logo", parsed.cover.logo[:]) ||
+            !AppPreviewPathValid(TextUntilNul(parsed.cover.logo[:]))) { return false }
+        if FieldAt(text, cover, "caption") >= 0 && !AppsReadText(text, cover, "caption", parsed.cover.caption[:]) { return false }
+        if FieldAt(text, cover, "action") >= 0 && !AppsReadText(text, cover, "action", parsed.cover.action[:]) { return false }
+    }
     entry.* = parsed
     return true
 }

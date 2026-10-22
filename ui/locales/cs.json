@@ -26,5 +26,8 @@
   "save": "Uložit",
   "download": "Stáhnout",
   "downloading": "Stahování",
-  "move_app": "Přesunout aplikaci"
+  "move_app": "Přesunout aplikaci",
+  "play": "Hrát",
+  "previous": "Předchozí",
+  "next": "Další"
 }
