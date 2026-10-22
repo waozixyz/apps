@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORK = Path(os.environ.get('APPS_TEST_OUTPUT', ROOT / 'build/native-test')).resolve()
 ZIRAN = str(ROOT / 'scripts/ziran.sh')
 LOCK_FLAGS = [] if (ROOT / 'ziran.local.toml').exists() else ['--locked']
+WINDOWS = os.environ.get('APPS_TEST_PLATFORM') == 'windows'
 
 
 def run(*arguments):
@@ -22,6 +23,11 @@ def run(*arguments):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def runtime_path(path):
+    path = Path(path).resolve()
+    return 'Z:' + str(path).replace('/', '\\') if WINDOWS else str(path)
 
 
 def child(identifier, path, protocol, expected, asset='assets/child.zib'):
@@ -114,29 +120,38 @@ def main():
             for card in candidate['children']:
                 card['preview'] = 'assets/preview.png'
         (WORK / (name + '-catalog.json')).write_text(json.dumps(candidate))
-    os.environ['APPS_FIXTURE_NATIVE_CATALOG_ROOT'] = str(WORK)
+    os.environ['APPS_FIXTURE_NATIVE_CATALOG_ROOT'] = runtime_path(WORK)
     output = WORK / 'c'
     output.mkdir(exist_ok=True)
+    defines = ['--define', '_WIN32'] if WINDOWS else []
     run(ZIRAN, 'build', '--project', *LOCK_FLAGS, '--target=c', '--no-main', '--entry', 'native_behavior:Check',
-        '--root', str(ROOT / 'tests'), '-o', str(output), str(ROOT / 'tests/native_behavior.zi'))
+        *defines, '--root', str(ROOT / 'tests'), '-o', str(output), str(ROOT / 'tests/native_behavior.zi'))
     (output / 'main.c').write_text('#include <stdio.h>\n#include "native_behavior.h"\nint main(void) { int r=Check(); if(r) fprintf(stderr,"Apps native check %d failed\\n",r); return r ? 1 : 0; }\n')
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran', *LOCK_FLAGS], cwd=ROOT, text=True).strip())
     includes = [argument for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for argument in ('-iquote', str(path))]
-    run(os.environ.get('CC', 'cc'), '-std=c11', '-O2', '-ffunction-sections', '-fdata-sections', '-I' + str(toolchain / 'include'),
+    compiler = os.environ.get('CC', 'x86_64-w64-mingw32-gcc' if WINDOWS else 'cc')
+    executable = WORK / ('test.exe' if WINDOWS else 'test')
+    platform_flags = ['-static'] if WINDOWS else ['-lpthread']
+    if WINDOWS and os.environ.get('MCFGTHREADS'):
+        platform_flags.append('-L' + os.environ['MCFGTHREADS'] + '/lib')
+    run(compiler, '-std=c11', '-O2', '-ffunction-sections', '-fdata-sections', '-I' + str(toolchain / 'include'),
         *shlex.split(os.environ.get('CFLAGS', '')),
         *includes, *map(str, sorted(output.rglob('*.c'))), str(ROOT / 'tests/preparation_host.c'),
         sys.argv[1], '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
-        '-lm', '-lpthread', '-o', str(WORK / 'test'))
-    os.environ['APPS_FIXTURE_UI_BUNDLE'] = str(controller)
-    os.environ['APPS_FIXTURE_ROOT_BUNDLE'] = str(root)
+        '-lm', *platform_flags, '-o', str(executable))
+    os.environ['APPS_FIXTURE_UI_BUNDLE'] = runtime_path(controller)
+    os.environ['APPS_FIXTURE_ROOT_BUNDLE'] = runtime_path(root)
     os.environ['APPS_FIXTURE_ROOT_SHA256'] = digest(root)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = digest(controller)
-    os.environ['APPS_FIXTURE_NODE_BUNDLE'] = str(node)
+    os.environ['APPS_FIXTURE_NODE_BUNDLE'] = runtime_path(node)
     os.environ['APPS_FIXTURE_NODE_SHA256'] = digest(node)
-    os.environ['APPS_FIXTURE_COUNTER_BUNDLE'] = str(leaf)
+    os.environ['APPS_FIXTURE_COUNTER_BUNDLE'] = runtime_path(leaf)
     os.environ['APPS_FIXTURE_COUNTER_SHA256'] = digest(leaf)
-    result = subprocess.run([str(WORK / 'test')], cwd=ROOT, text=True, capture_output=True)
+    command = [str(executable)]
+    if WINDOWS:
+        command.insert(0, os.environ.get('WINDOWS_WINE', 'wine'))
+    result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=90)
     # The final wrong-identity test deliberately trips the VM's foreign-call
     # gate. Keep that expected diagnostic without presenting it as a failure.
     (WORK / 'run.log').write_text(result.stdout + result.stderr)

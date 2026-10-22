@@ -12,9 +12,13 @@
 #import, file "tree.zi";
 
 APP_PREPARATION_BYTE_LIMIT :: 67108864
-APP_PREPARATION_THREADS :: !#defined(PLATFORM_WEB) && !#defined(_WIN32)
+APP_PREPARATION_THREADS :: !#defined(PLATFORM_WEB)
 #if APP_PREPARATION_THREADS {
-    #import "std/thread_linux"
+    #if #defined(_WIN32) {
+        #import "std/thread_windows"
+    } else {
+        #import "std/thread_linux"
+    }
 }
 
 AppPreparation :: struct {
