@@ -499,6 +499,7 @@ NativeControllerCheck :: () -> s32 {
     native_icon_mode = false
     if !NativeLoadCatalog("reorder-list") || !NativeDraw() || NativeLabel("Move app") < 0 ||
     native_tile_bounds.x < native_handle_bounds.x + native_handle_bounds.width ||
+    native_other_bounds.x != native_tile_bounds.x ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 84 }
     hit := TreeHitAt(ui_session, native_handle_bounds.x + 22.0, native_handle_bounds.y + 22.0)
     if hit < 0 || TreeNodeAt(ui_session, hit).key != AppReorderKey("native.breathing") { return 85 }

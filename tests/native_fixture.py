@@ -106,6 +106,8 @@ def main():
             candidate['presentation'].update(mode='list' if name == 'reorder-list' else 'icon', section_break=1, columns=3)
             for card in candidate['children']:
                 card['reorderable'] = True
+            if name == 'reorder-list':
+                candidate['children'][1]['reorderable'] = False
         if name == 'preview':
             candidate['presentation']['mode'] = 'preview'
             for card in candidate['children']:

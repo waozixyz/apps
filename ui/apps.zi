@@ -81,6 +81,7 @@ locale: [16]u8;
 can_back: bool;
 icon_mode: bool;
 list_mode: bool;
+has_reorder_handles: bool;
 section_break: s32;
 has_section_break: bool;
 presentation_columns: s32;
@@ -187,6 +188,7 @@ AppsReadCatalog :: () -> bool {
     count := ArrayCount(text, children)
     if count < 0 || count > 4096 { return false }
     VecClear(cards)
+    has_reorder_handles = false
     at := Space(text, children + 1)
     for index: cast(s32)0..count - 1 {
         card: AppCard
@@ -207,6 +209,7 @@ AppsReadCatalog :: () -> bool {
         card.downloading = !card.on_device && AppsBool(text, FieldAt(text, at, "downloading"))
         card.favorite = AppsBool(text, FieldAt(text, at, "favorite"))
         card.reorderable = AppsBool(text, FieldAt(text, at, "reorderable"))
+        if card.reorderable { has_reorder_handles = true }
         card.launcher = cast(s32)AppsNumber(text, FieldAt(text, at, "launcher"))
         card.selected = AppsBool(text, FieldAt(text, at, "selected"))
         card.disabled = AppsBool(text, FieldAt(text, at, "disabled"))
@@ -653,7 +656,7 @@ AppsFrame :: () -> bool {
             if list_mode {
                 tile.content_alignment = cast(ContentAlignment)ContentAlignmentStart
                 tile.bounds.width -= 48.0 * scale
-                if card.reorderable {
+                if has_reorder_handles {
                     tile.bounds.x += 44.0 * scale
                     tile.bounds.width -= 44.0 * scale
                 }
