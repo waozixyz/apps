@@ -677,7 +677,16 @@ Check :: () -> s32 {
     if AppHostStart(*untrusted, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 627 }
     unused AppHostStop(*untrusted)
     trusting: AppHost
+    earlier: [4]string = .[
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "2222222222222222222222222222222222222222222222222222222222222222",
+    "3333333333333333333333333333333333333333333333333333333333333333",
+    "4444444444444444444444444444444444444444444444444444444444444444"]
+    for previous: earlier {
+        if !AppHostTrustHarness(*trusting, previous) { return 630 }
+    }
     if !AppHostTrustHarness(*trusting, harness_digest) || AppHostTrustHarness(*trusting, "not a digest") ||
+    AppHostTrustHarness(*trusting, newer) || !AppHostTrustHarness(*trusting, earlier[0]) ||
     !AppHostStart(*trusting, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 628 }
     if !AppHostStop(*trusting) { return 629 }
     return NativeControllerCheck()

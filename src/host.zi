@@ -28,6 +28,7 @@ using WidgetKind;
 
 APP_NODE_ROUTE :: 6
 APP_HOST_BYTE_LIMIT :: 67108864
+APP_HOST_PREVIOUS_CONTROLLERS :: 5
 
 AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) -> bool;
 AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function: *u8,
@@ -56,7 +57,7 @@ AppHost :: struct {
     harness_sha256: [65]u8
     // Earlier shared controllers the platform still trusts, so collections
     // published with one keep opening after the controller changes.
-    harness_previous: [4][65]u8
+    harness_previous: [APP_HOST_PREVIOUS_CONTROLLERS][65]u8
     locale: [16]u8
     retired: *AppRuntime
     retired_bytes: s64
@@ -308,7 +309,7 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
     resource := HostedAppAsset(AppContextRuntime(*runtime.app), harness)
     if !resource.found { return false }
     trusted := AppHostAssetMatches(node, harness, resource.data, TextUntilNul(host.harness_sha256[:]))
-    for index: 0..3 {
+    for index: 0..APP_HOST_PREVIOUS_CONTROLLERS - 1 {
         previous := TextUntilNul(host.harness_previous[index][:])
         trusted = trusted || (previous != "" && AppHostAssetMatches(node, harness, resource.data, previous))
     }
@@ -532,10 +533,10 @@ AppHostOpenEffect :: (context: *void, account: string, locator: *AppLocator, req
 
 // Trusts an earlier shared controller as well as the current one, for
 // collections published before the controller changed. Call before
-// AppHostStart; at most four are kept.
+// AppHostStart; only explicitly reviewed controller digests are accepted.
 AppHostTrustHarness :: (host: *AppHost, digest: string) -> bool {
     if !AppDigestValid(digest) { return false }
-    for index: 0..3 {
+    for index: 0..APP_HOST_PREVIOUS_CONTROLLERS - 1 {
         if TextUntilNul(host.harness_previous[index][:]) == digest { return true }
         if host.harness_previous[index][0] == 0 {
             return CopyCString(digest, host.harness_previous[index][:])
