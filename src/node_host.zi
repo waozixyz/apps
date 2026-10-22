@@ -212,9 +212,19 @@ NodeAssetsValid :: (node: *NodeContext, id: string, expected_id: string) -> bool
 }
 
 NodeOpen :: (node: *NodeContext, bytes: string, id: string, expected_id: string) -> bool {
-    if node.app == null || !CopyCString(id, node.id[:]) || !CopyCString(expected_id, node.name[:]) ||
-    !HostedAppOpen(node.app, bytes) || !NodeAssetsValid(node, id, expected_id) ||
-    !HostedAppStart(node.app, NodeAllows, NodeCall, cast(*void)node) { return false }
+    if node.app == null || !CopyCString(id, node.id[:]) || !CopyCString(expected_id, node.name[:]) {
+        return false
+    }
+    return HostedAppOpen(node.app, bytes) && NodeStart(node, id, expected_id)
+}
+
+// Bind and identify a program already opened by the portable verifier.
+NodeStart :: (node: *NodeContext, id: string, expected_id: string) -> bool {
+    if node.app == null || node.app.bundle == null || !CopyCString(id, node.id[:]) ||
+    !CopyCString(expected_id, node.name[:]) || !NodeAssetsValid(node, id, expected_id) ||
+    !HostedAppStart(node.app, NodeAllows, NodeCall, cast(*void)node) {
+        return false
+    }
     node.identifying = true
     answer: s64
     identified := HostedAppRun(node.app, *answer) && answer == MODULE_NODE_APP

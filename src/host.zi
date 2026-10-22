@@ -22,6 +22,7 @@ Node :: #import "node_types";
 #import, file "protocol.zi";
 #import, file "catalog.zi";
 #import, file "tree.zi";
+#import, file "preparation.zi";
 
 using HostValueKind;
 using WidgetKind;
@@ -61,6 +62,14 @@ AppHost :: struct {
     locale: [16]u8
     retired: *AppRuntime
     retired_bytes: s64
+    // One queued child borrows its parent's immutable packed bytes. A
+    // canceled job keeps that runtime alive until its worker is finished.
+    preparation: *AppPreparation
+    preparation_owner: *AppRuntime
+    preparation_parent: AppHandle
+    preparation_sequence: s64
+    preparation_epoch: s64
+    preparation_canceled: bool
 }
 
 AppRuntime :: struct {
@@ -263,7 +272,8 @@ AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostV
 }
 
 AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: string,
-    controller: bool = false, protocol: s32 = APPS_CONTEXT_PROTOCOL) -> *AppRuntime {
+    controller: bool = false, protocol: s32 = APPS_CONTEXT_PROTOCOL,
+    preparation: *AppPreparation = null) -> *AppRuntime {
     runtime := New(AppRuntime)
     if runtime == null { return null }
     runtime.host = host
@@ -275,6 +285,24 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     runtime.app.services = AppHostCall
     runtime.app.widgets = AppHostWidgets
     runtime.app.expected_id = expected_id
+    opened := AppContextRuntime(*runtime.app)
+    if preparation != null {
+        if controller {
+            owner := cast(*AppRuntime)node.runtime
+            if owner == null {
+                free(runtime)
+                return null
+            }
+            opened.bundle = AppPreparationTakeController(preparation, AppContextRuntime(*owner.app).bundle,
+                TextUntilNul(node.catalog.harness[:]), bytes.count)
+        } else {
+            opened.bundle = AppPreparationTakeRoot(preparation)
+        }
+        if opened.bundle == null {
+            free(runtime)
+            return null
+        }
+    }
     ready: bool
     if protocol == APPS_NODE_PROTOCOL {
         runtime.legacy.app = AppContextRuntime(*runtime.app)
@@ -282,8 +310,16 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
         runtime.legacy.allows = AppHostAllows
         runtime.legacy.services = AppHostCall
         runtime.legacy.widgets = AppHostWidgets
-        ready = NodeOpen(*runtime.legacy, bytes, TextUntilNul(node.identity.id[:]), expected_id)
-    } else { ready = AppContextOpen(*runtime.app, bytes) }
+        if preparation != null {
+            ready = NodeStart(*runtime.legacy, TextUntilNul(node.identity.id[:]), expected_id)
+        } else {
+            ready = NodeOpen(*runtime.legacy, bytes, TextUntilNul(node.identity.id[:]), expected_id)
+        }
+    } else if preparation != null {
+        ready = AppContextRestart(*runtime.app)
+    } else {
+        ready = AppContextOpen(*runtime.app, bytes)
+    }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
         free(runtime)
@@ -292,7 +328,8 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     return runtime
 }
 
-AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> bool {
+AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime,
+    preparation: *AppPreparation = null) -> bool {
     if !node.collection { return true }
     item := node.catalog.children
     while item != null {
@@ -308,15 +345,32 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime) -> b
     harness := TextUntilNul(node.catalog.harness[:])
     resource := HostedAppAsset(AppContextRuntime(*runtime.app), harness)
     if !resource.found { return false }
-    trusted := AppHostAssetMatches(node, harness, resource.data, TextUntilNul(host.harness_sha256[:]))
+    digest := TextUntilNul(host.harness_sha256[:])
+    trusted: bool
+    if preparation != null {
+        if preparation.taken_bundle != AppContextRuntime(*runtime.app).bundle ||
+        TextUntilNul(preparation.controller_path[:]) != harness ||
+        preparation.controller_bytes != resource.data.count {
+            return false
+        }
+        digest = TextUntilNul(preparation.controller_digest[:])
+        trusted = digest == TextUntilNul(host.harness_sha256[:])
+    } else {
+        trusted = AppHostAssetMatches(node, harness, resource.data, digest)
+    }
     for index: 0..APP_HOST_PREVIOUS_CONTROLLERS - 1 {
         previous := TextUntilNul(host.harness_previous[index][:])
-        trusted = trusted || (previous != "" && AppHostAssetMatches(node, harness, resource.data, previous))
+        if preparation != null {
+            trusted = trusted || (previous != "" && digest == previous)
+        } else {
+            trusted = trusted || (previous != "" && AppHostAssetMatches(node, harness, resource.data, previous))
+        }
     }
     if !trusted { return false }
     limit := ifx host.tree.byte_limit > 0 then host.tree.byte_limit else APP_HOST_BYTE_LIMIT
     if resource.data.count + 65536 > limit - host.tree.bytes - host.retired_bytes - node.bytes { return false }
-    runtime.frontend = AppHostRuntime(host, node, resource.data, "apps", true)
+    runtime.frontend = AppHostRuntime(host, node, resource.data, "apps", true,
+        APPS_CONTEXT_PROTOCOL, preparation)
     if runtime.frontend == null { return false }
     node.bytes += resource.data.count + 65536
     return true
@@ -332,19 +386,117 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
     return HostedAppAsset(AppContextRuntime(*runtime.app), path)
 }
 
+AppHostPreparationCurrent :: (host: *AppHost) -> bool {
+    if host.preparation == null || host.preparation_canceled ||
+    host.preparation_epoch != host.tree.account_epoch ||
+    !AppHandleEqual(host.preparation_parent, host.tree.active) ||
+    AppTreeNode(*host.tree, host.preparation_parent) == null {
+        return false
+    }
+    for index: cast(s64)0..host.tree.pending.count - 1 {
+        pending := host.tree.pending[index]
+        if pending.reply.request == host.preparation_sequence {
+            return !pending.complete && pending.account_epoch == host.tree.account_epoch &&
+            AppHandleEqual(pending.caller, host.preparation_parent)
+        }
+    }
+    return false
+}
+
+AppHostClearPreparation :: (host: *AppHost) -> bool {
+    if !AppPreparationClose(host.preparation) {
+        return false
+    }
+    host.preparation = null
+    host.preparation_owner = null
+    host.preparation_parent = AppHandle.{}
+    host.preparation_sequence = 0
+    host.preparation_epoch = 0
+    host.preparation_canceled = false
+    return true
+}
+
+AppHostCollectPreparation :: (host: *AppHost) {
+    if host.preparation != null && !AppHostPreparationCurrent(host) {
+        host.preparation_canceled = true
+        unused AppHostClearPreparation(host)
+    }
+}
+
+// One queued child at a time owns a worker. Its parent runtime stays alive
+// until that worker has stopped borrowing the packed bytes, even after Back
+// retires the parent. Only this boundary touches the shared asset index.
+AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> s32 {
+    host := cast(*AppHost)context
+    AppHostCollectPreparation(host)
+    if host.preparation != null {
+        if host.preparation_sequence != sequence || host.preparation_canceled {
+            return 0
+        }
+        if !AppPreparationReady(host.preparation) {
+            return 0
+        }
+        if !host.preparation.valid {
+            unused AppHostClearPreparation(host)
+            return -1
+        }
+        return 1
+    }
+    owner := cast(*AppRuntime)parent.runtime
+    if owner == null {
+        return -1
+    }
+    resource := HostedAppAsset(AppContextRuntime(*owner.app), TextUntilNul(entry.bundle[:]))
+    charge := resource.data.count + 65536 + cast(s64)size_of(AppNode)
+    if !resource.found || charge > host.tree.byte_limit - host.tree.bytes - host.retired_bytes {
+        return -1
+    }
+    preparation := AppPrepare(resource.data, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]),
+        host.tree.byte_limit - host.tree.bytes - host.retired_bytes)
+    if preparation == null {
+        return -1
+    }
+    host.preparation = preparation
+    host.preparation_owner = owner
+    host.preparation_parent = host.tree.active
+    host.preparation_sequence = sequence
+    host.preparation_epoch = host.tree.account_epoch
+    return 0
+}
+
 AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
     host := cast(*AppHost)context
     parent_runtime := cast(*AppRuntime)parent.runtime
     bundle := TextUntilNul(entry.bundle[:])
     resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), bundle)
-    if !resource.found || !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:])) { return false }
+    preparation: *AppPreparation
+    if host.preparation != null && host.preparation_owner == parent_runtime &&
+    AppPreparationReady(host.preparation) && host.preparation.valid && !host.preparation_canceled {
+        expected := cast(*TextDescriptor)(*host.preparation.bytes)
+        actual := cast(*TextDescriptor)(*resource.data)
+        if expected.data == actual.data && host.preparation.bytes.count == resource.data.count &&
+        TextUntilNul(host.preparation.digest[:]) == TextUntilNul(entry.sha256[:]) &&
+        TextUntilNul(host.preparation.id[:]) == TextUntilNul(entry.id[:]) {
+            preparation = host.preparation
+        }
+    }
+    if host.preparation != null && preparation == null {
+        return false
+    }
+    defer {
+        if preparation != null {
+            unused AppHostClearPreparation(host)
+        }
+    }
+    if !resource.found || (preparation == null &&
+        !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:]))) { return false }
     if resource.data.count + 65536 + cast(s64)size_of(AppNode) > host.tree.byte_limit - host.tree.bytes - host.retired_bytes { return false }
     if entry.protocol != APPS_CONTEXT_PROTOCOL && entry.protocol != APPS_COLLECTION_PROTOCOL &&
     entry.protocol != APPS_NODE_PROTOCOL { return false }
     candidate.identity.authority = parent.identity.authority
     candidate.identity.id = entry.id
     candidate.entry = entry.*
-    runtime := AppHostRuntime(host, candidate, resource.data, TextUntilNul(candidate.entry.expected_id[:]), false, entry.protocol)
+    runtime := AppHostRuntime(host, candidate, resource.data, TextUntilNul(candidate.entry.expected_id[:]), false, entry.protocol, preparation)
     if runtime == null { return false }
     candidate.runtime = cast(*void)runtime
     // Charge a conservative fixed amount for the native context as well as
@@ -355,7 +507,7 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
         manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
         if !manifest.found || !AppCatalogRead(manifest.data, TextUntilNul(candidate.identity.id[:]), *candidate.catalog) { return false }
     }
-    return AppHostController(host, candidate, runtime)
+    return AppHostController(host, candidate, runtime, preparation)
 }
 
 AppHostActiveRuntime :: (host: *AppHost) -> *AppRuntime {
@@ -496,10 +648,18 @@ AppHostClose :: (context: *void, node: *AppNode) {
 // Call only after the root renderer has consumed its frame. Closing a routed
 // VM does not prove that submitted images/text stopped borrowing its storage.
 AppHostCollect :: (host: *AppHost) {
+    AppHostCollectPreparation(host)
     runtime := host.retired
     host.retired = null
+    retained: *AppRuntime
     while runtime != null {
         next := runtime.next_retired
+        if host.preparation != null && host.preparation_owner == runtime {
+            runtime.next_retired = retained
+            retained = runtime
+            runtime = next
+            continue
+        }
         host.retired_bytes -= runtime.byte_charge
         if runtime.frontend != null {
             HostedAppClose(AppContextRuntime(*runtime.frontend.app))
@@ -511,6 +671,7 @@ AppHostCollect :: (host: *AppHost) {
         free(runtime)
         runtime = next
     }
+    host.retired = retained
 }
 
 AppHostVersionEffect :: (context: *void, account: string, locator: *AppLocator, request: *AppsRequest, reply: *AppsReply) -> bool {
@@ -552,8 +713,21 @@ AppHostTrustHarness :: (host: *AppHost, digest: string) -> bool {
 AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     expected_id: string, digest: string, account: string, platform: AppPlatform,
     harness_digest: string = "", locale: string = "en", protocol: s32 = APPS_CONTEXT_PROTOCOL,
-    verified: bool = false) -> bool {
-    if host.tree.nodes.count != 0 || authority == "" || authority.count >= 256 || !Rules.AppIdValid(id) || !Rules.AppIdValid(expected_id) ||
+    verified: bool = false, preparation: *AppPreparation = null) -> bool {
+    if preparation != null {
+        if !AppPreparationReady(preparation) || !preparation.valid ||
+        preparation.bundle == null || TextUntilNul(preparation.digest[:]) != digest ||
+        TextUntilNul(preparation.id[:]) != id || preparation.bytes.count != bytes.count {
+            return false
+        }
+        source := cast(*TextDescriptor)(*bytes)
+        prepared_source := cast(*TextDescriptor)(*preparation.bytes)
+        if source.data != prepared_source.data {
+            return false
+        }
+        verified = true
+    }
+    if host.tree.nodes.count != 0 || host.preparation != null || authority == "" || authority.count >= 256 || !Rules.AppIdValid(id) || !Rules.AppIdValid(expected_id) ||
     bytes.count + 65536 + cast(s64)size_of(AppNode) > APP_HOST_BYTE_LIMIT ||
     !AppDigestValid(digest) || (!verified && !AppHostBytesMatch(bytes, digest)) { return false }
     root := New(AppNode)
@@ -568,7 +742,7 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
         free(root); return false
     }
     root.entry.protocol = protocol
-    runtime := AppHostRuntime(host, root, bytes, TextUntilNul(root.entry.expected_id[:]), false, protocol)
+    runtime := AppHostRuntime(host, root, bytes, TextUntilNul(root.entry.expected_id[:]), false, protocol, preparation)
     if runtime == null { free(root); return false }
     root.runtime = cast(*void)runtime
     root.bytes = bytes.count + 65536 + cast(s64)size_of(AppNode)
@@ -578,7 +752,8 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
         .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}
     if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
     if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
-    if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime))) ||
+    if preparation != null { provider.prepare = AppHostPrepareChild }
+    if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime, preparation))) ||
     !AppTreeStart(*host.tree, root, account, provider) {
         AppHostClose(cast(*void)host, root)
         AppCatalogClear(*root.catalog)
@@ -589,7 +764,33 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     return true
 }
 
+// Preparation performs IO-independent hashing and portable verification only.
+// This frame-boundary call still enforces the host's authority, controller
+// trust, byte limit, capabilities and identity handshake. A successful start
+// owns the opened programs; close the ready preparation record afterwards.
+// Queued child requests then prepare on workers too. Direct tree open/locator
+// calls retain their synchronous contract; use queued requests for frame work.
+AppHostStartPrepared :: (host: *AppHost, preparation: *AppPreparation,
+    authority: string, id: string, expected_id: string, account: string,
+    platform: AppPlatform, harness_digest: string = "", locale: string = "en",
+    protocol: s32 = APPS_CONTEXT_PROTOCOL) -> bool {
+    if preparation == null {
+        return false
+    }
+    return AppHostStart(host, preparation.bytes, authority, id, expected_id,
+        TextUntilNul(preparation.digest[:]), account, platform, harness_digest,
+        locale, protocol, false, preparation)
+}
+
 AppHostStop :: (host: *AppHost) -> bool {
+    // Like a failed save, an unfinished preparation leaves the whole tree
+    // alive. The owner retains this host and retries; no frame waits here.
+    if host.preparation != null {
+        host.preparation_canceled = true
+        if !AppHostClearPreparation(host) {
+            return false
+        }
+    }
     if !AppTreeClose(*host.tree) { return false }
     AppHostCollect(host)
     AppFileFree(host.reply)

@@ -1,0 +1,179 @@
+// Read and verify portable programs before a frame boundary. Source bytes are
+// borrowed until Ready reports completion; a preparation owns its opened
+// bundles until the host takes them or Close succeeds. No guest code, platform
+// callback or shared HostedApp asset index runs on the worker.
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "crypto/sha256"
+#import, file "protocol.zi";
+#import, file "catalog.zi";
+#import, file "tree.zi";
+
+APP_PREPARATION_BYTE_LIMIT :: 67108864
+APP_PREPARATION_THREADS :: !#defined(PLATFORM_WEB) && !#defined(_WIN32)
+#if APP_PREPARATION_THREADS {
+    #import "std/thread_linux"
+}
+
+AppPreparation :: struct {
+    bytes: string
+    digest: [65]u8
+    id: [128]u8
+    byte_limit: s64
+    bundle: *void
+    taken_bundle: *void
+    controller: *void
+    controller_path: [512]u8
+    controller_digest: [65]u8
+    controller_bytes: s64
+    ready: bool
+    valid: bool
+    #if APP_PREPARATION_THREADS {
+        thread: Thread
+    }
+}
+
+preparation_c :: #system_library "c";
+AppPreparationAllocate :: (size: usize) -> *void #foreign preparation_c "malloc";
+AppPreparationFree :: (memory: *void) #foreign preparation_c "free";
+
+AppPreparationAsset :: (bundle: *void, path: string) -> string {
+    count := BundleAssets(bundle)
+    index: u64 = 0
+    while index < count {
+        if TextFromCString(BundleAssetPath(bundle, index)) == path {
+            return TextFromBytes(BytesFromPointer(BundleAssetBytes(bundle, index), BundleAssetLength(bundle, index)))
+        }
+        index += 1
+    }
+    return ""
+}
+
+AppPreparationHash :: (bytes: string, output: []u8) {
+    descriptor := cast(*TextDescriptor)(*bytes)
+    Sha256Hex(descriptor.data, bytes.count, *output[0])
+}
+
+AppPreparationOpen :: (bytes: string) -> *void {
+    descriptor := cast(*TextDescriptor)(*bytes)
+    return OpenBundleBytes(descriptor.data, cast(u64)bytes.count)
+}
+
+AppPreparationRun :: (argument: *void) {
+    preparation := cast(*AppPreparation)argument
+    actual: [65]u8
+    AppPreparationHash(preparation.bytes, actual[:])
+    if TextUntilNul(actual[:]) != TextUntilNul(preparation.digest[:]) {
+        return
+    }
+    preparation.bundle = AppPreparationOpen(preparation.bytes)
+    if preparation.bundle == null {
+        return
+    }
+    manifest := AppPreparationAsset(preparation.bundle, APPS_CATALOG_ASSET)
+    if manifest.count == 0 {
+        preparation.valid = true
+        return
+    }
+    catalog: AppCatalog
+    defer {
+        AppCatalogClear(*catalog)
+    }
+    if !AppCatalogRead(manifest, TextUntilNul(preparation.id[:]), *catalog) ||
+    !CopyCString(TextUntilNul(catalog.harness[:]), preparation.controller_path[:]) {
+        return
+    }
+    controller := AppPreparationAsset(preparation.bundle, TextUntilNul(preparation.controller_path[:]))
+    charge := preparation.bytes.count + 131072 + cast(s64)size_of(AppNode)
+    if controller.count == 0 || controller.count > preparation.byte_limit - charge {
+        return
+    }
+    AppPreparationHash(controller, preparation.controller_digest[:])
+    preparation.controller_bytes = controller.count
+    preparation.controller = AppPreparationOpen(controller)
+    preparation.valid = preparation.controller != null
+}
+
+// The caller retains immutable source bytes until Ready, even after deciding
+// to cancel. One preparation checks a root and its optional collection
+// controller. The host still authorizes that controller before instantiation.
+AppPrepare :: (bytes: string, digest: string, id: string,
+    byte_limit: s64 = APP_PREPARATION_BYTE_LIMIT) -> *AppPreparation {
+    if byte_limit < 0 || byte_limit > APP_PREPARATION_BYTE_LIMIT ||
+    bytes.count < 8 || bytes.count > byte_limit - 65536 - cast(s64)size_of(AppNode) ||
+    !AppDigestValid(digest) || !AppIdValid(id) {
+        return null
+    }
+    preparation := cast(*AppPreparation)AppPreparationAllocate(size_of(AppPreparation))
+    if preparation == null {
+        return null
+    }
+    preparation.* = AppPreparation.{}
+    preparation.bytes = bytes
+    preparation.byte_limit = byte_limit
+    unused CopyCString(digest, preparation.digest[:])
+    unused CopyCString(id, preparation.id[:])
+    #if APP_PREPARATION_THREADS {
+        procedure: ThreadProcedure = AppPreparationRun
+        if !ThreadStart(*preparation.thread, procedure, cast(*void)preparation) {
+            AppPreparationFree(cast(*void)preparation)
+            return null
+        }
+    } else {
+        AppPreparationRun(cast(*void)preparation)
+        preparation.ready = true
+    }
+    return preparation
+}
+
+AppPreparationReady :: (preparation: *AppPreparation) -> bool {
+    if preparation == null {
+        return false
+    }
+    #if APP_PREPARATION_THREADS {
+        if !preparation.ready {
+            preparation.ready = !ThreadRunning(*preparation.thread) || ThreadFinished(*preparation.thread)
+        }
+    }
+    return preparation.ready
+}
+
+// These transfers are used by the host at a frame boundary, after Ready.
+// Recording the root binds the prepared controller to that exact owner.
+AppPreparationTakeRoot :: (preparation: *AppPreparation) -> *void {
+    if !AppPreparationReady(preparation) || !preparation.valid || preparation.bundle == null {
+        return null
+    }
+    bundle := preparation.bundle
+    preparation.taken_bundle = bundle
+    preparation.bundle = null
+    return bundle
+}
+
+AppPreparationTakeController :: (preparation: *AppPreparation, root: *void,
+    path: string, size: s64) -> *void {
+    if !AppPreparationReady(preparation) || !preparation.valid || root != preparation.taken_bundle ||
+    path != TextUntilNul(preparation.controller_path[:]) || size != preparation.controller_bytes {
+        return null
+    }
+    bundle := preparation.controller
+    preparation.controller = null
+    return bundle
+}
+
+// Cancellation is a poll, never a join of an unfinished worker. False means
+// the caller must retain this record and its source bytes and poll again.
+AppPreparationClose :: (preparation: *AppPreparation) -> bool {
+    if preparation == null {
+        return true
+    }
+    if !AppPreparationReady(preparation) {
+        return false
+    }
+    CloseBundle(preparation.bundle)
+    CloseBundle(preparation.controller)
+    AppPreparationFree(cast(*void)preparation)
+    return true
+}

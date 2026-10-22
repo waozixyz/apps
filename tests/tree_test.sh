@@ -4,8 +4,8 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 ziran=${1:-ziran}
 runtime=${2:?pass the intended toolchain runtime library}
 toolchain=$("$ziran" pkg path ziran)
-work="$root/build/tree-test"
-unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS
+work=${APPS_TREE_TEST_OUTPUT:-"$root/build/tree-test"}
+unset DISPLAY WAYLAND_DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER
 mkdir -p "$work/c"
 "$ziran" build --target=c --no-main --entry tree_behavior:Check --root "$root/tests" \
     --module-path "$toolchain/std" -o "$work/c" "$root/tests/tree_behavior.zi"

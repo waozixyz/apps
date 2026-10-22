@@ -4,13 +4,14 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import struct
 import subprocess
 import sys
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-WORK = ROOT / 'build/native-test'
+WORK = Path(os.environ.get('APPS_TEST_OUTPUT', ROOT / 'build/native-test')).resolve()
 ZIRAN = str(ROOT / 'scripts/ziran.sh')
 LOCK_FLAGS = [] if (ROOT / 'ziran.local.toml').exists() else ['--locked']
 
@@ -60,7 +61,7 @@ def stage(name, identifier, entries, payloads, controller):
 def main():
     if len(sys.argv) not in (2, 3):
         raise SystemExit('Pass exact libziran.a and optionally a retained Chess node/2 bundle')
-    for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS'):
+    for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS', 'SESSION_MANAGER'):
         os.environ.pop(key, None)
     WORK.mkdir(parents=True, exist_ok=True)
     leaf, middle, root = [WORK / (name + '.zib') for name in ('counter', 'middle', 'root')]
@@ -122,11 +123,19 @@ def main():
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran', *LOCK_FLAGS], cwd=ROOT, text=True).strip())
     includes = [argument for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for argument in ('-iquote', str(path))]
     run(os.environ.get('CC', 'cc'), '-std=c11', '-O2', '-ffunction-sections', '-fdata-sections', '-I' + str(toolchain / 'include'),
-        *includes, *map(str, sorted(output.rglob('*.c'))), sys.argv[1], '-Wl,--gc-sections', '-lm', '-lpthread', '-o', str(WORK / 'test'))
+        *shlex.split(os.environ.get('CFLAGS', '')),
+        *includes, *map(str, sorted(output.rglob('*.c'))), str(ROOT / 'tests/preparation_host.c'),
+        sys.argv[1], '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
+        '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
+        '-lm', '-lpthread', '-o', str(WORK / 'test'))
     os.environ['APPS_FIXTURE_UI_BUNDLE'] = str(controller)
     os.environ['APPS_FIXTURE_ROOT_BUNDLE'] = str(root)
     os.environ['APPS_FIXTURE_ROOT_SHA256'] = digest(root)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = digest(controller)
+    os.environ['APPS_FIXTURE_NODE_BUNDLE'] = str(node)
+    os.environ['APPS_FIXTURE_NODE_SHA256'] = digest(node)
+    os.environ['APPS_FIXTURE_COUNTER_BUNDLE'] = str(leaf)
+    os.environ['APPS_FIXTURE_COUNTER_SHA256'] = digest(leaf)
     result = subprocess.run([str(WORK / 'test')], cwd=ROOT, text=True, capture_output=True)
     # The final wrong-identity test deliberately trips the VM's foreign-call
     # gate. Keep that expected diagnostic without presenting it as a failure.
@@ -135,7 +144,7 @@ def main():
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         result.check_returncode()
-    print('Apps native: screenshot/icon cards, hosted menus, update dot and seen offer, properties rename/icon, explicit update/rollback targets, 12 locales, native controller, nested node/2, resource bounds and stable locators passed')
+    print('Apps native: asynchronous root/child preparation, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
 
 
 if __name__ == '__main__':

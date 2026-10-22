@@ -35,6 +35,10 @@ AppNode :: struct {
 // provenance, enforce capabilities/protocol, and complete expected_id's
 // handshake before publishing this candidate. It owns returned bundle bytes.
 AppProviderOpen :: #type (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool;
+// Optional preparation before save/open: 0 keeps the request queued, 1 is
+// ready, and any other result rejects it. No navigation or effects run while
+// preparation is pending. The sequence identifies the exact queued request.
+AppProviderPrepare :: #type (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> s32;
 AppProviderSave :: #type (context: *void, node: *AppNode) -> bool;
 AppProviderClose :: #type (context: *void, node: *AppNode) -> void;
 // Effects are atomic in account storage. Uninstall preserves saved records
@@ -64,6 +68,7 @@ AppProviderOpenEffect :: #type (context: *void, account: string, locator: *AppLo
 AppProvider :: struct {
     context: *void
     open: AppProviderOpen
+    prepare: AppProviderPrepare
     save: AppProviderSave
     close: AppProviderClose
     effect: AppProviderEffect
@@ -292,15 +297,36 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
     for index: cast(s64)0..tree.pending.count - 1 {
         pending := *tree.pending[index]
         if pending.complete { continue }
-        pending.complete = true
         sequence := pending.reply.request
         caller := pending.caller
         node := AppTreeNode(tree, caller)
         if node == null || pending.account_epoch != tree.account_epoch || !AppHandleEqual(caller, tree.active) {
+            pending.complete = true
             pending.reply = AppRejected("stale caller")
             pending.reply.request = sequence
             continue
         }
+        if tree.provider.prepare != null && pending.request.operation != APPS_BACK {
+            at := AppCatalogFind(*node.catalog, TextUntilNul(pending.request.id[:]))
+            if at < 0 {
+                pending.complete = true
+                pending.reply = AppRejected("child unavailable")
+                pending.reply.request = sequence
+                continue
+            }
+            entry := AppCatalogAt(*node.catalog, at).*
+            prepared := tree.provider.prepare(tree.provider.context, node, *entry, sequence)
+            if prepared == 0 {
+                continue
+            }
+            if prepared != 1 {
+                pending.complete = true
+                pending.reply = AppRejected("child verification failed")
+                pending.reply.request = sequence
+                continue
+            }
+        }
+        pending.complete = true
         if !tree.provider.save(tree.provider.context, node) {
             pending.reply = AppRejected("save failed")
             pending.reply.request = sequence
