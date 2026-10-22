@@ -808,6 +808,166 @@ PreparationCheck :: (bytes: string, digest: string, harness_digest: string,
     return 0
 }
 
+// Native discovery must leave rendering and queued navigation responsive.
+PreparationChildWait :: (host: *AppHost, parent: AppHandle, id: string, output: *AppHandle) -> s32 {
+    end := PreparationTestNow() + 10.0
+    result: s32 = 0
+    while result == 0 && PreparationTestNow() < end {
+        result = AppHostOpenChild(host, parent, id, output)
+        AppHostCollect(host)
+        PreparationTestYield()
+    }
+    return result
+}
+
+PreparationChildCheck :: (bytes: string, digest: string, harness_digest: string,
+    platform: AppPlatform) -> s32 {
+    live := PreparationTestLive()
+    host: AppHost
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest,
+        "account-a", platform, harness_digest) {
+        return 750
+    }
+    root := host.tree.active
+    frame_opens := PreparationTestFrameOpens()
+    child: AppHandle
+    if AppHostOpenChild(*host, root, "missing", *child) != -1 || child.slot != -1 {
+        return 751
+    }
+    host.tree.busy = true
+    if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 {
+        return 752
+    }
+    host.tree.busy = false
+    PreparationTestBlock(true)
+    if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 || !PreparationParserWait() {
+        PreparationTestBlock(false)
+        return 753
+    }
+    started := PreparationTestNow()
+    for frame: cast(s32)0..99 {
+        if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 ||
+        !AppHandleEqual(root, host.tree.active) || child.slot != -1 {
+            PreparationTestBlock(false)
+            return 754
+        }
+    }
+    if PreparationTestNow() - started > 0.05 || !Draw(*host, 800, 600) || !Draw(*host, 360, 640) {
+        PreparationTestBlock(false)
+        return 755
+    }
+    // Discovery never saves or runs an install/open effect.
+    flush_failed = true
+    effects := effect_calls
+    opens := host_open_calls
+    PreparationTestBlock(false)
+    if PreparationChildWait(*host, root, "fixture.middle", *child) != 1 ||
+    !AppHandleEqual(root, host.tree.active) || effect_calls != effects || host_open_calls != opens {
+        return 756
+    }
+    flush_failed = false
+    middle := child
+    if PreparationChildWait(*host, middle, "fixture.counter", *child) != 1 ||
+    !AppHandleEqual(root, host.tree.active) {
+        return 757
+    }
+    node := AppTreeNode(*host.tree, child)
+    if node == null || TextUntilNul(node.identity.id[:]) != "fixture.counter" ||
+    TextUntilNul(node.identity.authority[:]) != "fixture.test" {
+        return 758
+    }
+    AppTreeDrop(*host.tree, child)
+    AppTreeDrop(*host.tree, middle)
+    AppHostCollect(*host)
+
+    // A native scan cannot hold up a queued user request. Its unfinished
+    // worker stays owned until completion, then the queued request prepares.
+    PreparationTestBlock(true)
+    if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 || !PreparationParserWait() ||
+    !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.middle\"}") ||
+    host.preparation == null || !host.preparation_canceled || !AppHandleEqual(root, host.tree.active) {
+        PreparationTestBlock(false)
+        return 759
+    }
+    PreparationTestBlock(false)
+    if !PreparationNavigationWait(*host, root) {
+        return 760
+    }
+    middle = host.tree.active
+    PreparationTestBlock(true)
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") || !PreparationParserWait() {
+        PreparationTestBlock(false)
+        return 761
+    }
+    // A background scan neither replaces nor cancels queued navigation.
+    AppHostCancelChild(*host)
+    if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 ||
+    host.preparation_sequence == 0 || host.preparation_canceled {
+        PreparationTestBlock(false)
+        return 762
+    }
+    PreparationTestBlock(false)
+    if !PreparationNavigationWait(*host, middle) || AppHostBack(*host) != 1 {
+        return 763
+    }
+    AppHostCollect(*host)
+    middle = host.tree.active
+
+    // Back retires a scanned parent but must keep its borrowed bytes alive.
+    PreparationTestBlock(true)
+    if AppHostOpenChild(*host, middle, "fixture.counter", *child) != 0 || !PreparationParserWait() ||
+    AppHostBack(*host) != 1 || !AppHandleEqual(root, host.tree.active) {
+        PreparationTestBlock(false)
+        return 764
+    }
+    AppHostCollect(*host)
+    if host.preparation == null || host.retired == null || !Draw(*host, 360, 640) {
+        PreparationTestBlock(false)
+        return 765
+    }
+    PreparationTestBlock(false)
+    end := PreparationTestNow() + 10.0
+    while host.preparation != null && PreparationTestNow() < end {
+        AppHostCollect(*host)
+        PreparationTestYield()
+    }
+    if host.preparation != null || host.retired != null {
+        return 766
+    }
+
+    declared := AppCatalogAt(*AppTreeNode(*host.tree, root).catalog, 0)
+    correct := declared.sha256
+    declared.sha256[0] = ifx declared.sha256[0] == #char "0" then #char "1" else #char "0"
+    if PreparationChildWait(*host, root, "fixture.middle", *child) != -1 ||
+    !AppHandleEqual(root, host.tree.active) || child.slot != -1 {
+        return 767
+    }
+    declared.sha256 = correct
+
+    // Cancel is a nonblocking poll; subsequent collection releases the job.
+    PreparationTestBlock(true)
+    if AppHostOpenChild(*host, root, "fixture.middle", *child) != 0 || !PreparationParserWait() {
+        PreparationTestBlock(false)
+        return 768
+    }
+    AppHostCancelChild(*host)
+    if host.preparation == null || !host.preparation_canceled || !Draw(*host, 800, 600) {
+        PreparationTestBlock(false)
+        return 769
+    }
+    PreparationTestBlock(false)
+    end = PreparationTestNow() + 10.0
+    while host.preparation != null && PreparationTestNow() < end {
+        AppHostCollect(*host)
+        PreparationTestYield()
+    }
+    if host.preparation != null || !AppHostStop(*host) ||
+    PreparationTestLive() != live || PreparationTestFrameOpens() != frame_opens {
+        return 770
+    }
+    return 0
+}
+
 #program_export
 Check :: () -> s32 {
     PreparationTestBegin()
@@ -825,6 +985,10 @@ Check :: () -> s32 {
     navigation := PreparationNavigationCheck(bytes, digest, harness_digest, platform)
     if navigation != 0 {
         return navigation
+    }
+    discovery := PreparationChildCheck(bytes, digest, harness_digest, platform)
+    if discovery != 0 {
+        return discovery
     }
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
     root := AppTreeNode(*host.tree, host.tree.active)

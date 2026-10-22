@@ -62,7 +62,7 @@ AppHost :: struct {
     locale: [16]u8
     retired: *AppRuntime
     retired_bytes: s64
-    // One queued child borrows its parent's immutable packed bytes. A
+    // One child borrows its parent's immutable packed bytes. A
     // canceled job keeps that runtime alive until its worker is finished.
     preparation: *AppPreparation
     preparation_owner: *AppRuntime
@@ -388,9 +388,20 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
 
 AppHostPreparationCurrent :: (host: *AppHost) -> bool {
     if host.preparation == null || host.preparation_canceled ||
-    host.preparation_epoch != host.tree.account_epoch ||
-    !AppHandleEqual(host.preparation_parent, host.tree.active) ||
-    AppTreeNode(*host.tree, host.preparation_parent) == null {
+    host.preparation_epoch != host.tree.account_epoch {
+        return false
+    }
+    parent := AppTreeNode(*host.tree, host.preparation_parent)
+    if parent == null || host.preparation_owner == null ||
+    parent.runtime != cast(*void)host.preparation_owner ||
+    host.preparation_owner.retired {
+        return false
+    }
+    // Sequence zero belongs to native discovery, which never navigates.
+    if host.preparation_sequence == 0 {
+        return true
+    }
+    if !AppHandleEqual(host.preparation_parent, host.tree.active) {
         return false
     }
     for index: cast(s64)0..host.tree.pending.count - 1 {
@@ -423,16 +434,45 @@ AppHostCollectPreparation :: (host: *AppHost) {
     }
 }
 
-// One queued child at a time owns a worker. Its parent runtime stays alive
+// One child at a time owns a worker. Its parent runtime stays alive
 // until that worker has stopped borrowing the packed bytes, even after Back
 // retires the parent. Only this boundary touches the shared asset index.
 AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> s32 {
     host := cast(*AppHost)context
     AppHostCollectPreparation(host)
+    owner := cast(*AppRuntime)parent.runtime
+    if owner == null || owner.retired {
+        return -1
+    }
+    parent_handle := AppHandle.{-1, 0}
+    for index: cast(s64)0..host.tree.nodes.count - 1 {
+        if host.tree.nodes[index].node == parent {
+            parent_handle = AppHandle.{index, parent.generation}
+            break
+        }
+    }
+    if parent_handle.slot < 0 {
+        return -1
+    }
     if host.preparation != null {
-        if host.preparation_sequence != sequence || host.preparation_canceled {
+        // Interactive navigation takes priority over native discovery. An
+        // unfinished worker is canceled without waiting for its parser.
+        // Discovery and later queued requests never displace a queued one.
+        if host.preparation_sequence != 0 && host.preparation_sequence != sequence {
             return 0
         }
+        same := host.preparation_sequence == sequence &&
+        AppHandleEqual(host.preparation_parent, parent_handle) &&
+        TextUntilNul(host.preparation.id[:]) == TextUntilNul(entry.id[:]) &&
+        TextUntilNul(host.preparation.digest[:]) == TextUntilNul(entry.sha256[:])
+        if !same || host.preparation_canceled {
+            host.preparation_canceled = true
+            if !AppHostClearPreparation(host) {
+                return 0
+            }
+        }
+    }
+    if host.preparation != null {
         if !AppPreparationReady(host.preparation) {
             return 0
         }
@@ -441,10 +481,6 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
             return -1
         }
         return 1
-    }
-    owner := cast(*AppRuntime)parent.runtime
-    if owner == null {
-        return -1
     }
     resource := HostedAppAsset(AppContextRuntime(*owner.app), TextUntilNul(entry.bundle[:]))
     charge := resource.data.count + 65536 + cast(s64)size_of(AppNode)
@@ -458,10 +494,56 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
     }
     host.preparation = preparation
     host.preparation_owner = owner
-    host.preparation_parent = host.tree.active
+    host.preparation_parent = parent_handle
     host.preparation_sequence = sequence
     host.preparation_epoch = host.tree.account_epoch
     return 0
+}
+
+// Poll native discovery at frame boundaries: zero is pending, one returns
+// a verified child, and minus one rejects it. This never saves, navigates or
+// applies effects. The child is scan-owned; drop it when finished. Looking
+// up the declared entry here prevents callers from substituting its trust
+// inputs. Interactive queued requests have priority over this single worker.
+AppHostOpenChild :: (host: *AppHost, parent: AppHandle, id: string, output: *AppHandle) -> s32 {
+    output.* = AppHandle.{-1, 0}
+    if host.tree.busy || host.tree.draining {
+        return 0
+    }
+    owner := AppTreeNode(*host.tree, parent)
+    if owner == null || !owner.collection {
+        return -1
+    }
+    at := AppCatalogFind(*owner.catalog, id)
+    if at < 0 {
+        return -1
+    }
+    // Once discovery borrows this host, queued navigation must use the
+    // same preparation boundary so user input can preempt that work.
+    host.tree.provider.prepare = AppHostPrepareChild
+    entry := AppCatalogAt(*owner.catalog, at).*
+    prepared := AppHostPrepareChild(cast(*void)host, owner, *entry, 0)
+    if prepared != 1 {
+        return prepared
+    }
+    defer {
+        unused AppHostClearPreparation(host)
+    }
+    child := AppTreeOpenChild(*host.tree, parent, *entry)
+    if AppTreeNode(*host.tree, child) == null {
+        return -1
+    }
+    output.* = child
+    return 1
+}
+
+// Abandon native discovery without canceling a user's queued navigation.
+// Collection retains borrowed parent bytes until the canceled worker exits.
+AppHostCancelChild :: (host: *AppHost) {
+    if host.preparation != null && host.preparation_sequence == 0 {
+        host.preparation_canceled = true
+        unused AppHostClearPreparation(host)
+    }
 }
 
 AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
@@ -471,6 +553,7 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
     resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), bundle)
     preparation: *AppPreparation
     if host.preparation != null && host.preparation_owner == parent_runtime &&
+    host.preparation_epoch == host.tree.account_epoch &&
     AppPreparationReady(host.preparation) && host.preparation.valid && !host.preparation_canceled {
         expected := cast(*TextDescriptor)(*host.preparation.bytes)
         actual := cast(*TextDescriptor)(*resource.data)
@@ -768,8 +851,8 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
 // This frame-boundary call still enforces the host's authority, controller
 // trust, byte limit, capabilities and identity handshake. A successful start
 // owns the opened programs; close the ready preparation record afterwards.
-// Queued child requests then prepare on workers too. Direct tree open/locator
-// calls retain their synchronous contract; use queued requests for frame work.
+// Queued child requests then prepare on workers too. Native discovery uses
+// AppHostOpenChild. Direct tree open/locator calls remain synchronous.
 AppHostStartPrepared :: (host: *AppHost, preparation: *AppPreparation,
     authority: string, id: string, expected_id: string, account: string,
     platform: AppPlatform, harness_digest: string = "", locale: string = "en",
