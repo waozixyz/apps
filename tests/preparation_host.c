@@ -65,6 +65,12 @@ void PreparationTestTiming(double synchronous, double activation)
            synchronous * 1000.0, activation * 1000.0);
 }
 
+void PreparationTestLocatorTiming(double synchronous, double maximum_poll)
+{
+    printf("{\"synchronous_locator_ms\":%.3f,\"maximum_locator_poll_ms\":%.3f}\n",
+           synchronous * 1000.0, maximum_poll * 1000.0);
+}
+
 Bundle *__real_BundleOpenBytes(const unsigned char *bytes, size_t count);
 Bundle *__wrap_BundleOpenBytes(const unsigned char *bytes, size_t count)
 {

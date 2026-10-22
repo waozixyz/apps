@@ -50,6 +50,19 @@ AppPlatform :: struct {
     open_effect: AppProviderOpenEffect
 }
 
+// A favorite is prepared beside the working route and replaces it only after
+// every child verifies and the current app saves successfully.
+AppNavigation :: struct {
+    locator: AppLocator
+    staged: Vec(AppHandle)
+    source: AppHandle
+    account_epoch: s64
+    next_child: s64
+    // Retain a canceled request until its next poll receives rejection.
+    // Collection must not turn that poll into a fresh navigation request.
+    canceled: bool
+}
+
 AppHost :: struct {
     tree: AppTree
     platform: AppPlatform
@@ -70,6 +83,7 @@ AppHost :: struct {
     preparation_sequence: s64
     preparation_epoch: s64
     preparation_canceled: bool
+    navigation: AppNavigation
 }
 
 AppRuntime :: struct {
@@ -505,7 +519,7 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
 // applies effects. The child is scan-owned; drop it when finished. Looking
 // up the declared entry here prevents callers from substituting its trust
 // inputs. Interactive queued requests have priority over this single worker.
-AppHostOpenChild :: (host: *AppHost, parent: AppHandle, id: string, output: *AppHandle) -> s32 {
+AppHostPollChild :: (host: *AppHost, parent: AppHandle, id: string, output: *AppHandle) -> s32 {
     output.* = AppHandle.{-1, 0}
     if host.tree.busy || host.tree.draining {
         return 0
@@ -537,6 +551,14 @@ AppHostOpenChild :: (host: *AppHost, parent: AppHandle, id: string, output: *App
     return 1
 }
 
+AppHostOpenChild :: (host: *AppHost, parent: AppHandle, id: string, output: *AppHandle) -> s32 {
+    if host.navigation.next_child > 0 && !host.navigation.canceled {
+        output.* = AppHandle.{-1, 0}
+        return 0
+    }
+    return AppHostPollChild(host, parent, id, output)
+}
+
 // Abandon native discovery without canceling a user's queued navigation.
 // Collection retains borrowed parent bytes until the canceled worker exits.
 AppHostCancelChild :: (host: *AppHost) {
@@ -544,6 +566,203 @@ AppHostCancelChild :: (host: *AppHost) {
         host.preparation_canceled = true
         unused AppHostClearPreparation(host)
     }
+}
+
+AppHostDiscardNavigation :: (host: *AppHost) {
+    navigation := *host.navigation
+    index := navigation.staged.count
+    while index > 0 {
+        index -= 1
+        AppTreeDrop(*host.tree, navigation.staged[index])
+    }
+    VecFree(navigation.staged)
+}
+
+AppHostClearNavigation :: (host: *AppHost, discard: bool) {
+    navigation := *host.navigation
+    if discard {
+        AppHostDiscardNavigation(host)
+    } else {
+        VecFree(navigation.staged)
+    }
+    AppLocatorClear(*navigation.locator)
+    navigation.source = AppHandle.{}
+    navigation.account_epoch = 0
+    navigation.next_child = 0
+    navigation.canceled = false
+}
+
+// Cancellation never joins a parser or saves a partly staged route.
+AppHostCancelLocator :: (host: *AppHost) {
+    if host.navigation.next_child > 0 && !host.navigation.canceled {
+        AppHostCancelChild(host)
+        AppHostDiscardNavigation(host)
+        host.navigation.canceled = true
+    }
+}
+
+AppHostCollectNavigation :: (host: *AppHost) {
+    navigation := *host.navigation
+    if navigation.next_child > 0 && !navigation.canceled && (navigation.account_epoch != host.tree.account_epoch ||
+        !AppHandleEqual(navigation.source, host.tree.active) ||
+        AppTreeNode(*host.tree, navigation.source) == null) {
+        AppHostCancelLocator(host)
+    }
+}
+
+AppHostNavigationMatches :: (host: *AppHost, locator: *AppLocator) -> bool {
+    saved := *host.navigation.locator
+    if saved.chain.count != locator.chain.count || !AppIdentityEqual(*saved.identity, *locator.identity) {
+        return false
+    }
+    for index: cast(s64)0..saved.chain.count - 1 {
+        if TextUntilNul(saved.chain[index].id[:]) != TextUntilNul(locator.chain[index].id[:]) ||
+        TextUntilNul(saved.chain[index].sha256[:]) != TextUntilNul(locator.chain[index].sha256[:]) {
+            return false
+        }
+    }
+    return true
+}
+
+AppHostRejectLocator :: (host: *AppHost) -> s32 {
+    AppHostCancelLocator(host)
+    AppHostClearNavigation(host, false)
+    return -1
+}
+
+// Selecting the page already shown preserves its live state and avoids
+// saving, opening or validating the same immutable programs again.
+AppHostAtLocator :: (host: *AppHost, locator: *AppLocator) -> bool {
+    node := AppTreeNode(*host.tree, host.tree.active)
+    if node == null || !AppIdentityEqual(*node.identity, *locator.identity) {
+        return false
+    }
+    index := locator.chain.count
+    while node != null && index > 0 {
+        index -= 1
+        if TextUntilNul(node.identity.id[:]) != TextUntilNul(locator.chain[index].id[:]) ||
+        TextUntilNul(node.entry.sha256[:]) != TextUntilNul(locator.chain[index].sha256[:]) {
+            return false
+        }
+        if node.parent.slot < 0 {
+            return index == 0
+        }
+        node = AppTreeNode(*host.tree, node.parent)
+    }
+    return false
+}
+
+// Poll a stable verified locator at frame boundaries: zero is pending, one
+// has navigated, and minus one rejects it. Every call stages at most one
+// child. A changed request cancels only the previous staged candidates. A
+// canceled request returns rejection once, even after frame collection.
+AppHostOpenLocator :: (host: *AppHost, locator: *AppLocator) -> s32 {
+    if host.tree.busy || host.tree.draining {
+        return 0
+    }
+    navigation := *host.navigation
+    if navigation.canceled {
+        same := AppHostNavigationMatches(host, locator)
+        AppHostClearNavigation(host, false)
+        if same {
+            return -1
+        }
+    }
+    if navigation.next_child > 0 {
+        if navigation.account_epoch != host.tree.account_epoch ||
+        !AppHandleEqual(navigation.source, host.tree.active) ||
+        AppTreeNode(*host.tree, navigation.source) == null {
+            return AppHostRejectLocator(host)
+        }
+        if !AppHostNavigationMatches(host, locator) {
+            AppHostCancelLocator(host)
+            AppHostClearNavigation(host, false)
+        }
+    }
+    if navigation.next_child == 0 {
+        if AppHostAtLocator(host, locator) {
+            return 1
+        }
+        root := AppTreeNode(*host.tree, AppHandle.{0, 1})
+        if root == null || AppTreeNode(*host.tree, host.tree.active) == null ||
+        locator.chain.count == 0 ||
+        TextUntilNul(locator.identity.authority[:]) != TextUntilNul(root.identity.authority[:]) ||
+        TextUntilNul(locator.chain[0].id[:]) != TextUntilNul(root.identity.id[:]) ||
+        TextUntilNul(locator.chain[0].sha256[:]) != TextUntilNul(root.entry.sha256[:]) {
+            return -1
+        }
+        navigation.locator.identity = locator.identity
+        for index: cast(s64)0..locator.chain.count - 1 {
+            if !VecPush(navigation.locator.chain, locator.chain[index]) {
+                AppHostClearNavigation(host, true)
+                return -1
+            }
+        }
+        navigation.source = host.tree.active
+        navigation.account_epoch = host.tree.account_epoch
+        navigation.next_child = 1
+        AppHostCancelChild(host)
+    }
+    parent := AppHandle.{0, 1}
+    if navigation.staged.count > 0 {
+        parent = navigation.staged[navigation.staged.count - 1]
+    }
+    if navigation.next_child < navigation.locator.chain.count {
+        node := AppTreeNode(*host.tree, parent)
+        if node == null || !node.collection {
+            return AppHostRejectLocator(host)
+        }
+        location := navigation.locator.chain[navigation.next_child]
+        at := AppCatalogFind(*node.catalog, TextUntilNul(location.id[:]))
+        if at < 0 {
+            return AppHostRejectLocator(host)
+        }
+        declared := AppCatalogAt(*node.catalog, at).*
+        if TextUntilNul(declared.sha256[:]) != TextUntilNul(location.sha256[:]) {
+            return AppHostRejectLocator(host)
+        }
+        child: AppHandle
+        ready := AppHostPollChild(host, parent, TextUntilNul(location.id[:]), *child)
+        if ready == 0 {
+            return 0
+        }
+        if ready != 1 {
+            return AppHostRejectLocator(host)
+        }
+        if !VecPush(navigation.staged, child) {
+            AppTreeDrop(*host.tree, child)
+            return AppHostRejectLocator(host)
+        }
+        navigation.next_child += 1
+        parent = child
+        if navigation.next_child < navigation.locator.chain.count {
+            return 0
+        }
+    }
+    leaf := AppTreeNode(*host.tree, parent)
+    current := AppTreeNode(*host.tree, navigation.source)
+    if leaf == null || current == null || !AppIdentityEqual(*leaf.identity, *navigation.locator.identity) {
+        return AppHostRejectLocator(host)
+    }
+    host.tree.draining = true
+    saved := host.tree.provider.save(host.tree.provider.context, current)
+    host.tree.draining = false
+    if !saved {
+        return AppHostRejectLocator(host)
+    }
+    previous := navigation.source
+    AppHostClearNavigation(host, false)
+    host.tree.active = parent
+    while previous.slot != 0 {
+        node := AppTreeNode(*host.tree, previous)
+        if node == null {
+            break
+        }
+        next := node.parent
+        AppTreeDrop(*host.tree, previous)
+        previous = next
+    }
+    return 1
 }
 
 AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
@@ -685,6 +904,7 @@ AppHostRoute :: (host: *AppHost) -> bool {
 AppHostBack :: (host: *AppHost) -> s32 {
     runtime := AppHostActiveRuntime(host)
     if runtime == null || host.tree.busy || host.tree.draining { return -1 }
+    AppHostCancelLocator(host)
     active := host.tree.active
     if !AppHostRun(host, APP_BACK) { return -1 }
     if !AppHandleEqual(host.tree.active, active) { return 1 }
@@ -731,6 +951,7 @@ AppHostClose :: (context: *void, node: *AppNode) {
 // Call only after the root renderer has consumed its frame. Closing a routed
 // VM does not prove that submitted images/text stopped borrowing its storage.
 AppHostCollect :: (host: *AppHost) {
+    AppHostCollectNavigation(host)
     AppHostCollectPreparation(host)
     runtime := host.retired
     host.retired = null
@@ -852,7 +1073,7 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
 // trust, byte limit, capabilities and identity handshake. A successful start
 // owns the opened programs; close the ready preparation record afterwards.
 // Queued child requests then prepare on workers too. Native discovery uses
-// AppHostOpenChild. Direct tree open/locator calls remain synchronous.
+// AppHostOpenChild; favorites use AppHostOpenLocator. Direct tree calls remain synchronous.
 AppHostStartPrepared :: (host: *AppHost, preparation: *AppPreparation,
     authority: string, id: string, expected_id: string, account: string,
     platform: AppPlatform, harness_digest: string = "", locale: string = "en",
@@ -866,6 +1087,8 @@ AppHostStartPrepared :: (host: *AppHost, preparation: *AppPreparation,
 }
 
 AppHostStop :: (host: *AppHost) -> bool {
+    AppHostCancelLocator(host)
+    AppHostClearNavigation(host, false)
     // Like a failed save, an unfinished preparation leaves the whole tree
     // alive. The owner retains this host and retries; no frame waits here.
     if host.preparation != null {

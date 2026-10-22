@@ -144,7 +144,7 @@ def main():
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         result.check_returncode()
-    print('Apps native: asynchronous root/child preparation, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
+    print('Apps native: asynchronous root/child preparation and favorites, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
 
 
 if __name__ == '__main__':

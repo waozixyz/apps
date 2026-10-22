@@ -45,6 +45,8 @@ Check :: () -> s32 {
     if runtime.legacy.frame.width != 800 || !runtime.legacy.message.signed_in { return 2 }
     host: AppHost
     if AppHostActiveRuntime(*host) != null || AppHostBack(*host) != -1 { return 3 }
+    if AppHostAtLocator(*host, *locator) || AppHostOpenLocator(*host, *locator) != -1 { return 7 }
+    AppHostCancelLocator(*host)
     controller: AppController
     controller_platform := AppControllerPlatform.{.service = Service, .widgets = Widgets}
     if AppControllerOpen(*controller, "bad", "bad", controller_platform) || AppControllerRun(*controller, 2) || !AppControllerClose(*controller) { return 4 }
