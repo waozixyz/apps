@@ -5,7 +5,7 @@
 #import "std/text_buffer"
 #import "std/utf8"
 using UI :: #import "kryon/Widgets";
-#import "words"
+#import, file "../ui/words.zi";
 
 APP_LAUNCHER_LIST :: "S2rr:M9 6H20M9 12H20M9 18H20M4 6H4.01M4 12H4.01M4 18H4.01"
 APP_LAUNCHER_GRID :: "S2rr:M4 4H10V10H4ZM14 4H20V10H14ZM4 14H10V20H4ZM14 14H20V20H14Z"
@@ -72,6 +72,7 @@ AppLauncherFold :: (value: u32) -> u32 {
     if value >= 1024 && value <= 1039 { return value + cast(u32)80 }
     if ((value >= 256 && value <= 311) || (value >= 330 && value <= 375)) &&
     value % cast(u32)2 == cast(u32)0 { return value + cast(u32)1 }
+    if value >= 313 && value <= 328 && value % cast(u32)2 == cast(u32)1 { return value + cast(u32)1 }
     if value == 376 { return 255 }
     return value
 }
@@ -216,9 +217,6 @@ AppLauncherScreen :: (session: Session, state: *AppLauncherState,
                     .class_name = props.heading_class, .bounds = Rectangle.{area.x, area.y, area.width, 28.0 * scale}})
             Separator(session, SeparatorProps.{.key = cast(u64)30009,
                     .bounds = Rectangle.{area.x, result.library_bounds.y + 28.0 * scale, area.width, 8.0 * scale}})
-            Text(session, TextProps.{.key = cast(u64)30007, .text = AppsLabel(props.locale, "all_apps"),
-                    .class_name = props.heading_class, .bounds = Rectangle.{area.x,
-                        result.library_bounds.y, area.width, 28.0 * scale}})
         }
         input := ifx state.focused then TextFieldInput.{} else props.input
         if props.cards != null && state.count > 0 {

@@ -30,11 +30,10 @@
   "play": "Play",
   "previous": "Previous",
   "next": "Next",
-  "search": "Search apps",
+  "search": "Find an app",
   "clear_search": "Clear search",
   "list_view": "List view",
   "grid_view": "Grid view",
   "favorites": "Pinned",
-  "all_apps": "More apps",
-  "no_results": "No matching apps"
+  "no_results": "No apps found"
 }
