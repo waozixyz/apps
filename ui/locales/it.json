@@ -29,5 +29,12 @@
   "move_app": "Sposta app",
   "play": "Gioca",
   "previous": "Precedente",
-  "next": "Successivo"
+  "next": "Successivo",
+  "search": "Cerca applicazioni",
+  "clear_search": "Cancella ricerca",
+  "list_view": "Vista elenco",
+  "grid_view": "Vista griglia",
+  "favorites": "Preferite",
+  "all_apps": "Tutte le applicazioni",
+  "no_results": "Nessuna applicazione corrispondente"
 }

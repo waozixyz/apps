@@ -2,6 +2,8 @@
 #import "apps/tree"
 #import "apps/protocol"
 #import "apps/controller"
+Launcher :: #import "apps/launcher";
+#import "std/c_string"
 #import "std/bundle_host"
 Node :: #import "apps/node_types";
 Codec :: #import "apps/node_codec";
@@ -50,5 +52,17 @@ Check :: () -> s32 {
     controller: AppController
     controller_platform := AppControllerPlatform.{.service = Service, .widgets = Widgets}
     if AppControllerOpen(*controller, "bad", "bad", controller_platform) || AppControllerRun(*controller, 2) || !AppControllerClose(*controller) { return 4 }
+    launcher: Launcher.AppLauncherState
+    items: [3]Launcher.AppLauncherItem = .[
+    .{.title = "Clock", .search = "time"},
+    .{.title = "Écrire", .favorite = true},
+    .{.title = "Calculator", .search = "math"}]
+    Launcher.AppLauncherFilter(*launcher, items[:])
+    if launcher.count != 3 || launcher.favorites != 1 || launcher.visible[0] != 1 ||
+    launcher.visible[1] != 0 || launcher.visible[2] != 2 { return 8 }
+    unused CopyCString("MATH", launcher.query[:])
+    Launcher.AppLauncherFilter(*launcher, items[:])
+    if launcher.count != 1 || launcher.visible[0] != 2 || launcher.favorites != 0 { return 9 }
+    if !Launcher.AppLauncherMatches("Écrire", "éC") || Launcher.AppLauncherMatches("Clock", "other") { return 10 }
     return 0
 }

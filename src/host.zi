@@ -29,7 +29,7 @@ using WidgetKind;
 
 APP_NODE_ROUTE :: 6
 APP_HOST_BYTE_LIMIT :: 67108864
-APP_HOST_PREVIOUS_CONTROLLERS :: 5
+APP_HOST_PREVIOUS_CONTROLLERS :: 6
 
 AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) -> bool;
 AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function: *u8,

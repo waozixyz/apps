@@ -1,0 +1,28 @@
+# Apps
+
+Shared application launchers and verified portable app hosting for Ziran and
+Kryon applications.
+
+`apps/launcher` exports `AppLauncherScreen`: search with a clear action,
+list/grid controls, favorite grouping and scrolling. The caller retains an
+`AppLauncherState`, supplies titles and favorite flags, and implements the
+`AppLauncherCards` callback for the filtered catalog indices. The result
+includes layout bounds for native drag/drop and guide overlays. Hosts persist
+view preferences and own their account, routing, storage and installation
+effects.
+
+The callback mounts the portable screen in `ui/apps.zi` through
+`apps/controller`. It provides cards, working action menus, Properties,
+update/rollback confirmations and all UI translations. Catalog actions are an
+explicit capability list: a host only offers actions it can handle. Every
+openable app also has an Open command in its menu.
+
+Inbe and Werkzeug use this same exported launcher and portable controller.
+App-specific title/account bars and navigation docks remain with their hosts.
+Build the controller with the host's compiler and Kryon graph, review its
+digest, and pin those exact bytes in the host. A mismatched controller must
+fail validation; never substitute another screen silently.
+
+`scripts/build-ui.py` builds the standalone package controller. The native
+fixture exercises real card/menu/dialog behavior; the external-consumer test
+verifies public package imports and launcher search/grouping.

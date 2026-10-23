@@ -29,5 +29,12 @@
   "move_app": "アプリを移動",
   "play": "プレイ",
   "previous": "前へ",
-  "next": "次へ"
+  "next": "次へ",
+  "search": "アプリを検索",
+  "clear_search": "検索をクリア",
+  "list_view": "リスト表示",
+  "grid_view": "グリッド表示",
+  "favorites": "お気に入り",
+  "all_apps": "すべてのアプリ",
+  "no_results": "一致するアプリがありません"
 }

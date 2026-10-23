@@ -13,6 +13,7 @@ tree = "src/tree.zi"
 host = "src/host.zi"
 preparation = "src/preparation.zi"
 controller = "src/controller.zi"
+launcher = "src/launcher.zi"
 node_types = "src/node_types.zi"
 node_codec = "src/node_codec.zi"
 

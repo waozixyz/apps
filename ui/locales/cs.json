@@ -29,5 +29,12 @@
   "move_app": "Přesunout aplikaci",
   "play": "Hrát",
   "previous": "Předchozí",
-  "next": "Další"
+  "next": "Další",
+  "search": "Hledat aplikace",
+  "clear_search": "Vymazat hledání",
+  "list_view": "Zobrazení seznamu",
+  "grid_view": "Zobrazení mřížky",
+  "favorites": "Oblíbené",
+  "all_apps": "Všechny aplikace",
+  "no_results": "Žádné odpovídající aplikace"
 }

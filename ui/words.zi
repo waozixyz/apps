@@ -32,6 +32,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Hrát" }
         if key == "previous" { return "Předchozí" }
         if key == "next" { return "Další" }
+        if key == "search" { return "Hledat aplikace" }
+        if key == "clear_search" { return "Vymazat hledání" }
+        if key == "list_view" { return "Zobrazení seznamu" }
+        if key == "grid_view" { return "Zobrazení mřížky" }
+        if key == "favorites" { return "Oblíbené" }
+        if key == "all_apps" { return "Všechny aplikace" }
+        if key == "no_results" { return "Žádné odpovídající aplikace" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -65,6 +72,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Spielen" }
         if key == "previous" { return "Zurück" }
         if key == "next" { return "Weiter" }
+        if key == "search" { return "Apps suchen" }
+        if key == "clear_search" { return "Suche löschen" }
+        if key == "list_view" { return "Listenansicht" }
+        if key == "grid_view" { return "Rasteransicht" }
+        if key == "favorites" { return "Favoriten" }
+        if key == "all_apps" { return "Alle Apps" }
+        if key == "no_results" { return "Keine passenden Apps" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -98,6 +112,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Jugar" }
         if key == "previous" { return "Anterior" }
         if key == "next" { return "Siguiente" }
+        if key == "search" { return "Buscar aplicaciones" }
+        if key == "clear_search" { return "Borrar búsqueda" }
+        if key == "list_view" { return "Vista de lista" }
+        if key == "grid_view" { return "Vista de cuadrícula" }
+        if key == "favorites" { return "Favoritas" }
+        if key == "all_apps" { return "Todas las aplicaciones" }
+        if key == "no_results" { return "No hay aplicaciones coincidentes" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -131,6 +152,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Jouer" }
         if key == "previous" { return "Précédent" }
         if key == "next" { return "Suivant" }
+        if key == "search" { return "Rechercher des applications" }
+        if key == "clear_search" { return "Effacer la recherche" }
+        if key == "list_view" { return "Vue en liste" }
+        if key == "grid_view" { return "Vue en grille" }
+        if key == "favorites" { return "Favoris" }
+        if key == "all_apps" { return "Toutes les applications" }
+        if key == "no_results" { return "Aucune application correspondante" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -164,6 +192,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Main" }
         if key == "previous" { return "Sebelumnya" }
         if key == "next" { return "Berikutnya" }
+        if key == "search" { return "Cari aplikasi" }
+        if key == "clear_search" { return "Hapus pencarian" }
+        if key == "list_view" { return "Tampilan daftar" }
+        if key == "grid_view" { return "Tampilan kisi" }
+        if key == "favorites" { return "Favorit" }
+        if key == "all_apps" { return "Semua aplikasi" }
+        if key == "no_results" { return "Tidak ada aplikasi yang cocok" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -197,6 +232,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Gioca" }
         if key == "previous" { return "Precedente" }
         if key == "next" { return "Successivo" }
+        if key == "search" { return "Cerca applicazioni" }
+        if key == "clear_search" { return "Cancella ricerca" }
+        if key == "list_view" { return "Vista elenco" }
+        if key == "grid_view" { return "Vista griglia" }
+        if key == "favorites" { return "Preferite" }
+        if key == "all_apps" { return "Tutte le applicazioni" }
+        if key == "no_results" { return "Nessuna applicazione corrispondente" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -230,6 +272,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "プレイ" }
         if key == "previous" { return "前へ" }
         if key == "next" { return "次へ" }
+        if key == "search" { return "アプリを検索" }
+        if key == "clear_search" { return "検索をクリア" }
+        if key == "list_view" { return "リスト表示" }
+        if key == "grid_view" { return "グリッド表示" }
+        if key == "favorites" { return "お気に入り" }
+        if key == "all_apps" { return "すべてのアプリ" }
+        if key == "no_results" { return "一致するアプリがありません" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -263,6 +312,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "플레이" }
         if key == "previous" { return "이전" }
         if key == "next" { return "다음" }
+        if key == "search" { return "앱 검색" }
+        if key == "clear_search" { return "검색 지우기" }
+        if key == "list_view" { return "목록 보기" }
+        if key == "grid_view" { return "격자 보기" }
+        if key == "favorites" { return "즐겨찾기" }
+        if key == "all_apps" { return "모든 앱" }
+        if key == "no_results" { return "일치하는 앱이 없습니다" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -296,6 +352,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Jogar" }
         if key == "previous" { return "Anterior" }
         if key == "next" { return "Próximo" }
+        if key == "search" { return "Buscar aplicativos" }
+        if key == "clear_search" { return "Limpar busca" }
+        if key == "list_view" { return "Visualização em lista" }
+        if key == "grid_view" { return "Visualização em grade" }
+        if key == "favorites" { return "Favoritos" }
+        if key == "all_apps" { return "Todos os aplicativos" }
+        if key == "no_results" { return "Nenhum aplicativo correspondente" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -329,6 +392,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "Играть" }
         if key == "previous" { return "Назад" }
         if key == "next" { return "Далее" }
+        if key == "search" { return "Поиск приложений" }
+        if key == "clear_search" { return "Очистить поиск" }
+        if key == "list_view" { return "Список" }
+        if key == "grid_view" { return "Сетка" }
+        if key == "favorites" { return "Избранное" }
+        if key == "all_apps" { return "Все приложения" }
+        if key == "no_results" { return "Подходящие приложения не найдены" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -362,6 +432,13 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "play" { return "开始游戏" }
         if key == "previous" { return "上一个" }
         if key == "next" { return "下一个" }
+        if key == "search" { return "搜索应用" }
+        if key == "clear_search" { return "清除搜索" }
+        if key == "list_view" { return "列表视图" }
+        if key == "grid_view" { return "网格视图" }
+        if key == "favorites" { return "收藏" }
+        if key == "all_apps" { return "所有应用" }
+        if key == "no_results" { return "没有匹配的应用" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -394,5 +471,12 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "play" { return "Play" }
     if key == "previous" { return "Previous" }
     if key == "next" { return "Next" }
+    if key == "search" { return "Search apps" }
+    if key == "clear_search" { return "Clear search" }
+    if key == "list_view" { return "List view" }
+    if key == "grid_view" { return "Grid view" }
+    if key == "favorites" { return "Pinned" }
+    if key == "all_apps" { return "More apps" }
+    if key == "no_results" { return "No matching apps" }
     return key
 }

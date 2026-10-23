@@ -29,5 +29,12 @@
   "move_app": "Pindahkan aplikasi",
   "play": "Main",
   "previous": "Sebelumnya",
-  "next": "Berikutnya"
+  "next": "Berikutnya",
+  "search": "Cari aplikasi",
+  "clear_search": "Hapus pencarian",
+  "list_view": "Tampilan daftar",
+  "grid_view": "Tampilan kisi",
+  "favorites": "Favorit",
+  "all_apps": "Semua aplikasi",
+  "no_results": "Tidak ada aplikasi yang cocok"
 }

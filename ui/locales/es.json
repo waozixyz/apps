@@ -29,5 +29,12 @@
   "move_app": "Mover aplicación",
   "play": "Jugar",
   "previous": "Anterior",
-  "next": "Siguiente"
+  "next": "Siguiente",
+  "search": "Buscar aplicaciones",
+  "clear_search": "Borrar búsqueda",
+  "list_view": "Vista de lista",
+  "grid_view": "Vista de cuadrícula",
+  "favorites": "Favoritas",
+  "all_apps": "Todas las aplicaciones",
+  "no_results": "No hay aplicaciones coincidentes"
 }

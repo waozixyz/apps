@@ -334,10 +334,11 @@ AppsMenuItem :: (items: []ContextMenuItem, count: *s32, card: *AppCard, operatio
 AppsMenu :: (session: Session, scale: float32, language: string) {
     card := AppsFind(menu_id)
     if card == null || card.disabled { menu_id[0] = cast(u8)0; return }
-    items: [6]ContextMenuItem
+    items: [7]ContextMenuItem
     count: s32
     // The options' dot leads here, so an update not yet installed comes first.
     if card.update_available { AppsMenuItem(items[:], *count, card, Rules.APPS_UPDATE, language, "update") }
+    AppsMenuItem(items[:], *count, card, Rules.APPS_OPEN, language, "open")
     AppsMenuItem(items[:], *count, card, ifx card.installed then Rules.APPS_UNINSTALL else Rules.APPS_INSTALL,
         language, ifx card.installed then "uninstall" else "install")
     AppsMenuItem(items[:], *count, card, ifx card.favorite then Rules.APPS_UNPIN else Rules.APPS_PIN,
@@ -354,7 +355,7 @@ AppsMenu :: (session: Session, scale: float32, language: string) {
     else if menu.activated_id == Rules.APPS_ROLLBACK { dialog_id = card.id; dialog = 2 }
     else if menu.activated_id == Rules.APPS_PROPERTIES { AppsPropertiesOpen(card) }
     else if menu.activated_id > 0 {
-        operation := ifx menu.activated_id == Rules.APPS_INSTALL then "install" else ifx menu.activated_id == Rules.APPS_UNINSTALL then "uninstall" else ifx menu.activated_id == Rules.APPS_PIN then "pin" else ifx menu.activated_id == Rules.APPS_UNPIN then "unpin" else "install_to_launcher"
+        operation := ifx menu.activated_id == Rules.APPS_OPEN then "open" else ifx menu.activated_id == Rules.APPS_INSTALL then "install" else ifx menu.activated_id == Rules.APPS_UNINSTALL then "uninstall" else ifx menu.activated_id == Rules.APPS_PIN then "pin" else ifx menu.activated_id == Rules.APPS_UNPIN then "unpin" else "install_to_launcher"
         AppsAct(operation, card.id)
     }
     if !menu.open { menu_id[0] = cast(u8)0 }
@@ -478,6 +479,7 @@ AppsProperties :: (session: Session, card: *AppCard, scale: float32, language: s
     properties_anchor = edited.anchor
     properties_scroll_x = edited.scroll_x
     properties_focused = edited.focused && !edited.escaped
+    AppKeyboard(properties_focused)
     y += control + gap
     if count > 0 {
         AppsText(session, cast(u64)15, Rectangle.{x, y, width, line}, AppsLabel(language, "icon"), font)
@@ -717,7 +719,11 @@ AppsFrame :: () -> bool {
             AppsText(session, key + cast(u64)3, Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
             tile.invisible = true
         }
-        if list_mode && card.downloading { tile.detail = AppsLabel(language, "downloading") }
+        list_size: [32]u8
+        if list_mode {
+            if card.downloading { tile.detail = AppsLabel(language, "downloading") }
+            else if AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
+        }
         tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
         if Button(session, tile) != 0 { AppsAct("open", card.id) }
         if icon_mode && card.reorderable {

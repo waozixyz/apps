@@ -29,5 +29,12 @@
   "move_app": "앱 이동",
   "play": "플레이",
   "previous": "이전",
-  "next": "다음"
+  "next": "다음",
+  "search": "앱 검색",
+  "clear_search": "검색 지우기",
+  "list_view": "목록 보기",
+  "grid_view": "격자 보기",
+  "favorites": "즐겨찾기",
+  "all_apps": "모든 앱",
+  "no_results": "일치하는 앱이 없습니다"
 }
