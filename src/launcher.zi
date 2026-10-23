@@ -194,6 +194,7 @@ AppLauncherScreen :: (session: Session, state: *AppLauncherState,
     stride := result.tile_height + result.gap
     favorites_height := heading + (state.favorites + result.columns - 1) / result.columns * stride
     library_height := heading + (more + result.columns - 1) / result.columns * stride
+    if props.empty_favorites && more == 0 { library_height += cast(s32)(64.0 * scale) }
     if state.count == 0 { library_height += cast(s32)(64.0 * scale) }
     top := bounds.y + 68.0 * scale
     if props.status.count > 0 {
