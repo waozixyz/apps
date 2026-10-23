@@ -360,7 +360,7 @@ NativeLoadCatalog :: (name: string) -> bool {
     return true
 }
 
-NativeDraw :: () -> bool {
+NativeDraw :: (quiet: bool = false) -> bool {
     native_tiles = 0; native_actions = 0; native_dots = 0
     BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
     native_controller.app.session = ui_session
@@ -375,7 +375,7 @@ NativeDraw :: () -> bool {
     native_controller.app.scale = 1.0
     native_controller.app.font = 18
     WidgetHostBegin(ui_session, NativeImage)
-    ran := AppControllerRun(*native_controller, APP_FRAME)
+    ran := AppControllerRun(*native_controller, APP_FRAME, quiet)
     WidgetHostEnd()
     if outer { End(ui_session) }
     if EndFrame(ui_session) != cast(FrameStatus)FrameOk || native_bad { return false }
@@ -496,7 +496,11 @@ NativeControllerCheck :: () -> s32 {
     !NativeClick("Save", WidgetKindButton) || !NativeDraw() || native_queued != 6 ||
     native_request.operation != APPS_PROPERTIES || TextUntilNul(native_request.title[:]) != "" ||
     TextUntilNul(native_request.icon[:]) != "" { return 83 }
-    if !NativeDraw() || !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
+    // Quiet frames show the recorded cards again without running the
+    // controller, and the cards they show still take the next click.
+    if !NativeDraw(true) || !NativeDraw(true) || native_controller.app.app.replay == null ||
+    !native_controller.app.app.replay.ready { return 87 }
+    if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
     // An app not on this device has the download symbol instead of its
     // options, which installs it, and says so while it downloads.
     queued := native_queued

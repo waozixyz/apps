@@ -95,7 +95,10 @@ AppControllerOpen :: (controller: *AppController, bytes: string, digest: string,
 // The caller begins WidgetHost before Run. Icon presentation uses the exact
 // supplied bounds as a cards-only group; the native caller retains its scroll,
 // headings, search, drag and dock. Preview mode owns its collection chrome.
-AppControllerRun :: (controller: *AppController, mode: s32) -> bool {
+// A quiet frame (no touch, key or typing reaches the cards, and the caller
+// does not animate them) may show the last quiet frame again without
+// running the controller; see AppContextRunFrame.
+AppControllerRun :: (controller: *AppController, mode: s32, quiet: bool = false) -> bool {
     if !controller.ready || controller.busy { return false }
     controller.busy = true
     session := controller.app.session
@@ -108,7 +111,12 @@ AppControllerRun :: (controller: *AppController, mode: s32) -> bool {
         }
         if !mounted { controller.busy = false; return false }
     }
-    result := AppContextRun(*controller.app, mode)
+    result: bool
+    if mode == APP_FRAME {
+        result = AppContextRunFrame(*controller.app, quiet)
+    } else {
+        result = AppContextRun(*controller.app, mode)
+    }
     if mounted {
         WidgetHostEnd()
         if !TreePopScope(session) { result = false }
