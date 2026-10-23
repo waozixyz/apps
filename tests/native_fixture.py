@@ -97,7 +97,8 @@ def main():
     bundle('collection', root, stage('root-stage', 'fixture.root',
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zib': middle}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
-    for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading', 'reorder-list', 'reorder-grid'):
+    for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
+                 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -106,9 +107,12 @@ def main():
             candidate['children'][0]['update_available'] = False
         if name == 'changed-update':
             candidate['children'][0]['available_sha256'] = 'd' * 64
-        if name in ('download', 'downloading'):
-            candidate['children'][1].update(on_device=False, downloading=name == 'downloading',
+        if name in ('download', 'downloading', 'simple-downloading'):
+            candidate['children'][1].update(on_device=False, downloading=name != 'download',
                                             bytes=4096, actions=['open', 'install'])
+        if name.startswith('simple-'):
+            candidate['presentation']['hide_sizes'] = True
+            candidate['presentation']['mode'] = 'list' if name == 'simple-list' else 'icon'
         if name.startswith('reorder-'):
             candidate['presentation'].update(mode='list' if name == 'reorder-list' else 'icon', section_break=1, columns=3)
             for card in candidate['children']:

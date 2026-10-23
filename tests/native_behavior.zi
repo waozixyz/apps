@@ -288,6 +288,7 @@ native_actions: s32;
 native_dots: s32;
 native_icons: s32;
 native_bad: bool;
+native_size_detail: bool;
 box_codec: WidgetBoxPropsCodec;
 native_icon_mode: bool = true;
 native_handle_bounds: Rectangle;
@@ -320,6 +321,7 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
         props := WidgetDecodeButtonProps(arguments[1], *button_codec)
         // The card itself; its own icon in Properties shares its title.
         if props.key == AppCardKey("native.breathing") {
+            native_size_detail = props.detail == "12.3 kB"
             native_tile_bounds = props.bounds
             native_tiles += 1
             if native_icon_mode && (props.bounds.height != 88.0 || props.class_name != 501 || !props.selected ||
@@ -362,6 +364,7 @@ NativeLoadCatalog :: (name: string) -> bool {
 
 NativeDraw :: (quiet: bool = false) -> bool {
     native_tiles = 0; native_actions = 0; native_dots = 0
+    native_size_detail = false
     BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
     native_controller.app.session = ui_session
     native_controller.app.bounds = Rectangle.{0.0, 0.0, 480.0, 600.0}
@@ -511,8 +514,14 @@ NativeControllerCheck :: () -> s32 {
     if native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 635 }
     if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading") < 0 ||
     NativeLabel("4.1 kB") >= 0 || NativeClick("Download") { return 631 }
+    // A host chooses compact cards without discarding bytes from its catalog.
+    if !NativeLoadCatalog("simple-grid") || !NativeDraw() || NativeLabel("12.3 kB") >= 0 { return 88 }
+    if !NativeLoadCatalog("simple-downloading") || !NativeDraw() ||
+    NativeLabel("Downloading") < 0 || NativeLabel("12.3 kB") >= 0 { return 89 }
     native_icon_mode = false
+    if !NativeLoadCatalog("simple-list") || !NativeDraw() || native_size_detail { return 90 }
     if !NativeLoadCatalog("reorder-list") || !NativeDraw() || NativeLabel("Move app") < 0 ||
+    !native_size_detail ||
     native_tile_bounds.x < native_handle_bounds.x + native_handle_bounds.width ||
     native_other_bounds.x != native_tile_bounds.x ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 84 }
@@ -1424,12 +1433,13 @@ Check :: () -> s32 {
     if AppHostStart(*untrusted, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 627 }
     unused AppHostStop(*untrusted)
     trusting: AppHost
-    earlier: [5]string = .[
+    earlier: [6]string = .[
     "1111111111111111111111111111111111111111111111111111111111111111",
     "2222222222222222222222222222222222222222222222222222222222222222",
     "3333333333333333333333333333333333333333333333333333333333333333",
     "4444444444444444444444444444444444444444444444444444444444444444",
-    "5555555555555555555555555555555555555555555555555555555555555555"]
+    "5555555555555555555555555555555555555555555555555555555555555555",
+    "6666666666666666666666666666666666666666666666666666666666666666"]
     for previous: earlier {
         if !AppHostTrustHarness(*trusting, previous) { return 630 }
     }

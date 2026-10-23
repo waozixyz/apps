@@ -17,6 +17,12 @@ update/rollback confirmations and all UI translations. Catalog actions are an
 explicit capability list: a host only offers actions it can handle. Every
 openable app also has an Open command in its menu.
 
+Hosts customize the same cards through the catalog's `presentation` object.
+Set `hide_sizes: true` for a simple launcher that shows app names and icons
+without package sizes, in either list or grid mode. The native host exposes
+the same option as `AppPresentation.hide_sizes`. The default keeps sizes
+visible; download progress remains visible in either presentation.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its

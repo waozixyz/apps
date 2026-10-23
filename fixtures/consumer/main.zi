@@ -28,7 +28,7 @@ OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *
 #program_export
 Check :: () -> s32 {
     platform := AppPlatform.{.state = State, .version_effect = VersionEffect, .open_effect = OpenEffect,
-        .presentation = AppPresentation.{.icon = true, .tile_class = 501}}
+        .presentation = AppPresentation.{.icon = true, .hide_sizes = true, .tile_class = 501}}
     identity: AppIdentity
     state: AppState
     if !platform.state(null, "account-a", *identity, *state) || !state.installed || !state.favorite || state.launcher != 1 { return 1 }
@@ -36,7 +36,8 @@ Check :: () -> s32 {
     locator: AppLocator
     reply: AppsReply
     if !platform.version_effect(null, "account-a", *locator, *request, *reply) || reply.status != APPS_APPLIED ||
-    !platform.presentation.icon || AppCardKey("native.clock") == AppCardKey("native.breathing") { return 5 }
+    !platform.presentation.icon || !platform.presentation.hide_sizes ||
+    AppCardKey("native.clock") == AppCardKey("native.breathing") { return 5 }
     open := AppsRequest.{.operation = APPS_OPEN}
     if platform.open_effect(null, "account-a", *locator, *open, *reply) != APP_OPEN_HANDLED ||
     platform.open_effect(null, "account-b", *locator, *open, *reply) != APP_OPEN_REJECTED { return 6 }

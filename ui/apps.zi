@@ -89,6 +89,7 @@ cover_state: CarouselState;
 // optional host time capability is required by icon/list-only controllers.
 cover_time: float64;
 list_mode: bool;
+hide_sizes: bool;
 has_reorder_handles: bool;
 section_break: s32;
 has_section_break: bool;
@@ -186,6 +187,7 @@ AppsReadCatalog :: () -> bool {
     if !AppsOptionalText(text, presentation, "mode", mode[:]) { return false }
     list_mode = TextUntilNul(mode[:]) == "list"
     icon_mode = list_mode || TextUntilNul(mode[:]) == "icon"
+    hide_sizes = AppsBool(text, FieldAt(text, presentation, "hide_sizes"))
     has_section_break = FieldAt(text, presentation, "section_break") >= 0
     section_break = cast(s32)AppsNumber(text, FieldAt(text, presentation, "section_break"))
     presentation_columns = cast(s32)AppsNumber(text, FieldAt(text, presentation, "columns"))
@@ -722,7 +724,7 @@ AppsFrame :: () -> bool {
         list_size: [32]u8
         if list_mode {
             if card.downloading { tile.detail = AppsLabel(language, "downloading") }
-            else if AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
+            else if !hide_sizes && AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
         }
         tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
         if Button(session, tile) != 0 { AppsAct("open", card.id) }
@@ -738,7 +740,7 @@ AppsFrame :: () -> bool {
             if card.downloading {
                 unused CopyCString(AppsLabel(language, "downloading"), size_text[:])
             }
-            if !list_mode && (card.downloading || AppsSize(card.bytes, size_text[:])) {
+            if !list_mode && (card.downloading || (!hide_sizes && AppsSize(card.bytes, size_text[:]))) {
                 Text(session, TextProps.{.key = key + cast(u64)4, .text = TextUntilNul(size_text[:]), .font = cast(s32)(11.0 * scale),
                         .bounds = Rectangle.{x + 8.0 * scale, y + card_height - 16.0 * scale, card_width - 16.0 * scale, 12.0 * scale},
                         .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})

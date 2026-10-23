@@ -68,6 +68,8 @@ AppVersion :: struct { version: [64]u8; sha256: [65]u8 }
 AppPresentation :: struct {
     // False preserves the screenshot collection presentation.
     icon: bool
+    // Compact launchers can omit package sizes without changing app data.
+    hide_sizes: bool
     tile_class: s32
     action_class: s32
     muted_class: s32
