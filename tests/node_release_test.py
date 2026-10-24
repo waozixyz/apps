@@ -28,8 +28,8 @@ class NodeAppHistoryTest(unittest.TestCase):
                                                    serialization.PublicFormat.Raw).hex()
         self.publishers = [dict(key_id="test", public_key=public, app_ids=[], app_prefixes=["inbe."])]
 
-    def release(self, sequence, key=None):
-        data = b"ZIB\0photos-" + str(sequence).encode()
+    def release(self, sequence, key=None, signature=b"ZX\0\0"):
+        data = signature + b"photos-" + str(sequence).encode()
         value = dict(app_id="inbe.photos", sequence=sequence, version=f"1.0.{sequence}",
                      runtime="kryon-app-v1", host_api=2, module_api=2, data_schema=0, key_id="test",
                      artifacts=[dict(variant="module", sha256=sha256(data).hexdigest(), size=len(data))],
@@ -38,11 +38,11 @@ class NodeAppHistoryTest(unittest.TestCase):
         value["channel"] = "beta"
         return value, data
 
-    def publish(self, value, data):
+    def publish(self, value, data, suffix=None):
         encoded = json.dumps(value).encode()
-        digest = value["artifacts"][0]["sha256"]
-        entries = {"inbe.photos/latest-v2.json": encoded, f"inbe.photos/{digest}.zib": data,
-                   f"inbe.photos/{digest}.zib.release-v2.json": encoded,
+        payload = value["artifacts"][0]["sha256"] + (suffix or release.payload_suffix(data))
+        entries = {"inbe.photos/latest-v2.json": encoded, f"inbe.photos/{payload}": data,
+                   f"inbe.photos/{payload}.release-v2.json": encoded,
                    f"inbe.photos/release-{value['sequence']}.json": encoded}
         release.import_node_app(entries, self.store, self.publishers, "inbe.photos")
 
@@ -65,11 +65,33 @@ class NodeAppHistoryTest(unittest.TestCase):
         directory = self.store / "inbe.photos"
         forged, _ = self.release(9, key=Ed25519PrivateKey.generate())
         (directory / "release-9.json").write_text(json.dumps(forged))
-        (directory / (self.history()[2]["artifacts"][0]["sha256"] + ".zib")).unlink()
+        (directory / (self.history()[2]["artifacts"][0]["sha256"] + ".zx")).unlink()
         pins = self.directory / "publishers.json"
         pins.write_text(json.dumps(self.publishers))
         release.write_histories(self.store, pins)
         self.assertEqual([value["sequence"] for value in self.history()], [3, 2])
+
+    def test_hosts_from_before_the_zx_format_keep_their_last_release(self):
+        legacy, data = self.release(1, signature=b"ZIB\0")
+        self.publish(legacy, data)
+        for sequence in range(2, 6):
+            self.publish(*self.release(sequence))
+        self.assertEqual([value["sequence"] for value in self.history()], [5, 4, 1])
+        directory = self.store / "inbe.photos"
+        self.assertTrue((directory / (legacy["artifacts"][0]["sha256"] + ".zib")).is_file())
+        latest = json.loads((directory / "latest-v2.json").read_bytes())
+        self.assertTrue((directory / (latest["artifacts"][0]["sha256"] + ".zx")).is_file())
+
+    def test_payload_must_match_its_name(self):
+        value, data = self.release(1)
+        with self.assertRaises(ValueError):
+            self.publish(value, data, ".zib")
+        legacy, legacy_data = self.release(2, signature=b"ZIB\0")
+        with self.assertRaises(ValueError):
+            self.publish(legacy, legacy_data, ".zx")
+        unknown, unknown_data = self.release(3, signature=b"ZIR\0")
+        with self.assertRaises(ValueError):
+            self.publish(unknown, unknown_data, ".zx")
 
     def test_only_registered_apps_with_a_newer_release_are_published(self):
         ledger = self.directory / "versions.json"
@@ -85,7 +107,7 @@ class NodeAppHistoryTest(unittest.TestCase):
                                                      dict(app_id="inbe.chess", status="active"),
                                                      dict(app_id="inbe.radio", status="suspended")])).encode())
             app_id = url.split("/api/v2/packages/")[1].split("/")[0]
-            self.assertTrue(url.endswith("/latest?bucket=0"))
+            self.assertTrue(url.endswith("/latest?bucket=0&format=zx"))
             return BytesIO(json.dumps(served[app_id]).encode())
 
         published = []
@@ -102,7 +124,7 @@ class NodeAppHistoryTest(unittest.TestCase):
     def test_ledger_beta_apps_are_signed_for_the_beta_channel(self):
         bundles = self.directory / "node-apps"
         bundles.mkdir()
-        (bundles / "photos.zib").write_bytes(b"ZIB\0photos")
+        (bundles / "photos.zx").write_bytes(b"ZX\0\0photos")
         ledger = self.directory / "versions.json"
         ledger.write_text(json.dumps(dict(host_api=2, module_api=2, node_apps=dict(
             photos=dict(id="inbe.photos", title="Photos", version="1.0.1", sequence=1, beta=True)))))

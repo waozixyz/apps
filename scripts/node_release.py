@@ -2,7 +2,8 @@
 """Sign, check and publish the Daochi releases of apps the node offers.
 
 The node serves each app as signed release v2 metadata beside its immutable
-ZIB bundle. Inbe and Arcade publish their node apps with this tool, and Inbe's
+ZX portable executable. ZX hosts ask the node with format=zx; hosts released
+before the ZX format keep their .zib releases through 2027-10-23. Inbe and Arcade publish their node apps with this tool, and Inbe's
 node receiver imports it to check every release it accepts. Each owning
 project keeps its own version ledger, built bundles and publisher pins:
 apps/versions.json, build/node-apps and apps/publishers.json in the working
@@ -34,6 +35,45 @@ VERSION = re.compile(r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][
 # The node offers each app's newest three releases, so a person can go back
 # to an earlier version that still runs on their device.
 RETAINED_RELEASES = 3
+# Payload signatures and the suffixes the node stores them under: ZX portable
+# executables, and legacy bundles of hosts released before the ZX format.
+SUFFIXES = ((b"ZX\0\0", ".zx"), (b"ZIB\0", ".zib"))
+
+
+def payload_suffix(data):
+    """.zx or legacy .zib for payload bytes, or None for anything else."""
+    return next((suffix for signature, suffix in SUFFIXES if data.startswith(signature)), None)
+
+
+def stored_payload(directory, value):
+    """The node file of a release's module artifact, in whichever format it was stored."""
+    digest = value["artifacts"][0]["sha256"]
+    legacy = directory / (digest + ".zib")
+    if legacy.is_file() and not (directory / (digest + ".zx")).is_file():
+        return legacy
+    return directory / (digest + ".zx")
+
+
+def retained_releases(directory, releases):
+    """The newest release in each payload format, then the newest others.
+
+    Hosts released before the ZX format keep their last .zib release while
+    newer hosts move on.
+    """
+    releases = sorted(releases, key=lambda value: value["sequence"], reverse=True)
+    kept = []
+    formats = set()
+    for value in releases:
+        found = stored_payload(directory, value).suffix
+        if found not in formats and len(kept) < RETAINED_RELEASES:
+            formats.add(found)
+            kept.append(value)
+    for value in releases:
+        if len(kept) >= RETAINED_RELEASES:
+            break
+        if value not in kept:
+            kept.append(value)
+    return sorted(kept, key=lambda value: value["sequence"], reverse=True)
 
 
 def node_app_id(app_id):
@@ -134,10 +174,11 @@ def validate_release(value, app_id, publishers):
 
 
 def write_history(directory, app_id, publishers):
-    """Lists the newest three releases, newest first, in history-v2.json.
+    """Lists three releases, newest first, in history-v2.json.
 
     Every release stays archived. The history names the newest ones the node
-    still trusts and still has the bundle for.
+    still trusts and still has the payload for, always including the newest
+    release in each payload format.
     """
     releases = []
     for path in directory.glob("release-*.json"):
@@ -148,13 +189,12 @@ def write_history(directory, app_id, publishers):
             validate_release(value, app_id, publishers)
         except (ValueError, KeyError, TypeError):
             continue
-        payload = directory / (value["artifacts"][0]["sha256"] + ".zib")
+        payload = stored_payload(directory, value)
         if path.name == f"release-{value['sequence']}.json" and payload.is_file():
             releases.append(value)
     if not releases:
         return
-    releases.sort(key=lambda value: value["sequence"], reverse=True)
-    history = dict(versions=releases[:RETAINED_RELEASES])
+    history = dict(versions=retained_releases(directory, releases))
     atomic_write(directory / "history-v2.json", (json.dumps(history, separators=(",", ":")) + "\n").encode())
 
 
@@ -190,16 +230,16 @@ def upload(archive, target, remote_store):
 
 
 def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_directory):
-    """The signed release of NAME.zib in bundle_directory from its ledger entry."""
+    """The signed release of NAME.zx in bundle_directory from its ledger entry."""
     versions = json.loads(ledger_path.read_text())
     component = versions.get("node_apps", {}).get(name)
     if component is None or not node_app_id(component["id"]) or component["id"] != "inbe." + name:
         raise ValueError(f"{name} is not an app the node offers")
     if not VERSION.fullmatch(component["version"]) or not 0 < component["sequence"] <= 2**31 - 1:
         raise ValueError(f"invalid {name} version or sequence")
-    data = (bundle_directory / f"{name}.zib").read_bytes()
-    if not data.startswith(b"ZIB\0") or not 8 <= len(data) <= 64 * 1024 * 1024:
-        raise ValueError(f"invalid {name} bundle")
+    data = (bundle_directory / f"{name}.zx").read_bytes()
+    if not data.startswith(b"ZX\0\0") or not 8 <= len(data) <= 64 * 1024 * 1024:
+        raise ValueError(f"invalid {name} portable executable")
     value = dict(app_id=component["id"], sequence=component["sequence"], version=component["version"],
                  runtime="kryon-app-v1", host_api=component.get("host_api", versions["host_api"]),
                  module_api=versions["module_api"], data_schema=0, key_id=key_id,
@@ -239,7 +279,10 @@ def write_node_app(directory, value, encoded, data, publishers):
         if previous != value and (value["sequence"] <= previous["sequence"] or
                 version_tuple(value) <= version_tuple(previous)):
             raise ValueError(f"{value['app_id']} changed: advance its version and sequence")
-    payload = directory / (value["artifacts"][0]["sha256"] + ".zib")
+    suffix = payload_suffix(data)
+    if suffix is None:
+        raise ValueError("payload is not a ZX portable executable")
+    payload = directory / (value["artifacts"][0]["sha256"] + suffix)
     archive = directory / f"release-{value['sequence']}.json"
     if payload.exists() and payload.read_bytes() != data:
         raise ValueError("immutable payload does not match its hash")
@@ -262,12 +305,15 @@ def import_node_app(entries, store, publishers, app_id):
     if value["dependencies"]:
         raise ValueError("an app the node offers has no dependencies")
     artifact = value["artifacts"][0]
-    data = entries.get(f"{app_id}/{artifact['sha256']}.zib", b"")
+    names = [artifact["sha256"] + suffix for _, suffix in SUFFIXES
+             if f"{app_id}/{artifact['sha256']}{suffix}" in entries]
+    payload = names[0] if len(names) == 1 else ""
+    data = entries.get(f"{app_id}/{payload}", b"")
     if artifact["size"] != len(data) or sha256(data).hexdigest() != artifact["sha256"] or \
-            not data.startswith(b"ZIB\0"):
+            payload_suffix(data) is None or not payload.endswith(payload_suffix(data)):
         raise ValueError("payload hash mismatch")
-    expected = {f"{app_id}/latest-v2.json", f"{app_id}/{artifact['sha256']}.zib",
-                f"{app_id}/{artifact['sha256']}.zib.release-v2.json",
+    expected = {f"{app_id}/latest-v2.json", f"{app_id}/{payload}",
+                f"{app_id}/{payload}.release-v2.json",
                 f"{app_id}/release-{value['sequence']}.json"}
     if set(entries) != expected:
         raise ValueError("archive contains unreferenced content")
@@ -287,7 +333,7 @@ def publish_node_app(store, name, target, remote_store):
         archive = Path(staging) / "packages.tar"
         directory = store / ("inbe." + name)
         value = json.loads((directory / "latest-v2.json").read_bytes())
-        payload = value["artifacts"][0]["sha256"] + ".zib"
+        payload = stored_payload(directory, value).name
         with tarfile.open(archive, "w") as tar:
             for filename in ("latest-v2.json", payload, payload + ".release-v2.json",
                              f"release-{value['sequence']}.json"):
@@ -301,12 +347,14 @@ def verify_node_app(store, name, origin, open_url=open_public_url):
     app_id = "inbe." + name
     expected = json.loads((store / app_id / "latest-v2.json").read_bytes())
     route = origin.rstrip("/") + "/api/v2/packages/" + app_id
-    with open_url(route + "/latest?bucket=0", timeout=30) as response:
+    payload = stored_payload(store / app_id, expected).name
+    query = "/latest?bucket=0&format=zx" if payload.endswith(".zx") else "/latest?bucket=0"
+    with open_url(route + query, timeout=30) as response:
         encoded = response.read(65537)
     if len(encoded) > 65536 or json.loads(encoded) != expected:
         raise ValueError(f"{app_id}: public release metadata differs from the signed publication")
     artifact = expected["artifacts"][0]
-    with open_url(route + "/" + artifact["sha256"] + ".zib", timeout=30) as response:
+    with open_url(route + "/" + payload, timeout=30) as response:
         data = response.read(artifact["size"] + 1)
     if len(data) != artifact["size"] or sha256(data).hexdigest() != artifact["sha256"]:
         raise ValueError(f"{app_id}: public package hash or size differs from the signed publication")
@@ -321,9 +369,9 @@ def registered_apps(origin, open_url=open_public_url):
 
 
 def served_release(origin, app_id, open_url=open_public_url):
-    """The release the node serves for app_id, or None before its first."""
+    """The ZX release the node serves for app_id, or None before its first."""
     try:
-        with open_url(origin.rstrip("/") + "/api/v2/packages/" + app_id + "/latest?bucket=0",
+        with open_url(origin.rstrip("/") + "/api/v2/packages/" + app_id + "/latest?bucket=0&format=zx",
                       timeout=30) as response:
             encoded = response.read(65537)
     except HTTPError as error:

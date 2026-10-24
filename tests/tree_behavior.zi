@@ -28,9 +28,9 @@ open_copy: AppLocator;
 
 MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
     bytes: Vec(u8)
-    BuilderPrint(*bytes, "{\"schema\":1,\"id\":\"%\",\"title\":\"Collection\",\"harness\":\"assets/apps/apps.zib\",\"children\":[", id)
+    BuilderPrint(*bytes, "{\"schema\":1,\"id\":\"%\",\"title\":\"Collection\",\"harness\":\"assets/apps/apps.zx\",\"children\":[", id)
     if child != "" {
-        BuilderPrint(*bytes, "{\"id\":\"%\",\"title\":\"Child\",\"bundle\":\"assets/child.zib\",\"preview\":\"assets/previews/child.png\",\"protocol\":\"%\",\"expected_id\":\"child\",\"version\":\"1\",\"sha256\":\"%\"}", child, protocol, DIGEST)
+        BuilderPrint(*bytes, "{\"id\":\"%\",\"title\":\"Child\",\"bundle\":\"assets/child.zx\",\"preview\":\"assets/previews/child.png\",\"protocol\":\"%\",\"expected_id\":\"child\",\"version\":\"1\",\"sha256\":\"%\"}", child, protocol, DIGEST)
     }
     BuilderPrint(*bytes, "]}")
     result := AppCatalogRead(TextView(VecSlice(bytes, 0, bytes.count)), id, *node.catalog)
@@ -201,22 +201,22 @@ Check :: () -> s32 {
     AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":1.5}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"catalog\",\"revision\":\"7\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"revision\":7}", *request) { return 34 }
-    if !AppBundlePathValid("assets/games/chess.zib") || AppBundlePathValid("assets/../other.zib") ||
-    AppBundlePathValid("/assets/child.zib") || AppBundlePathValid("assets/%2e%2e/child.zib") ||
-    AppBundlePathValid("assets//child.zib") { return 3 }
+    if !AppBundlePathValid("assets/games/chess.zx") || AppBundlePathValid("assets/../other.zx") ||
+    AppBundlePathValid("/assets/child.zx") || AppBundlePathValid("assets/%2e%2e/child.zx") ||
+    AppBundlePathValid("assets//child.zx") { return 3 }
     if !AppPreviewPathValid("assets/previews/chess.png") || !AppPreviewPathValid("assets/card.webp") ||
     AppPreviewPathValid("https://example.test/chess.png") || AppPreviewPathValid("assets/../chess.png") ||
     AppPreviewPathValid("assets/%2e%2e/chess.jpg") || AppPreviewPathValid("assets//chess.jpeg") ||
-    AppPreviewPathValid("assets/chess.zib") || AppAssetPathValid("assets/..") { return 30 }
+    AppPreviewPathValid("assets/chess.zx") || AppAssetPathValid("assets/..") { return 30 }
     if !AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}", *request) || request.operation != 10 { return 40 }
     if AppsReadRequest("{\"v\":1,\"op\":\"rollback\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bad\"}", *request) { return 41 }
     covered: AppEntry
-    cover_json := "{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zib\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/cover.png\",\"landscape\":\"assets/wide.png\",\"logo\":\"assets/logo.png\",\"caption\":\"Game\",\"action\":\"play\"}}"
+    cover_json := "{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zx\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/cover.png\",\"landscape\":\"assets/wide.png\",\"logo\":\"assets/logo.png\",\"caption\":\"Game\",\"action\":\"play\"}}"
     if !AppReadEntry(cover_json, 0, *covered) || TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 60 }
     // A malformed optional cover cannot overwrite the previously valid entry.
-    if AppReadEntry("{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zib\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/../other.png\"}}", 0, *covered) ||
+    if AppReadEntry("{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zx\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/../other.png\"}}", 0, *covered) ||
     TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 61 }
     provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
     tree: AppTree

@@ -30,7 +30,7 @@ def runtime_path(path):
     return 'Z:' + str(path).replace('/', '\\') if WINDOWS else str(path)
 
 
-def child(identifier, path, protocol, expected, asset='assets/child.zib'):
+def child(identifier, path, protocol, expected, asset='assets/child.zx'):
     return dict(id=identifier, title=identifier, bundle=asset,
                 protocol=protocol, expected_id=expected, version='1', sha256=digest(path))
 
@@ -50,7 +50,7 @@ def stage(name, identifier, entries, payloads, controller):
         destination = assets / packed.removeprefix('assets/')
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(payload, destination)
-    shutil.copyfile(controller, assets / 'apps/apps.zib')
+    shutil.copyfile(controller, assets / 'apps/apps.zx')
     # Tiny binary image fixture; it is never a source or product screenshot.
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
@@ -60,7 +60,7 @@ def stage(name, identifier, entries, payloads, controller):
         entry['preview'] = 'assets/preview.png'
         entry['icon'] = 'assets/preview.png'
     (assets / 'apps/catalog.json').write_text(json.dumps(dict(
-        schema=1, id=identifier, title=identifier, harness='assets/apps/apps.zib', children=entries)))
+        schema=1, id=identifier, title=identifier, harness='assets/apps/apps.zx', children=entries)))
     return assets
 
 
@@ -70,8 +70,8 @@ def main():
     for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS', 'SESSION_MANAGER'):
         os.environ.pop(key, None)
     WORK.mkdir(parents=True, exist_ok=True)
-    leaf, middle, root = [WORK / (name + '.zib') for name in ('counter', 'middle', 'root')]
-    controller, node = Path(os.environ.get('APPS_TEST_UI', ROOT / 'build/ui/apps.zib')).resolve(), WORK / 'node.zib'
+    leaf, middle, root = [WORK / (name + '.zx') for name in ('counter', 'middle', 'root')]
+    controller, node = Path(os.environ.get('APPS_TEST_UI', ROOT / 'build/ui/apps.zx')).resolve(), WORK / 'node.zx'
     if not os.environ.get('APPS_TEST_UI'):
         run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
     bundle('counter', leaf)
@@ -86,16 +86,16 @@ def main():
         sound.writeframes(bytes(64))
     bundle('node', node, node_assets.parent)
     entries = [child('fixture.counter', leaf, 'app/1', 'counter'),
-               child('fixture.node', node, 'node/2', 'node', 'assets/node.zib')]
-    payloads = {'assets/child.zib': leaf, 'assets/node.zib': node}
+               child('fixture.node', node, 'node/2', 'node', 'assets/node.zx')]
+    payloads = {'assets/child.zx': leaf, 'assets/node.zx': node}
     if len(sys.argv) == 3:
         chess = Path(sys.argv[2]).resolve()
-        entries.append(child('inbe.chess', chess, 'node/2', 'chess', 'assets/chess.zib'))
-        payloads['assets/chess.zib'] = chess
+        entries.append(child('inbe.chess', chess, 'node/2', 'chess', 'assets/chess.zx'))
+        payloads['assets/chess.zx'] = chess
         os.environ['APPS_FIXTURE_CHESS_SHA256'] = digest(chess)
     bundle('collection', middle, stage('middle-stage', 'fixture.middle', entries, payloads, controller))
     bundle('collection', root, stage('root-stage', 'fixture.root',
-        [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zib': middle}, controller))
+        [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zx': middle}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
                  'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):

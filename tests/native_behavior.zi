@@ -1322,7 +1322,7 @@ Check :: () -> s32 {
     if !Draw(*host, 720, 900, true, false, 1.5) { return 38 }
     if !Draw(*host, 360, 640) || preview_second.y <= preview_first.y { return 35 }
     limit := host.tree.byte_limit
-    resource := AppHostAsset(middle, "assets/node.zib")
+    resource := AppHostAsset(middle, "assets/node.zx")
     host.tree.byte_limit = host.tree.bytes + resource.data.count + 65536 + cast(s64)size_of(AppNode)
     if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.node\"}") || effect_calls != 1 || host.retired_bytes <= 0 { return 32 }
     if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.node\"}") || effect_calls != 1 { return 33 }

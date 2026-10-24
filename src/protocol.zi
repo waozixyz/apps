@@ -128,7 +128,7 @@ AppAssetPathValid :: (path: string) -> bool {
 }
 
 AppBundlePathValid :: (path: string) -> bool {
-    return AppAssetPathValid(path) && path.count >= 12 && path[path.count - 4:] == ".zib"
+    return AppAssetPathValid(path) && path.count >= 11 && path[path.count - 3:] == ".zx"
 }
 
 // A screenshot belongs to its declaring collection, just like a child bundle.
