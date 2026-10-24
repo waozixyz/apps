@@ -529,6 +529,10 @@ NativeControllerCheck :: () -> s32 {
     if !NativeClick("Download") || !NativeDraw() || native_queued != queued ||
     NativeLabel("Download size: 4.1 kB") < 0 || NativeLabel("•  Keep its data in your account") < 0 ||
     NativeLabel("•  Read and change your photo library") < 0 || NativeLabel("•  Play sound") >= 0 { return 633 }
+    // Opening the app itself asks the same; Cancel downloads nothing.
+    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
+    NativeLabel("Download size: 4.1 kB") >= 0 || !NativeClick("Clock", WidgetKindButton) || !NativeDraw() ||
+    native_queued != queued || NativeLabel("Download size: 4.1 kB") < 0 { return 639 }
     if !NativeClickLast("Download", WidgetKindButton) || !NativeDraw() || native_queued != queued + 1 { return 634 }
     if native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 635 }
     if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading 40%") < 0 ||

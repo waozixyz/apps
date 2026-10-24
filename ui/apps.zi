@@ -893,8 +893,14 @@ AppsFrame :: () -> bool {
             if card.downloading { tile.detail = AppsLabel(language, "downloading") }
             else if !hide_sizes && AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
         }
-        tile.disabled = tile.disabled || !AppsSupported(card, Rules.APPS_OPEN)
-        if Button(session, tile) != 0 { AppsAct("open", card.id) }
+        // An app not on this device opens its download dialog instead of a
+        // screen that has nothing to show yet.
+        download_first := !card.on_device && AppsSupported(card, Rules.APPS_INSTALL)
+        tile.disabled = tile.disabled || (!AppsSupported(card, Rules.APPS_OPEN) && !download_first)
+        if Button(session, tile) != 0 {
+            if download_first { AppsDownloadOpen(card) }
+            else { AppsAct("open", card.id) }
+        }
         if icon_mode && card.reorderable {
             unused Button(session, ButtonProps.{.key = Rules.AppReorderKey(TextUntilNul(card.id[:])),
                     .label = AppsLabel(language, "move_app"), .icon_shape = APP_REORDER,
