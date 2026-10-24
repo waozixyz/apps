@@ -7,6 +7,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -107,7 +108,10 @@ class NodeAppHistoryTest(unittest.TestCase):
                                                      dict(app_id="inbe.chess", status="active"),
                                                      dict(app_id="inbe.radio", status="suspended")])).encode())
             app_id = url.split("/api/v2/packages/")[1].split("/")[0]
-            self.assertTrue(url.endswith("/latest?bucket=0&format=zx"))
+            # Today's node serves these apps only as legacy .zib releases.
+            if url.endswith("/latest?bucket=0&format=zx"):
+                raise HTTPError(url, 404, "Not Found", {}, None)
+            self.assertTrue(url.endswith("/latest?bucket=0"))
             return BytesIO(json.dumps(served[app_id]).encode())
 
         published = []

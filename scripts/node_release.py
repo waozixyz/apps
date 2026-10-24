@@ -369,18 +369,27 @@ def registered_apps(origin, open_url=open_public_url):
 
 
 def served_release(origin, app_id, open_url=open_public_url):
-    """The ZX release the node serves for app_id, or None before its first."""
-    try:
-        with open_url(origin.rstrip("/") + "/api/v2/packages/" + app_id + "/latest?bucket=0&format=zx",
-                      timeout=30) as response:
-            encoded = response.read(65537)
-    except HTTPError as error:
-        if error.code == 404:
-            return None
-        raise
-    if len(encoded) > 65536:
-        raise ValueError(f"{app_id}: public release metadata is too large")
-    return json.loads(encoded)
+    """The newest release the node serves for app_id in either format, or None.
+
+    A new release must advance past it: the node keeps one sequence per app,
+    whether its newest release is a .zx one or a legacy .zib one.
+    """
+    newest = None
+    for query in ("/latest?bucket=0&format=zx", "/latest?bucket=0"):
+        try:
+            with open_url(origin.rstrip("/") + "/api/v2/packages/" + app_id + query,
+                          timeout=30) as response:
+                encoded = response.read(65537)
+        except HTTPError as error:
+            if error.code == 404:
+                continue
+            raise
+        if len(encoded) > 65536:
+            raise ValueError(f"{app_id}: public release metadata is too large")
+        value = json.loads(encoded)
+        if newest is None or value["sequence"] > newest["sequence"]:
+            newest = value
+    return newest
 
 
 def publish_node_apps(store, key_path, key_id, target, remote_store, origin, publishers_path, *,
