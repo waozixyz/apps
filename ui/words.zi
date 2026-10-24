@@ -38,6 +38,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Zobrazení mřížky" }
         if key == "favorites" { return "Oblíbené" }
         if key == "no_results" { return "Žádné odpovídající aplikace" }
+        if key == "download_size" { return "Velikost stahování" }
+        if key == "app_can" { return "Tato aplikace může" }
+        if key == "permission_account" { return "Ukládat svá data do vašeho účtu" }
+        if key == "permission_friends" { return "Vidět vaše přátele a sdílet s nimi" }
+        if key == "permission_audio" { return "Přehrávat zvuk" }
+        if key == "permission_media" { return "Číst a měnit vaši knihovnu fotek" }
+        if key == "download_failed" { return "Stahování se nezdařilo" }
+        if key == "try_again" { return "Zkusit znovu" }
+        if key == "ready" { return "Připraveno k otevření" }
+        if key == "hide" { return "Skrýt" }
+        if key == "close" { return "Zavřít" }
+        if key == "download_waiting" { return "Čeká na stažení" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -77,6 +89,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Rasteransicht" }
         if key == "favorites" { return "Favoriten" }
         if key == "no_results" { return "Keine passenden Apps" }
+        if key == "download_size" { return "Downloadgröße" }
+        if key == "app_can" { return "Diese App kann" }
+        if key == "permission_account" { return "Daten in deinem Konto speichern" }
+        if key == "permission_friends" { return "Deine Freunde sehen und mit ihnen teilen" }
+        if key == "permission_audio" { return "Ton abspielen" }
+        if key == "permission_media" { return "Deine Fotobibliothek lesen und ändern" }
+        if key == "download_failed" { return "Download fehlgeschlagen" }
+        if key == "try_again" { return "Erneut versuchen" }
+        if key == "ready" { return "Bereit zum Öffnen" }
+        if key == "hide" { return "Ausblenden" }
+        if key == "close" { return "Schließen" }
+        if key == "download_waiting" { return "Wartet auf Download" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -116,6 +140,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Vista de cuadrícula" }
         if key == "favorites" { return "Favoritas" }
         if key == "no_results" { return "No hay aplicaciones coincidentes" }
+        if key == "download_size" { return "Tamaño de descarga" }
+        if key == "app_can" { return "Esta app puede" }
+        if key == "permission_account" { return "Guardar sus datos en tu cuenta" }
+        if key == "permission_friends" { return "Ver a tus amigos y compartir con ellos" }
+        if key == "permission_audio" { return "Reproducir sonido" }
+        if key == "permission_media" { return "Leer y cambiar tu biblioteca de fotos" }
+        if key == "download_failed" { return "Error en la descarga" }
+        if key == "try_again" { return "Reintentar" }
+        if key == "ready" { return "Lista para abrir" }
+        if key == "hide" { return "Ocultar" }
+        if key == "close" { return "Cerrar" }
+        if key == "download_waiting" { return "Esperando para descargar" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -155,6 +191,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Vue en grille" }
         if key == "favorites" { return "Favoris" }
         if key == "no_results" { return "Aucune application correspondante" }
+        if key == "download_size" { return "Taille du téléchargement" }
+        if key == "app_can" { return "Cette app peut" }
+        if key == "permission_account" { return "Garder ses données dans votre compte" }
+        if key == "permission_friends" { return "Voir vos amis et partager avec eux" }
+        if key == "permission_audio" { return "Jouer du son" }
+        if key == "permission_media" { return "Lire et modifier votre photothèque" }
+        if key == "download_failed" { return "Échec du téléchargement" }
+        if key == "try_again" { return "Réessayer" }
+        if key == "ready" { return "Prête à ouvrir" }
+        if key == "hide" { return "Masquer" }
+        if key == "close" { return "Fermer" }
+        if key == "download_waiting" { return "En attente de téléchargement" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -194,6 +242,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Tampilan kisi" }
         if key == "favorites" { return "Favorit" }
         if key == "no_results" { return "Tidak ada aplikasi yang cocok" }
+        if key == "download_size" { return "Ukuran unduhan" }
+        if key == "app_can" { return "Aplikasi ini dapat" }
+        if key == "permission_account" { return "Menyimpan datanya di akun Anda" }
+        if key == "permission_friends" { return "Melihat teman Anda dan berbagi dengan mereka" }
+        if key == "permission_audio" { return "Memutar suara" }
+        if key == "permission_media" { return "Membaca dan mengubah pustaka foto Anda" }
+        if key == "download_failed" { return "Unduhan gagal" }
+        if key == "try_again" { return "Coba lagi" }
+        if key == "ready" { return "Siap dibuka" }
+        if key == "hide" { return "Sembunyikan" }
+        if key == "close" { return "Tutup" }
+        if key == "download_waiting" { return "Menunggu diunduh" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -233,6 +293,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Vista griglia" }
         if key == "favorites" { return "Preferite" }
         if key == "no_results" { return "Nessuna applicazione corrispondente" }
+        if key == "download_size" { return "Dimensione del download" }
+        if key == "app_can" { return "Questa app può" }
+        if key == "permission_account" { return "Conservare i suoi dati nel tuo account" }
+        if key == "permission_friends" { return "Vedere i tuoi amici e condividere con loro" }
+        if key == "permission_audio" { return "Riprodurre suoni" }
+        if key == "permission_media" { return "Leggere e modificare la tua libreria foto" }
+        if key == "download_failed" { return "Download non riuscito" }
+        if key == "try_again" { return "Riprova" }
+        if key == "ready" { return "Pronta da aprire" }
+        if key == "hide" { return "Nascondi" }
+        if key == "close" { return "Chiudi" }
+        if key == "download_waiting" { return "In attesa del download" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -272,6 +344,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "グリッド表示" }
         if key == "favorites" { return "お気に入り" }
         if key == "no_results" { return "一致するアプリがありません" }
+        if key == "download_size" { return "ダウンロードサイズ" }
+        if key == "app_can" { return "このアプリができること" }
+        if key == "permission_account" { return "データをアカウントに保存する" }
+        if key == "permission_friends" { return "友だちを見て共有する" }
+        if key == "permission_audio" { return "音を再生する" }
+        if key == "permission_media" { return "写真ライブラリを読み取り変更する" }
+        if key == "download_failed" { return "ダウンロードに失敗しました" }
+        if key == "try_again" { return "再試行" }
+        if key == "ready" { return "開く準備ができました" }
+        if key == "hide" { return "隠す" }
+        if key == "close" { return "閉じる" }
+        if key == "download_waiting" { return "ダウンロード待ち" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -311,6 +395,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "격자 보기" }
         if key == "favorites" { return "즐겨찾기" }
         if key == "no_results" { return "일치하는 앱이 없습니다" }
+        if key == "download_size" { return "다운로드 크기" }
+        if key == "app_can" { return "이 앱이 할 수 있는 일" }
+        if key == "permission_account" { return "데이터를 계정에 보관" }
+        if key == "permission_friends" { return "친구를 보고 함께 공유" }
+        if key == "permission_audio" { return "소리 재생" }
+        if key == "permission_media" { return "사진 보관함 읽기 및 변경" }
+        if key == "download_failed" { return "다운로드 실패" }
+        if key == "try_again" { return "다시 시도" }
+        if key == "ready" { return "열 준비 완료" }
+        if key == "hide" { return "숨기기" }
+        if key == "close" { return "닫기" }
+        if key == "download_waiting" { return "다운로드 대기 중" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -350,6 +446,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Visualização em grade" }
         if key == "favorites" { return "Favoritos" }
         if key == "no_results" { return "Nenhum aplicativo correspondente" }
+        if key == "download_size" { return "Tamanho do download" }
+        if key == "app_can" { return "Este app pode" }
+        if key == "permission_account" { return "Guardar os dados dele na sua conta" }
+        if key == "permission_friends" { return "Ver seus amigos e compartilhar com eles" }
+        if key == "permission_audio" { return "Tocar som" }
+        if key == "permission_media" { return "Ler e alterar sua biblioteca de fotos" }
+        if key == "download_failed" { return "Falha no download" }
+        if key == "try_again" { return "Tentar novamente" }
+        if key == "ready" { return "Pronto para abrir" }
+        if key == "hide" { return "Ocultar" }
+        if key == "close" { return "Fechar" }
+        if key == "download_waiting" { return "Aguardando download" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -389,6 +497,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "Сетка" }
         if key == "favorites" { return "Избранное" }
         if key == "no_results" { return "Подходящие приложения не найдены" }
+        if key == "download_size" { return "Размер загрузки" }
+        if key == "app_can" { return "Это приложение может" }
+        if key == "permission_account" { return "Хранить свои данные в вашем аккаунте" }
+        if key == "permission_friends" { return "Видеть ваших друзей и делиться с ними" }
+        if key == "permission_audio" { return "Воспроизводить звук" }
+        if key == "permission_media" { return "Читать и изменять вашу фотобиблиотеку" }
+        if key == "download_failed" { return "Не удалось загрузить" }
+        if key == "try_again" { return "Повторить" }
+        if key == "ready" { return "Готово к открытию" }
+        if key == "hide" { return "Скрыть" }
+        if key == "close" { return "Закрыть" }
+        if key == "download_waiting" { return "Ожидает загрузки" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -428,6 +548,18 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "grid_view" { return "网格视图" }
         if key == "favorites" { return "收藏" }
         if key == "no_results" { return "没有匹配的应用" }
+        if key == "download_size" { return "下载大小" }
+        if key == "app_can" { return "此应用可以" }
+        if key == "permission_account" { return "将其数据保存在你的账户中" }
+        if key == "permission_friends" { return "查看你的好友并与他们分享" }
+        if key == "permission_audio" { return "播放声音" }
+        if key == "permission_media" { return "读取和更改你的照片库" }
+        if key == "download_failed" { return "下载失败" }
+        if key == "try_again" { return "重试" }
+        if key == "ready" { return "可以打开了" }
+        if key == "hide" { return "隐藏" }
+        if key == "close" { return "关闭" }
+        if key == "download_waiting" { return "等待下载" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -466,5 +598,17 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "grid_view" { return "Grid view" }
     if key == "favorites" { return "Pinned" }
     if key == "no_results" { return "No apps found" }
+    if key == "download_size" { return "Download size" }
+    if key == "app_can" { return "This app can" }
+    if key == "permission_account" { return "Keep its data in your account" }
+    if key == "permission_friends" { return "See your friends and share with them" }
+    if key == "permission_audio" { return "Play sound" }
+    if key == "permission_media" { return "Read and change your photo library" }
+    if key == "download_failed" { return "Download failed" }
+    if key == "try_again" { return "Try again" }
+    if key == "ready" { return "Ready to open" }
+    if key == "hide" { return "Hide" }
+    if key == "close" { return "Close" }
+    if key == "download_waiting" { return "Waiting to download" }
     return key
 }

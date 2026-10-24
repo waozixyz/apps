@@ -35,5 +35,17 @@
   "list_view": "List view",
   "grid_view": "Grid view",
   "favorites": "Pinned",
-  "no_results": "No apps found"
+  "no_results": "No apps found",
+  "download_size": "Download size",
+  "app_can": "This app can",
+  "permission_account": "Keep its data in your account",
+  "permission_friends": "See your friends and share with them",
+  "permission_audio": "Play sound",
+  "permission_media": "Read and change your photo library",
+  "download_failed": "Download failed",
+  "try_again": "Try again",
+  "ready": "Ready to open",
+  "hide": "Hide",
+  "close": "Close",
+  "download_waiting": "Waiting to download"
 }

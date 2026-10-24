@@ -35,5 +35,17 @@
   "list_view": "Vista de lista",
   "grid_view": "Vista de cuadrícula",
   "favorites": "Favoritas",
-  "no_results": "No hay aplicaciones coincidentes"
+  "no_results": "No hay aplicaciones coincidentes",
+  "download_size": "Tamaño de descarga",
+  "app_can": "Esta app puede",
+  "permission_account": "Guardar sus datos en tu cuenta",
+  "permission_friends": "Ver a tus amigos y compartir con ellos",
+  "permission_audio": "Reproducir sonido",
+  "permission_media": "Leer y cambiar tu biblioteca de fotos",
+  "download_failed": "Error en la descarga",
+  "try_again": "Reintentar",
+  "ready": "Lista para abrir",
+  "hide": "Ocultar",
+  "close": "Cerrar",
+  "download_waiting": "Esperando para descargar"
 }

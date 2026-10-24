@@ -23,6 +23,13 @@ without package sizes, in either list or grid mode. The native host exposes
 the same option as `AppPresentation.hide_sizes`. The default keeps sizes
 visible; download progress remains visible in either presentation.
 
+A card for an app not on the device shows a download symbol. It opens a
+dialog with the package size and what the app may reach, and the dialog's
+Download is the person's consent; it then follows the download to Open, or
+to Try again when it failed. Hosts describe this per card with
+`permissions` (`account`, `friends`, `audio`, `media`), `progress` (percent
+while `downloading`) and `download_failed`.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its

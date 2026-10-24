@@ -331,8 +331,8 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
         if props.key == AppReorderKey("native.breathing") { native_handle_bounds = props.bounds }
         if props.key == AppCardKey("native.clock") { native_other_bounds = props.bounds }
         // Each card has its options, or the download symbol while it is not
-        // on the device.
-        if props.label == "App options" || props.label == "Download" {
+        // on the device; the download dialog's own Download has a label.
+        if props.label == "App options" || (props.label == "Download" && props.icon_only) {
             native_actions += 1
             download := "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
             options := "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
@@ -394,6 +394,22 @@ NativeLabel :: (label: string, kind: s32 = -1) -> s32 {
         }
     }
     return -1
+}
+
+// The last node with this label, such as a dialog's button over a card's.
+NativeClickLast :: (label: string, kind: s32 = -1) -> bool {
+    target: s32 = -1
+    for index: cast(s32)0..TreeCount(ui_session) - 1 {
+        node := TreeNodeAt(ui_session, index)
+        if node.semantic_label == label && (kind < 0 || node.kind == kind) {
+            native_label_bounds = node.bounds
+            target = index
+        }
+    }
+    if target < 0 { return false }
+    hit := TreeHitAt(ui_session, native_label_bounds.x + native_label_bounds.width * 0.5,
+        native_label_bounds.y + native_label_bounds.height * 0.5)
+    return hit == target && TreeActivateAt(ui_session, hit)
 }
 
 // An icon choice in Properties: a round button inside the dialog.
@@ -505,15 +521,28 @@ NativeControllerCheck :: () -> s32 {
     !native_controller.app.app.replay.ready { return 87 }
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw() || native_request.operation != APPS_OPEN { return 63 }
     // An app not on this device has the download symbol instead of its
-    // options, which installs it, and says so while it downloads.
+    // options. It opens a dialog with the app's size and what it may reach,
+    // whose Download installs it; the dialog then follows the download.
     queued := native_queued
     if !NativeLoadCatalog("download") || !NativeDraw() { return 630 }
     if NativeLabel("4.1 kB") < 0 { return 632 }
-    if !NativeClick("Download") { return 633 }
-    if !NativeDraw() || native_queued != queued + 1 { return 634 }
+    if !NativeClick("Download") || !NativeDraw() || native_queued != queued ||
+    NativeLabel("Download size: 4.1 kB") < 0 || NativeLabel("•  Keep its data in your account") < 0 ||
+    NativeLabel("•  Read and change your photo library") < 0 || NativeLabel("•  Play sound") >= 0 { return 633 }
+    if !NativeClickLast("Download", WidgetKindButton) || !NativeDraw() || native_queued != queued + 1 { return 634 }
     if native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 635 }
-    if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading") < 0 ||
-    NativeLabel("4.1 kB") >= 0 || NativeClick("Download") { return 631 }
+    if !NativeLoadCatalog("downloading") || !NativeDraw() || NativeLabel("Downloading 40%") < 0 ||
+    NativeLabel("Hide", WidgetKindButton) < 0 { return 631 }
+    // Hide leaves the download running and the card saying so.
+    if !NativeClick("Hide", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
+    NativeLabel("Hide", WidgetKindButton) >= 0 || NativeLabel("Downloading") < 0 || NativeLabel("4.1 kB") >= 0 ||
+    native_queued != queued + 1 { return 636 }
+    // A failed download says so instead of failing silently, and tries again.
+    if !NativeLoadCatalog("download-failed") || !NativeDraw() || !NativeClick("Download") || !NativeDraw() ||
+    NativeLabel("Download failed") < 0 || !NativeClick("Try again", WidgetKindButton) || !NativeDraw() ||
+    native_queued != queued + 2 || native_request.operation != APPS_INSTALL { return 637 }
+    if !NativeClick("Close", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
+    NativeLabel("Download failed") >= 0 { return 638 }
     // A host chooses compact cards without discarding bytes from its catalog.
     if !NativeLoadCatalog("simple-grid") || !NativeDraw() || NativeLabel("12.3 kB") >= 0 { return 88 }
     if !NativeLoadCatalog("simple-downloading") || !NativeDraw() ||

@@ -35,5 +35,17 @@
   "list_view": "リスト表示",
   "grid_view": "グリッド表示",
   "favorites": "お気に入り",
-  "no_results": "一致するアプリがありません"
+  "no_results": "一致するアプリがありません",
+  "download_size": "ダウンロードサイズ",
+  "app_can": "このアプリができること",
+  "permission_account": "データをアカウントに保存する",
+  "permission_friends": "友だちを見て共有する",
+  "permission_audio": "音を再生する",
+  "permission_media": "写真ライブラリを読み取り変更する",
+  "download_failed": "ダウンロードに失敗しました",
+  "try_again": "再試行",
+  "ready": "開く準備ができました",
+  "hide": "隠す",
+  "close": "閉じる",
+  "download_waiting": "ダウンロード待ち"
 }

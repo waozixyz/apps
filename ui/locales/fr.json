@@ -35,5 +35,17 @@
   "list_view": "Vue en liste",
   "grid_view": "Vue en grille",
   "favorites": "Favoris",
-  "no_results": "Aucune application correspondante"
+  "no_results": "Aucune application correspondante",
+  "download_size": "Taille du téléchargement",
+  "app_can": "Cette app peut",
+  "permission_account": "Garder ses données dans votre compte",
+  "permission_friends": "Voir vos amis et partager avec eux",
+  "permission_audio": "Jouer du son",
+  "permission_media": "Lire et modifier votre photothèque",
+  "download_failed": "Échec du téléchargement",
+  "try_again": "Réessayer",
+  "ready": "Prête à ouvrir",
+  "hide": "Masquer",
+  "close": "Fermer",
+  "download_waiting": "En attente de téléchargement"
 }

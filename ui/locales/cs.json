@@ -35,5 +35,17 @@
   "list_view": "Zobrazení seznamu",
   "grid_view": "Zobrazení mřížky",
   "favorites": "Oblíbené",
-  "no_results": "Žádné odpovídající aplikace"
+  "no_results": "Žádné odpovídající aplikace",
+  "download_size": "Velikost stahování",
+  "app_can": "Tato aplikace může",
+  "permission_account": "Ukládat svá data do vašeho účtu",
+  "permission_friends": "Vidět vaše přátele a sdílet s nimi",
+  "permission_audio": "Přehrávat zvuk",
+  "permission_media": "Číst a měnit vaši knihovnu fotek",
+  "download_failed": "Stahování se nezdařilo",
+  "try_again": "Zkusit znovu",
+  "ready": "Připraveno k otevření",
+  "hide": "Skrýt",
+  "close": "Zavřít",
+  "download_waiting": "Čeká na stažení"
 }

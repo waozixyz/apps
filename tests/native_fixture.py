@@ -98,7 +98,7 @@ def main():
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zx': middle}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -107,9 +107,14 @@ def main():
             candidate['children'][0]['update_available'] = False
         if name == 'changed-update':
             candidate['children'][0]['available_sha256'] = 'd' * 64
-        if name in ('download', 'downloading', 'simple-downloading'):
-            candidate['children'][1].update(on_device=False, downloading=name != 'download',
-                                            bytes=4096, actions=['open', 'install'])
+        if name in ('download', 'downloading', 'download-failed', 'simple-downloading'):
+            candidate['children'][1].update(on_device=False, downloading=name in ('downloading', 'simple-downloading'),
+                                            bytes=4096, actions=['open', 'install'],
+                                            permissions=['account', 'media', 'unknown-later'])
+        if name == 'downloading':
+            candidate['children'][1]['progress'] = 40
+        if name == 'download-failed':
+            candidate['children'][1]['download_failed'] = True
         if name.startswith('simple-'):
             candidate['presentation']['hide_sizes'] = True
             candidate['presentation']['mode'] = 'list' if name == 'simple-list' else 'icon'

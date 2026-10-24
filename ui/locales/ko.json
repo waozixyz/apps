@@ -35,5 +35,17 @@
   "list_view": "목록 보기",
   "grid_view": "격자 보기",
   "favorites": "즐겨찾기",
-  "no_results": "일치하는 앱이 없습니다"
+  "no_results": "일치하는 앱이 없습니다",
+  "download_size": "다운로드 크기",
+  "app_can": "이 앱이 할 수 있는 일",
+  "permission_account": "데이터를 계정에 보관",
+  "permission_friends": "친구를 보고 함께 공유",
+  "permission_audio": "소리 재생",
+  "permission_media": "사진 보관함 읽기 및 변경",
+  "download_failed": "다운로드 실패",
+  "try_again": "다시 시도",
+  "ready": "열 준비 완료",
+  "hide": "숨기기",
+  "close": "닫기",
+  "download_waiting": "다운로드 대기 중"
 }

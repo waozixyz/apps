@@ -35,5 +35,17 @@
   "list_view": "Tampilan daftar",
   "grid_view": "Tampilan kisi",
   "favorites": "Favorit",
-  "no_results": "Tidak ada aplikasi yang cocok"
+  "no_results": "Tidak ada aplikasi yang cocok",
+  "download_size": "Ukuran unduhan",
+  "app_can": "Aplikasi ini dapat",
+  "permission_account": "Menyimpan datanya di akun Anda",
+  "permission_friends": "Melihat teman Anda dan berbagi dengan mereka",
+  "permission_audio": "Memutar suara",
+  "permission_media": "Membaca dan mengubah pustaka foto Anda",
+  "download_failed": "Unduhan gagal",
+  "try_again": "Coba lagi",
+  "ready": "Siap dibuka",
+  "hide": "Sembunyikan",
+  "close": "Tutup",
+  "download_waiting": "Menunggu diunduh"
 }

@@ -35,5 +35,17 @@
   "list_view": "列表视图",
   "grid_view": "网格视图",
   "favorites": "收藏",
-  "no_results": "没有匹配的应用"
+  "no_results": "没有匹配的应用",
+  "download_size": "下载大小",
+  "app_can": "此应用可以",
+  "permission_account": "将其数据保存在你的账户中",
+  "permission_friends": "查看你的好友并与他们分享",
+  "permission_audio": "播放声音",
+  "permission_media": "读取和更改你的照片库",
+  "download_failed": "下载失败",
+  "try_again": "重试",
+  "ready": "可以打开了",
+  "hide": "隐藏",
+  "close": "关闭",
+  "download_waiting": "等待下载"
 }

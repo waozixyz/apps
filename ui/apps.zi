@@ -45,6 +45,12 @@ APP_ELLIPSIS :: "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
 APP_REORDER :: "S2rr:M8 5H8.01M16 5H16.01M8 12H8.01M16 12H16.01M8 19H8.01M16 19H16.01"
 APP_DOWNLOAD :: "S1.6rr:M12 3V15M7 10L12 15L17 10M5 20H19"
 
+// What a host lets an app reach, named by its catalog's "permissions".
+APP_PERMISSION_ACCOUNT :: 1
+APP_PERMISSION_FRIENDS :: 2
+APP_PERMISSION_AUDIO :: 4
+APP_PERMISSION_MEDIA :: 8
+
 AppCard :: struct {
     id: [128]u8
     title: [256]u8
@@ -62,6 +68,11 @@ AppCard :: struct {
     // downloads.
     on_device: bool
     downloading: bool
+    // How much of the download has arrived in percent, or -1 while unknown.
+    progress: s32
+    download_failed: bool
+    // APP_PERMISSION_* bits for what the app may reach once it is here.
+    permissions: u32
     favorite: bool
     reorderable: bool
     launcher: s32
@@ -109,8 +120,12 @@ menu_x: float32;
 menu_y: float32;
 dialog_id: [128]u8;
 // 1 update confirmation, 2 retained version chooser, 3 rollback confirmation,
-// 4 the app's properties.
+// 4 the app's properties, 5 downloading an app not on this device.
 dialog: s32;
+// Whether Download was pressed in the open download dialog; frames drawn
+// since, for the bar of a download whose size is not known.
+download_started: bool;
+download_frames: s32;
 dialog_target: Rules.AppVersion;
 dialog_message: [2048]u8;
 
@@ -227,6 +242,22 @@ AppsReadCatalog :: () -> bool {
         // Hosts from before these fields only list apps on the device.
         card.on_device = FieldAt(text, at, "on_device") < 0 || AppsBool(text, FieldAt(text, at, "on_device"))
         card.downloading = !card.on_device && AppsBool(text, FieldAt(text, at, "downloading"))
+        card.progress = -1
+        progress := FieldAt(text, at, "progress")
+        if card.downloading && progress >= 0 {
+            value := AppsNumber(text, progress)
+            if value >= 0.0 && value <= 100.0 { card.progress = cast(s32)value }
+        }
+        card.download_failed = !card.on_device && !card.downloading && AppsBool(text, FieldAt(text, at, "download_failed"))
+        // Names a newer host adds and this screen does not know are left out.
+        permissions := FieldAt(text, at, "permissions")
+        permission_count := ifx permissions < 0 then 0 else ArrayCount(text, permissions)
+        if permission_count < 0 || permission_count > 16 { return false }
+        for entry: cast(s32)0..permission_count - 1 {
+            name: [32]u8
+            if ReadStringText(text, AppsArrayAt(text, permissions, entry), name[:]) < 0 { return false }
+            card.permissions = card.permissions | AppsPermission(TextUntilNul(name[:]))
+        }
         card.favorite = AppsBool(text, FieldAt(text, at, "favorite"))
         card.reorderable = AppsBool(text, FieldAt(text, at, "reorderable"))
         if card.reorderable { has_reorder_handles = true }
@@ -528,10 +559,146 @@ AppsProperties :: (session: Session, card: *AppCard, scale: float32, language: s
     }
 }
 
+AppsPermission :: (name: string) -> u32 {
+    if name == "account" { return cast(u32)APP_PERMISSION_ACCOUNT }
+    if name == "friends" { return cast(u32)APP_PERMISSION_FRIENDS }
+    if name == "audio" { return cast(u32)APP_PERMISSION_AUDIO }
+    if name == "media" { return cast(u32)APP_PERMISSION_MEDIA }
+    return cast(u32)0
+}
+
+AppsPermissionLabel :: (bit: u32) -> string {
+    if bit == cast(u32)APP_PERMISSION_ACCOUNT { return "permission_account" }
+    if bit == cast(u32)APP_PERMISSION_FRIENDS { return "permission_friends" }
+    if bit == cast(u32)APP_PERMISSION_AUDIO { return "permission_audio" }
+    return "permission_media"
+}
+
+AppsDownloadOpen :: (card: *AppCard) {
+    dialog_id = card.id
+    dialog = 5
+    download_started = card.downloading
+    download_frames = 0
+}
+
+// Before anything downloads the dialog says how big the app is and what it
+// may reach, and Download is the consent; then it shows the progress and
+// ends with Open, or Try again when the download failed.
+AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: string, font: s32) {
+    if !download_started && (card.on_device || !AppsSupported(card, Rules.APPS_INSTALL)) { AppsPropertiesClose(); return }
+    gap := 12.0 * scale
+    line := 24.0 * scale
+    control := 44.0 * scale
+    icon_size := 48.0 * scale
+    bar := 10.0 * scale
+    download_frames += 1
+    asking := !download_started && !card.downloading && !card.download_failed
+    size_text: [32]u8
+    has_size := AppsSize(card.bytes, size_text[:])
+    permission_count: s32
+    for bit: cast(u32)0..3 {
+        if (card.permissions & (cast(u32)1 << bit)) != cast(u32)0 { permission_count += 1 }
+    }
+    content_height := icon_size + gap + control
+    if asking && permission_count > 0 { content_height += line + cast(float32)permission_count * line + gap }
+    if card.downloading || (download_started && !card.on_device && !card.download_failed) { content_height += bar + gap }
+    frame := ModalFrame(session, ModalFrameProps.{.key = cast(u64)19, .title = TextUntilNul(card.title[:]),
+            .width = cast(s32)(440.0 * scale), .height = cast(s32)(content_height + 74.0 * scale), .scale = scale})
+    if frame.dismissed { AppsPropertiesClose(); return }
+    if !frame.opened { return }
+    area := frame.layout.content
+    x := area.x
+    y := area.y
+    width := area.width
+    bottom := area.y + area.height
+    // The card's own picture or symbol, as its tile shows it.
+    unused Button(session, ButtonProps.{.key = cast(u64)20, .label = TextUntilNul(card.title[:]), .icon_only = true,
+            .icon_shape = TextUntilNul(card.icon_shape[:]),
+            .image = ImageProps.{.asset_path = TextUntilNul(card.icon[:]), .alt_text = TextUntilNul(card.title[:])},
+            .bounds = Rectangle.{x, y, icon_size, icon_size}, .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft})
+    // One line beside the icon says where the download stands.
+    state: Vec(u8)
+    if card.on_device { BuilderPrint(*state, "%", AppsLabel(language, "ready")) }
+    else if card.download_failed { BuilderPrint(*state, "%", AppsLabel(language, "download_failed")) }
+    else if card.downloading && card.progress >= 0 { BuilderPrint(*state, "% %", AppsLabel(language, "downloading"), card.progress); BuilderPrint(*state, "%", "%") }
+    else if card.downloading { BuilderPrint(*state, "%", AppsLabel(language, "downloading")) }
+    else if download_started { BuilderPrint(*state, "%", AppsLabel(language, "download_waiting")) }
+    else if has_size { BuilderPrint(*state, "%: %", AppsLabel(language, "download_size"), TextUntilNul(size_text[:])) }
+    else { BuilderPrint(*state, "%", AppsLabel(language, "download")) }
+    unused CopyCString(TextView(VecSlice(state, 0, state.count)), dialog_message[:])
+    VecFree(state)
+    Text(session, TextProps.{.key = cast(u64)21, .text = TextUntilNul(dialog_message[:]), .font = font + 2,
+            .bounds = Rectangle.{x + icon_size + gap, y, width - icon_size - gap, icon_size},
+            .wrap = cast(TextWrap)TextWrapEllipsis, .vertical_align = cast(TextAlign)TextAlignCenter})
+    y += icon_size + gap
+    if asking && permission_count > 0 {
+        AppsText(session, cast(u64)22, Rectangle.{x, y, width, line}, AppsLabel(language, "app_can"), font)
+        y += line
+        for bit: cast(u32)0..3 {
+            flag := cast(u32)1 << bit
+            if (card.permissions & flag) == cast(u32)0 { continue }
+            bullet: Vec(u8)
+            BuilderPrint(*bullet, "•  %", AppsLabel(language, AppsPermissionLabel(flag)))
+            label: [256]u8
+            unused CopyCString(TextView(VecSlice(bullet, 0, bullet.count)), label[:])
+            VecFree(bullet)
+            AppsText(session, cast(u64)23 + cast(u64)bit, Rectangle.{x + 8.0 * scale, y, width - 8.0 * scale, line},
+                TextUntilNul(label[:]), font)
+            y += line
+        }
+        y += gap
+    }
+    if card.downloading || (download_started && !card.on_device && !card.download_failed) {
+        track := Rectangle.{x, y, width, bar}
+        unused Box(session, BoxProps.{.key = cast(u64)28, .bounds = track, .radius = bar * 0.5,
+                .fill = ifx AppDark() then Color.{58, 74, 68, 255} else Color.{221, 232, 226, 255}})
+        fill := track
+        if card.downloading && card.progress >= 0 {
+            fill.width = width * cast(float32)card.progress / 100.0
+        } else {
+            // A size not yet known shows a segment travelling along the bar.
+            fill.width = width * 0.3
+            fill.x = x + (width - fill.width) * cast(float32)(download_frames % 90) / 89.0
+        }
+        if fill.width >= bar {
+            unused Box(session, BoxProps.{.key = cast(u64)29, .bounds = fill, .radius = bar * 0.5,
+                    .fill = Color.{46, 125, 74, 255}})
+        }
+        y += bar + gap
+    }
+    button_width := (width - gap) * 0.5
+    if button_width > 160.0 * scale { button_width = 160.0 * scale }
+    primary := Rectangle.{x + width - button_width, bottom - control, button_width, control}
+    secondary := Rectangle.{x + width - button_width * 2.0 - gap, bottom - control, button_width, control}
+    if asking || card.download_failed || card.on_device {
+        label := ifx card.on_device then "open" else (ifx card.download_failed then "try_again" else "download")
+        go := Button(session, ButtonProps.{.key = cast(u64)30, .label = AppsLabel(language, label), .bounds = primary,
+                .tone = cast(ButtonTone)ButtonToneAccent, .emphasis = cast(ButtonEmphasis)ButtonEmphasisFilled,
+                .disabled = !AppsSupported(card, ifx card.on_device then Rules.APPS_OPEN else Rules.APPS_INSTALL)}) != 0
+        close := Button(session, ButtonProps.{.key = cast(u64)31, .bounds = secondary,
+                .label = AppsLabel(language, ifx asking then "cancel" else "close"),
+                .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost}) != 0
+        End(session)
+        if close { AppsPropertiesClose() }
+        else if go && card.on_device { AppsAct("open", card.id); AppsPropertiesClose() }
+        else if go { AppsAct("install", card.id); download_started = true; download_frames = 0 }
+        return
+    }
+    // The download goes on without the dialog.
+    hide := Button(session, ButtonProps.{.key = cast(u64)32, .label = AppsLabel(language, "hide"), .bounds = primary,
+            .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0
+    End(session)
+    if hide { AppsPropertiesClose() }
+}
+
 AppsDialog :: (session: Session, scale: float32, language: string, font: s32) {
     if dialog == 0 { return }
     card := AppsFind(dialog_id)
     if card == null || card.disabled || AppKey() == 256 || AppKey() == 27 { AppsPropertiesClose(); return }
+    if dialog == 5 {
+        AppsDownload(session, card, scale, language, font)
+        return
+    }
     if dialog == 4 {
         if !AppsSupported(card, Rules.APPS_PROPERTIES) { AppsPropertiesClose(); return }
         AppsProperties(session, card, scale, language, font)
@@ -754,8 +921,9 @@ AppsFrame :: () -> bool {
         if !card.on_device {
             action.label = AppsLabel(language, "download")
             action.icon_shape = APP_DOWNLOAD
-            action.disabled = card.disabled || card.downloading || !AppsSupported(card, Rules.APPS_INSTALL)
-            if Button(session, action) != 0 { AppsAct("install", card.id) }
+            // While it downloads, the same symbol shows the progress again.
+            action.disabled = card.disabled || !AppsSupported(card, Rules.APPS_INSTALL)
+            if Button(session, action) != 0 { AppsDownloadOpen(card) }
         } else if Button(session, action) != 0 {
             menu_id = card.id; menu_x = action.bounds.x; menu_y = action.bounds.y + action.bounds.height
             // Opening the menu shows its Update entry, so the dot has been seen.

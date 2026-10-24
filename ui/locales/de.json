@@ -35,5 +35,17 @@
   "list_view": "Listenansicht",
   "grid_view": "Rasteransicht",
   "favorites": "Favoriten",
-  "no_results": "Keine passenden Apps"
+  "no_results": "Keine passenden Apps",
+  "download_size": "Downloadgröße",
+  "app_can": "Diese App kann",
+  "permission_account": "Daten in deinem Konto speichern",
+  "permission_friends": "Deine Freunde sehen und mit ihnen teilen",
+  "permission_audio": "Ton abspielen",
+  "permission_media": "Deine Fotobibliothek lesen und ändern",
+  "download_failed": "Download fehlgeschlagen",
+  "try_again": "Erneut versuchen",
+  "ready": "Bereit zum Öffnen",
+  "hide": "Ausblenden",
+  "close": "Schließen",
+  "download_waiting": "Wartet auf Download"
 }
