@@ -29,6 +29,7 @@
 #import "kryon/geometry"
 #import "kryon/tree"
 #import "kryon/carousel"
+#import "kryon/loading_indicator"
 Cover :: #import "catalog";
 Rules :: #import "protocol";
 #import, file "words.zi";
@@ -650,19 +651,20 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
     }
     if card.downloading || (download_started && !card.on_device && !card.download_failed) {
         track := Rectangle.{x, y, width, bar}
-        unused Box(session, BoxProps.{.key = cast(u64)28, .bounds = track, .radius = bar * 0.5,
-                .fill = ifx AppDark() then Color.{58, 74, 68, 255} else Color.{221, 232, 226, 255}})
-        fill := track
         if card.downloading && card.progress >= 0 {
+            unused Box(session, BoxProps.{.key = cast(u64)28, .bounds = track, .radius = bar * 0.5,
+                    .fill = ifx AppDark() then Color.{58, 74, 68, 255} else Color.{221, 232, 226, 255}})
+            fill := track
             fill.width = width * cast(float32)card.progress / 100.0
+            if fill.width >= bar {
+                unused Box(session, BoxProps.{.key = cast(u64)29, .bounds = fill, .radius = bar * 0.5,
+                        .fill = Color.{46, 125, 74, 255}})
+            }
         } else {
-            // A size not yet known shows a segment travelling along the bar.
-            fill.width = width * 0.3
-            fill.x = x + (width - fill.width) * cast(float32)(download_frames % 90) / 89.0
-        }
-        if fill.width >= bar {
-            unused Box(session, BoxProps.{.key = cast(u64)29, .bounds = fill, .radius = bar * 0.5,
-                    .fill = Color.{46, 125, 74, 255}})
+            // Until its size is known, Kryon's loading dots, as every app shows.
+            LoadingIndicator(session, LoadingIndicatorProps.{.key = cast(u64)29,
+                    .bounds = Rectangle.{x, y - bar, width, bar * 3.0}, .now = cast(float64)download_frames / 60.0,
+                    .scale = scale})
         }
         y += bar + gap
     }
