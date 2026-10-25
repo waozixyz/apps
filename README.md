@@ -29,6 +29,9 @@ and logos in a responsive grid. There are no separate launch buttons.
 `image_class` applies the host's standard Image styles, including rounded
 corners. The shared controller owns scrolling, menus and download dialogs;
 hosts supply the same verified cover assets already used by the carousel.
+Collections may declare `"presentation": {"mode": "covers"}` in their signed
+catalog so every supported host presents the same dark cover library.
+Each child's optional `bytes` value supplies its exact initial download size.
 
 A card for an app not on the device shows a download symbol. It opens a
 dialog with the package size and what the app may reach, and the dialog's

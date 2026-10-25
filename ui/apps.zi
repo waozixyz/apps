@@ -888,6 +888,10 @@ AppsFrame :: () -> bool {
     picture_height := 168.0 * scale
     if cover_grid {
         picture_height = card_width * (ifx bounds.height < 480.0 * scale && bounds.width > bounds.height then 2.0 / 3.0 else 1.5)
+        if bounds.width > bounds.height && picture_height > area.height - 48.0 * scale {
+            picture_height = area.height - 48.0 * scale
+            if picture_height < 120.0 * scale { picture_height = 120.0 * scale }
+        }
         card_height = picture_height + 48.0 * scale
     }
     rows := (cast(s32)cards.count + columns - 1) / columns

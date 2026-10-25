@@ -206,10 +206,12 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
     AppHostWriteQuoted(*bytes, TextUntilNul(host.locale[:]))
     presentation := host.platform.presentation
     presentation.cover_grid = presentation.cover_grid || node.catalog.cover_grid
-    BuilderPrint(*bytes, ",\"presentation\":{\"mode\":\"%\",\"hide_sizes\":%,\"tile_class\":%,\"action_class\":%,\"muted_class\":%,\"image_class\":%}",
+    BuilderPrint(*bytes, ",\"presentation\":{\"mode\":\"%\",\"hide_sizes\":%,\"tile_class\":%,\"action_class\":%,\"muted_class\":%,\"image_class\":%,\"download_request\":%,\"download_id\":",
         ifx presentation.cover_grid then "covers" else ifx presentation.icon then "icon" else "preview",
         ifx presentation.hide_sizes then "true" else "false",
-        presentation.tile_class, presentation.action_class, presentation.muted_class, presentation.image_class)
+        presentation.tile_class, presentation.action_class, presentation.muted_class, presentation.image_class, presentation.download_request)
+    AppHostWriteQuoted(*bytes, TextUntilNul(presentation.download_id[:]))
+    BuilderPrint(*bytes, "}")
     BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
     item := node.catalog.children
     while item != null {
@@ -247,6 +249,7 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         }
         download := AppDownload.{.progress = -1}
         missing := host.platform.download != null && host.platform.download(host.platform.context, node, *item.entry, *download)
+        if missing { state.installed = false; state.favorite = false }
         if missing && download.bytes > 0 { state.bytes = download.bytes }
         BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
             state.installed, state.favorite, state.launcher, state.selected, state.disabled, state.bytes)
