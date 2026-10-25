@@ -594,6 +594,9 @@ NativeControllerCheck :: () -> s32 {
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
     TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
+    // Uninstalled covers show their download size; installed covers omit it.
+    if !NativeLoadCatalog("cover-grid-download") || !NativeDraw(false, false) ||
+    NativeLabel("4.1 kB", WidgetKindText) < 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 95 }
     if !AppControllerClose(*native_controller) { return 65 }
     AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""
     return 0
