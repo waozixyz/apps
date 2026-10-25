@@ -218,6 +218,20 @@ Check :: () -> s32 {
     // A malformed optional cover cannot overwrite the previously valid entry.
     if AppReadEntry("{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zx\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/../other.png\"}}", 0, *covered) ||
     TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 61 }
+    // Cover presentation and download sizes are bounded catalog data.
+    catalog: AppCatalog
+    if !AppCatalogRead("{\"schema\":1,\"id\":\"library\",\"title\":\"Library\",\"harness\":\"assets/apps/apps.zx\",\"presentation\":{\"mode\":\"covers\"},\"children\":[]}", "library", *catalog) || !catalog.cover_grid { return 62 }
+    if AppCatalogRead("{\"schema\":1,\"id\":\"library\",\"title\":\"Library\",\"harness\":\"assets/apps/apps.zx\",\"presentation\":{\"mode\":\"unknown\"},\"children\":[]}", "library", *catalog) || !catalog.cover_grid { return 63 }
+    AppCatalogClear(*catalog)
+    amounts: [5]string = .["-1", "0", "1.5", "67108865", "4096"]
+    for amount: amounts {
+        sized: Vec(u8)
+        BuilderPrint(*sized, "%,\"bytes\":%}", cover_json[:cover_json.count - 1], amount)
+        accepted := AppReadEntry(TextView(VecSlice(sized, 0, sized.count)), 0, *covered)
+        VecFree(sized)
+        if accepted != (amount == "4096") { return 64 }
+    }
+    if covered.bytes != 4096 { return 65 }
     provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
     tree: AppTree
     root := Root()
