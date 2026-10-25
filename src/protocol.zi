@@ -75,6 +75,8 @@ AppPresentation :: struct {
     tile_class: s32
     action_class: s32
     muted_class: s32
+    // Host Image styles for the large cover artwork.
+    image_class: s32
 }
 
 AppState :: struct {

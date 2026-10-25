@@ -24,6 +24,7 @@ AppEntry :: struct {
     version: [64]u8
     sha256: [65]u8
     protocol: s32
+    bytes: s64
     cover: AppCover
 }
 
@@ -34,6 +35,7 @@ AppCatalog :: struct {
     children: *AppCatalogItem
     tail: *AppCatalogItem
     count: s64
+    cover_grid: bool
 }
 
 AppCatalogItem :: struct { entry: AppEntry; next: *AppCatalogItem }
@@ -81,7 +83,7 @@ AppCatalogClear :: (catalog: *AppCatalog) {
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [11]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover"]
+    keys: [12]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -94,6 +96,12 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
     !AppsReadText(text, at, "protocol", protocol[:]) { return false }
     parsed.protocol = AppEntryProtocol(TextUntilNul(protocol[:]))
     if parsed.protocol == 0 { return false }
+    if FieldAt(text, at, "bytes") >= 0 {
+        size := ReadNumber(text, FieldAt(text, at, "bytes"))
+        if !size.valid || size.value < 1.0 || size.value > 67108864.0 { return false }
+        parsed.bytes = cast(s64)size.value
+        if cast(float64)parsed.bytes != size.value { return false }
+    }
     if FieldAt(text, at, "preview") >= 0 {
         if !AppsReadText(text, at, "preview", parsed.preview[:]) { return false }
         preview := TextUntilNul(parsed.preview[:])
@@ -127,11 +135,19 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
 // Build a candidate first: rejection never replaces the visible collection.
 AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> bool {
     if text.count > APP_MANIFEST_BYTE_LIMIT || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
-    keys: [5]string = .["schema", "id", "title", "harness", "children"]
+    keys: [6]string = .["schema", "id", "title", "harness", "children", "presentation"]
     if !AppsObjectValid(text, 0, keys[:]) { return false }
     schema := ReadNumber(text, FieldAt(text, 0, "schema"))
     if !schema.valid || schema.value != 1.0 { return false }
     parsed: AppCatalog
+    presentation := FieldAt(text, 0, "presentation")
+    if presentation >= 0 {
+        fields: [1]string = .["mode"]
+        mode: [16]u8
+        if !AppsObjectValid(text, presentation, fields[:]) ||
+        !AppsReadText(text, presentation, "mode", mode[:]) || TextUntilNul(mode[:]) != "covers" { return false }
+        parsed.cover_grid = true
+    }
     if !AppsReadText(text, 0, "id", parsed.id[:]) || TextUntilNul(parsed.id[:]) != expected_id ||
     !AppIdValid(expected_id) || !AppsReadText(text, 0, "title", parsed.title[:]) ||
     TextUntilNul(parsed.title[:]) == "" || !AppsReadText(text, 0, "harness", parsed.harness[:]) ||

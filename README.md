@@ -24,10 +24,11 @@ the same option as `AppPresentation.hide_sizes`. The default keeps sizes
 visible for apps not yet on the device. Installed apps never show a download
 size; download progress remains visible in either presentation.
 
-`AppPresentation.cover_grid` selects large title-screen artwork, logos and
-56-unit Play/Open buttons in a responsive grid. The shared controller owns
-its scrolling, menus and download dialogs; hosts supply the same verified
-cover assets already used by the carousel.
+`AppPresentation.cover_grid` selects large, clickable title-screen artwork
+and logos in a responsive grid. There are no separate launch buttons.
+`image_class` applies the host's standard Image styles, including rounded
+corners. The shared controller owns scrolling, menus and download dialogs;
+hosts supply the same verified cover assets already used by the carousel.
 
 A card for an app not on the device shows a download symbol. It opens a
 dialog with the package size and what the app may reach, and the dialog's

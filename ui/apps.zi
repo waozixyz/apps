@@ -30,6 +30,8 @@
 #import "kryon/tree"
 #import "kryon/carousel"
 #import "kryon/loading_indicator"
+#import "kryon/widget_palette"
+#import "appearance"
 Cover :: #import "catalog";
 Rules :: #import "protocol";
 #import, file "words.zi";
@@ -110,6 +112,7 @@ presentation_columns: s32;
 tile_class: s32;
 action_class: s32;
 muted_class: s32;
+image_class: s32;
 // The host's revision of the catalog parsed into these cards, or 0. Parsing
 // the whole catalog every frame cost a phone most of each frame.
 catalog_revision: s64;
@@ -216,6 +219,7 @@ AppsReadCatalog :: () -> bool {
     tile_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "tile_class"))
     action_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "action_class"))
     muted_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "muted_class"))
+    image_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "image_class"))
     children := FieldAt(text, 0, "children")
     count := ArrayCount(text, children)
     if count < 0 || count > 4096 { return false }
@@ -794,6 +798,11 @@ AppsFrame :: () -> bool {
         return true
     }
     language := TextUntilNul(locale[:])
+    if cover_grid {
+        unused WidgetPaletteUse(session, AppCoversPalette())
+        Box(session, BoxProps.{.key = cast(u64)50010, .bounds = bounds,
+            .fill = Color.{17, 18, 35, 255}, .fill_bottom = Color.{28, 24, 46, 255}, .has_fill_bottom = true})
+    }
     if request > 0 && TextUntilNul(status[:]) == "queued" {
         bytes: Vec(u8)
         BuilderPrint(*bytes, "{\"v\":1,\"op\":\"status\",\"request\":%}", request)
@@ -836,7 +845,7 @@ AppsFrame :: () -> bool {
         AppsDialog(session, scale, language, font)
         return true
     }
-    gap := 12.0 * scale
+    gap := (ifx cover_grid then 20.0 else 12.0) * scale
     area := bounds
     if !icon_mode {
         if can_back && Button(session, ButtonProps.{.key = cast(u64)2, .label = AppsLabel(language, "back"),
@@ -844,8 +853,8 @@ AppsFrame :: () -> bool {
             AppsAct("back", empty_target)
         }
         title_x := bounds.x + gap + ifx can_back then 96.0 * scale else 0.0
-        AppsText(session, cast(u64)3, Rectangle.{title_x, bounds.y + gap, bounds.x + bounds.width - gap - title_x, 44.0 * scale}, TextUntilNul(title[:]), font + 4)
-        top := bounds.y + 68.0 * scale
+        AppsText(session, cast(u64)3, Rectangle.{title_x, bounds.y + gap, bounds.x + bounds.width - gap - title_x, 44.0 * scale}, TextUntilNul(title[:]), font + ifx cover_grid then 16 else 4)
+        top := bounds.y + (ifx cover_grid then 92.0 else 68.0) * scale
         area = Rectangle.{bounds.x + gap, top, bounds.width - gap * 2.0, bounds.y + bounds.height - top - gap}
         // Successful actions add no persistent label or extra row.
         state_buffer := status
@@ -870,7 +879,7 @@ AppsFrame :: () -> bool {
         gap = 4.0 * scale
     }
     if cover_grid {
-        columns = cast(s32)((area.width + gap) / (220.0 * scale + gap))
+        columns = cast(s32)((area.width + gap) / (200.0 * scale + gap))
         if columns < 1 { columns = 1 }
         if columns > 4 { columns = 4 }
         if cards.count > 0 && columns > cast(s32)cards.count { columns = cast(s32)cards.count }
@@ -878,8 +887,8 @@ AppsFrame :: () -> bool {
     card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
     picture_height := 168.0 * scale
     if cover_grid {
-        picture_height = (card_width - gap * 2.0) * (ifx bounds.height > bounds.width then 1.5 else 2.0 / 3.0)
-        card_height = picture_height + 128.0 * scale
+        picture_height = card_width * (ifx bounds.height < 480.0 * scale && bounds.width > bounds.height then 2.0 / 3.0 else 1.5)
+        card_height = picture_height + 48.0 * scale
     }
     rows := (cast(s32)cards.count + columns - 1) / columns
     opened: bool
@@ -907,6 +916,10 @@ AppsFrame :: () -> bool {
             .bounds = Rectangle.{x, y, card_width, card_height}, .disabled = card.disabled,
             .selected = card.selected, .fit_content = true, .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}
         if card.selected { tile.tone = cast(ButtonTone)ButtonToneAccent; tile.emphasis = cast(ButtonEmphasis)ButtonEmphasisFilled }
+        download_first := !card.on_device && AppsSupported(card, Rules.APPS_INSTALL)
+        tile.disabled = tile.disabled || (!AppsSupported(card, Rules.APPS_OPEN) && !download_first)
+        activated: bool
+        if cover_grid { tile.invisible = true; activated = Button(session, tile) != 0 }
         if icon_mode {
             tile.icon_shape = TextUntilNul(card.icon_shape[:])
             tile.image = ImageProps.{.asset_path = TextUntilNul(card.icon[:]), .alt_text = TextUntilNul(card.title[:])}
@@ -921,17 +934,21 @@ AppsFrame :: () -> bool {
             }
         } else {
             fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
-            unused Box(session, BoxProps.{.key = key + cast(u64)1, .bounds = tile.bounds, .radius = 12.0 * scale, .fill = fill})
+            if !cover_grid {
+                unused Box(session, BoxProps.{.key = key + cast(u64)1, .bounds = tile.bounds, .radius = 12.0 * scale, .fill = fill})
+            }
             preview := TextUntilNul(card.preview[:])
             if cover_grid && card.cover.portrait[0] != 0 {
                 preview = TextUntilNul(card.cover.portrait[:])
-                if bounds.width >= bounds.height && card.cover.landscape[0] != 0 {
+                if bounds.height < 480.0 * scale && bounds.width > bounds.height && card.cover.landscape[0] != 0 {
                     preview = TextUntilNul(card.cover.landscape[:])
                 }
             }
             if preview != "" {
                 Image(session, ImageProps.{.key = key + cast(u64)2, .asset_path = preview, .alt_text = TextUntilNul(card.title[:]),
-                        .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, picture_height},
+                        .class_name = ifx cover_grid then image_class else 0,
+                        .bounds = ifx cover_grid then Rectangle.{x, y, card_width, picture_height} else Rectangle.{x + gap, y + gap, card_width - gap * 2.0, picture_height},
+                        .radius = ifx cover_grid then 20.0 * scale else 0.0,
                         .fit = ifx cover_grid then ImageFit.ImageFitCover else ImageFit.ImageFitContain, .smooth = true})
             }
             if cover_grid && card.cover.logo[0] != 0 {
@@ -940,8 +957,8 @@ AppsFrame :: () -> bool {
                         .alt_text = TextUntilNul(card.title[:]), .smooth = true, .fit = ImageFit.ImageFitContain,
                         .bounds = Rectangle.{x + gap * 2.0, y + gap * 2.0, logo_width, logo_width * 0.36}})
             }
-            title_y := ifx cover_grid then y + gap + picture_height + 8.0 * scale else y + 188.0 * scale
-            AppsText(session, key + cast(u64)3, Rectangle.{x + gap, title_y, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
+            title_y := ifx cover_grid then y + picture_height + 10.0 * scale else y + 188.0 * scale
+            AppsText(session, key + cast(u64)3, Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
             tile.invisible = true
         }
         list_size: [32]u8
@@ -951,23 +968,10 @@ AppsFrame :: () -> bool {
         }
         // An app not on this device opens its download dialog instead of a
         // screen that has nothing to show yet.
-        download_first := !card.on_device && AppsSupported(card, Rules.APPS_INSTALL)
-        tile.disabled = tile.disabled || (!AppsSupported(card, Rules.APPS_OPEN) && !download_first)
-        if Button(session, tile) != 0 {
+        if !cover_grid { activated = Button(session, tile) != 0 }
+        if activated {
             if download_first { AppsDownloadOpen(card) }
             else { AppsAct("open", card.id) }
-        }
-        if cover_grid {
-            action_name := TextUntilNul(card.cover.action[:])
-            if action_name == "" { action_name = "open" }
-            if Button(session, ButtonProps.{.key = key + cast(u64)7,
-                    .label = AppsLabel(language, ifx download_first then "download" else action_name),
-                    .bounds = Rectangle.{x + gap, y + card_height - gap - 56.0 * scale, card_width - gap * 2.0, 56.0 * scale},
-                    .disabled = tile.disabled, .size = ControlSize.ControlSizeLarge, .pill = true,
-                    .tone = ButtonTone.ButtonToneSuccess, .emphasis = ButtonEmphasis.ButtonEmphasisFilled}) != 0 {
-                if download_first { AppsDownloadOpen(card) }
-                else { AppsAct("open", card.id) }
-            }
         }
         if icon_mode && card.reorderable {
             unused Button(session, ButtonProps.{.key = Rules.AppReorderKey(TextUntilNul(card.id[:])),
@@ -991,6 +995,7 @@ AppsFrame :: () -> bool {
             .icon_only = true, .class_name = action_class, .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost,
             .bounds = Rectangle.{x + card_width - 40.0 * scale, y + (ifx list_mode then 14.0 * scale else 4.0 * scale), 36.0 * scale, 36.0 * scale},
             .disabled = card.disabled, .fit_content = true}
+        if cover_grid { action.emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft; action.circle = true }
         if card.selected { action.tone = cast(ButtonTone)ButtonToneAccent }
         if !card.on_device {
             action.label = AppsLabel(language, "download")

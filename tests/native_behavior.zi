@@ -341,7 +341,7 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
             options := "S3rr:M12 5H12.01M12 12H12.01M12 19H12.01"
             shape := ifx props.label == "Download" then download else options
             if props.bounds.height != 36.0 || !props.icon_only || props.class_name != 502 ||
-            cast(s32)props.emphasis != 3 || props.icon_shape != shape { native_bad = true }
+            (cast(s32)props.emphasis != 3 && !(props.circle && cast(s32)props.emphasis == 1)) || props.icon_shape != shape { native_bad = true }
         }
     }
     // An update not yet installed or seen is a small dot on the options.
@@ -584,16 +584,14 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("reorder-grid") || !NativeDraw() || NativeLabel("Move app") < 0 ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 86 }
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
-    // Large cover cards keep both apps visible together and expose a real
-    // primary action, rather than routing the catalog into the carousel.
+    // The covers themselves open apps, without separate launch buttons.
     if !NativeLoadCatalog("cover-grid") || !NativeDraw(false, false) ||
     NativeLabel("Native apps") < 0 || NativeLabel("Next", WidgetKindButton) >= 0 { return 91 }
-    if native_tile_bounds.width < 220.0 || native_tile_bounds.height < 400.0 ||
+    if native_tile_bounds.width < 200.0 || native_tile_bounds.height < 350.0 ||
     native_other_bounds.y != native_tile_bounds.y || native_other_bounds.x <= native_tile_bounds.x { return 92 }
-    if NativeLabel("Open", WidgetKindButton) < 0 || native_label_bounds.height < 56.0 ||
-    native_label_bounds.width < 180.0 { return 93 }
+    if NativeLabel("Open", WidgetKindButton) >= 0 || NativeLabel("Play", WidgetKindButton) >= 0 { return 93 }
     cover_opened := native_queued
-    if !NativeClick("Open", WidgetKindButton) || !NativeDraw(false, false) ||
+    if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
     TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
     if !AppControllerClose(*native_controller) { return 65 }

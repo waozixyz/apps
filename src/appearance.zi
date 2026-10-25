@@ -1,0 +1,8 @@
+#import "kryon/widget_palette"
+
+// A shared cover-library palette. Games retain their own visual identity.
+AppCoversPalette :: () -> WidgetPalette {
+    return WidgetPalette.{.background = 0x111223ff, .base = 0x202238ff,
+        .text = 0xf2f0ffff, .selected = 0xb9a0ffff, .selected_text = 0x211636ff,
+        .border = 0x414260ff, .danger = 0xff858fff, .warning = 0xffcc80ff, .success = 0x8bd8b6ff}
+}
