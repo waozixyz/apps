@@ -138,5 +138,58 @@ class NodeAppHistoryTest(unittest.TestCase):
         release.validate_release(value, "inbe.photos", self.publishers)
 
 
+    def test_a_collection_publishes_its_games_to_download_one_by_one(self):
+        import tarfile
+        bundles = self.directory / "build"
+        (bundles / "arcade.games").mkdir(parents=True)
+        (bundles / "arcade.zx").write_bytes(b"ZX\0\0arcade")
+        games = [b"ZX\0\0shovey", b"ZX\0\0editor"]
+        for game in games:
+            (bundles / "arcade.games" / (sha256(game).hexdigest() + ".zx")).write_bytes(game)
+        ledger = self.directory / "versions.json"
+        ledger.write_text(json.dumps(dict(host_api=31, module_api=2, node_apps=dict(
+            arcade=dict(id="inbe.arcade", title="Arcade", version="1.0.0", sequence=7)))))
+        key_path = self.directory / "key.pem"
+        key_path.write_bytes(self.key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                    serialization.NoEncryption()))
+        publishers_path = self.directory / "publishers.json"
+        publishers_path.write_text(json.dumps(self.publishers))
+        staged = self.directory / "staged"
+        value = release.stage_node_app(staged, "arcade", key_path, "test", publishers_path,
+                                       ledger_path=ledger, bundle_directory=bundles)
+        uploaded = {}
+
+        def upload(archive, target, remote_store):
+            with tarfile.open(archive) as tar:
+                uploaded.update({member.name: tar.extractfile(member).read() for member in tar.getmembers()})
+        with patch.object(release, "upload", upload):
+            release.publish_node_app(staged, "arcade", "node", "/store")
+        self.assertEqual(len(uploaded), 4 + 2 * len(games))
+        # A game whose bytes the release does not sign never imports.
+        tampered = dict(uploaded)
+        tampered[f"inbe.arcade/{sha256(games[0]).hexdigest()}.zx"] = b"ZX\0\0other!"
+        with self.assertRaises(ValueError):
+            release.import_node_app(tampered, self.directory / "other", self.publishers, "inbe.arcade")
+        release.import_node_app(uploaded, self.store, self.publishers, "inbe.arcade")
+        node = self.store / "inbe.arcade"
+        for game in games:
+            digest = sha256(game).hexdigest()
+            self.assertEqual((node / (digest + ".zx")).read_bytes(), game)
+            lookup = json.loads((node / (digest + ".zx.release-v2.json")).read_bytes())
+            self.assertEqual((lookup["sequence"], lookup["artifacts"][0]["sha256"]), (value["sequence"], digest))
+        # The latest release and the history name only the collection itself.
+        self.assertEqual(json.loads((node / "latest-v2.json").read_bytes()), value)
+        versions = json.loads((node / "history-v2.json").read_bytes())["versions"]
+        self.assertEqual([entry["artifacts"] for entry in versions], [value["artifacts"]])
+
+        def open_url(url, timeout):
+            name = url.rsplit("/", 1)[1]
+            return BytesIO((node / ("latest-v2.json" if name.startswith("latest") else name)).read_bytes())
+        release.verify_node_app(staged, "arcade", "https://node.test", open_url)
+        (node / (sha256(games[1]).hexdigest() + ".zx")).write_bytes(b"ZX\0\0stale!")
+        with self.assertRaises(ValueError):
+            release.verify_node_app(staged, "arcade", "https://node.test", open_url)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -251,6 +251,46 @@ def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_direc
     return value, data
 
 
+# A collection such as Arcade carries no games: each is downloaded on its
+# own. They sit beside its bundle in NAME.games/<sha256>.zx, and its catalog
+# pins their digests. The node serves a file only for a signed release that
+# names it, so each game gets a lookup: this same release with that game as
+# its module. It is never a latest or archived release.
+GAME_LIMIT = 32
+
+
+def node_app_games(value, key, bundle_directory, name):
+    """Signed lookups and bytes of the games NAME downloads one by one."""
+    directory = bundle_directory / f"{name}.games"
+    games = []
+    for path in sorted(directory.glob("*.zx")) if directory.is_dir() else []:
+        data = path.read_bytes()
+        digest = sha256(data).hexdigest()
+        if path.name != digest + ".zx" or not data.startswith(b"ZX\0\0") or not 8 <= len(data) <= 64 * 1024 * 1024:
+            raise ValueError(f"invalid {name} game payload {path.name}")
+        lookup = {field: item for field, item in value.items() if field != "signature"}
+        lookup["artifacts"] = [dict(variant="module", sha256=digest, size=len(data))]
+        lookup["signature"] = key.sign(signing_message(lookup)).hex()
+        games.append((lookup, data))
+    if len(games) > GAME_LIMIT:
+        raise ValueError(f"{name} names more than {GAME_LIMIT} games")
+    return games
+
+
+def game_lookups(directory, value):
+    """The stored lookups of a release's games."""
+    lookups = []
+    main = value["artifacts"][0]["sha256"]
+    for path in sorted(directory.glob("*.zx.release-v2.json")):
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 65536:
+            continue
+        lookup = json.loads(path.read_bytes())
+        if lookup.get("sequence") == value["sequence"] and lookup.get("version") == value["version"] and \
+                lookup["artifacts"][0]["sha256"] != main:
+            lookups.append(lookup)
+    return lookups
+
+
 def stage_node_app(store, name, key_path, key_id, publishers_path, beta=False, *,
                    ledger_path, bundle_directory):
     if not IDENTIFIER.fullmatch(key_id) or key_id in (".", ".."):
@@ -262,17 +302,20 @@ def stage_node_app(store, name, key_path, key_id, publishers_path, beta=False, *
     value, data = node_app_release(name, key, key_id, beta, ledger_path=ledger_path,
                                    bundle_directory=bundle_directory)
     validate_release(value, value["app_id"], publishers)
+    games = node_app_games(value, key, bundle_directory, name)
+    for lookup, _ in games:
+        validate_release(lookup, value["app_id"], publishers)
     directory = store / value["app_id"]
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     encoded = (json.dumps(value, separators=(",", ":")) + "\n").encode()
     with (directory / ".publish.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        write_node_app(directory, value, encoded, data, publishers)
+        write_node_app(directory, value, encoded, data, publishers, games)
     return value
 
 
-def write_node_app(directory, value, encoded, data, publishers):
-    """Publishes one release of an app the node offers into its directory."""
+def write_node_app(directory, value, encoded, data, publishers, games=()):
+    """Publishes one release of an app the node offers, and its games, into its directory."""
     current = directory / "latest-v2.json"
     if current.exists():
         previous = json.loads(current.read_bytes())
@@ -288,6 +331,14 @@ def write_node_app(directory, value, encoded, data, publishers):
         raise ValueError("immutable payload does not match its hash")
     if archive.exists() and archive.read_bytes() != encoded:
         raise ValueError("release sequence is already occupied")
+    for lookup, game in games:
+        stored = directory / (lookup["artifacts"][0]["sha256"] + ".zx")
+        if stored.exists() and stored.read_bytes() != game:
+            raise ValueError("immutable game payload does not match its hash")
+        atomic_write(stored, game)
+        # An unchanged game keeps its bytes; its lookup names the newest release.
+        atomic_write(stored.with_name(stored.name + ".release-v2.json"),
+                     (json.dumps(lookup, separators=(",", ":")) + "\n").encode())
     atomic_write(payload, data)
     atomic_write(payload.with_name(payload.name + ".release-v2.json"), encoded)
     atomic_write(archive, encoded)
@@ -315,13 +366,34 @@ def import_node_app(entries, store, publishers, app_id):
     expected = {f"{app_id}/latest-v2.json", f"{app_id}/{payload}",
                 f"{app_id}/{payload}.release-v2.json",
                 f"{app_id}/release-{value['sequence']}.json"}
-    if set(entries) != expected:
+    # Its games: each a signed lookup of this release beside the game's bytes.
+    games = []
+    for name in sorted(set(entries) - expected):
+        if not name.endswith(".zx.release-v2.json"):
+            continue
+        encoded_lookup = entries[name]
+        if len(encoded_lookup) > 65536:
+            raise ValueError("oversized game lookup")
+        lookup = json.loads(encoded_lookup)
+        validate_release(lookup, app_id, publishers)
+        game = lookup["artifacts"][0]
+        file = f"{app_id}/{game['sha256']}.zx"
+        game_bytes = entries.get(file, b"")
+        if name != file + ".release-v2.json" or game["sha256"] == artifact["sha256"] or \
+                {field: item for field, item in lookup.items() if field not in ("artifacts", "signature")} != \
+                {field: item for field, item in value.items() if field not in ("artifacts", "signature")} or \
+                len(game_bytes) != game["size"] or sha256(game_bytes).hexdigest() != game["sha256"] or \
+                not game_bytes.startswith(b"ZX\0\0"):
+            raise ValueError("game lookup does not match this release")
+        expected.update((name, file))
+        games.append((lookup, game_bytes))
+    if len(games) > GAME_LIMIT or set(entries) != expected:
         raise ValueError("archive contains unreferenced content")
     directory = store / app_id
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (directory / ".publish.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        write_node_app(directory, value, encoded, data, publishers)
+        write_node_app(directory, value, encoded, data, publishers, games)
 
 
 def publish_node_app(store, name, target, remote_store):
@@ -334,9 +406,11 @@ def publish_node_app(store, name, target, remote_store):
         directory = store / ("inbe." + name)
         value = json.loads((directory / "latest-v2.json").read_bytes())
         payload = stored_payload(directory, value).name
+        games = [lookup["artifacts"][0]["sha256"] + ".zx" for lookup in game_lookups(directory, value)]
         with tarfile.open(archive, "w") as tar:
             for filename in ("latest-v2.json", payload, payload + ".release-v2.json",
-                             f"release-{value['sequence']}.json"):
+                             f"release-{value['sequence']}.json",
+                             *(name for game in games for name in (game, game + ".release-v2.json"))):
                 path = directory / filename
                 tar.add(path, arcname=str(path.relative_to(store)), recursive=False)
         upload(archive, target, remote_store)
@@ -358,7 +432,14 @@ def verify_node_app(store, name, origin, open_url=open_public_url):
         data = response.read(artifact["size"] + 1)
     if len(data) != artifact["size"] or sha256(data).hexdigest() != artifact["sha256"]:
         raise ValueError(f"{app_id}: public package hash or size differs from the signed publication")
-    print(f"Verified the public release of {app_id}")
+    lookups = game_lookups(store / app_id, expected)
+    for lookup in lookups:
+        game = lookup["artifacts"][0]
+        with open_url(route + "/" + game["sha256"] + ".zx", timeout=60) as response:
+            data = response.read(game["size"] + 1)
+        if len(data) != game["size"] or sha256(data).hexdigest() != game["sha256"]:
+            raise ValueError(f"{app_id}: a public game differs from the signed publication")
+    print(f"Verified the public release of {app_id}" + (f" and its {len(lookups)} games" if lookups else ""))
 
 
 def registered_apps(origin, open_url=open_public_url):
