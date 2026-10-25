@@ -2,9 +2,9 @@
   "format": 1,
   "packages": [
     {
-      "commit": "f0be5a97246ad7872b7dd40c459421faa577955c",
+      "commit": "92ca1fd68ced43969df57632720060ee9666da16",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "p0ec8982e71df3e2b",
+      "id": "p2d318e48a4d2aa44",
       "name": "kryon",
       "ref": "master",
       "url": "https://github.com/kryonlabs/kryon.git"
@@ -28,7 +28,7 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pf039d7a776333200", "kryon": "p0ec8982e71df3e2b"},
+    "dependencies": {"crypto": "pf039d7a776333200", "kryon": "p2d318e48a4d2aa44"},
     "name": "Apps"
   },
   "toolchain": {
