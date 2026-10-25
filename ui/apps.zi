@@ -808,14 +808,22 @@ AppsFrame :: () -> bool {
                 .landscape = TextUntilNul(card.cover.landscape[:]), .logo = TextUntilNul(card.cover.logo[:]),
                 .caption = TextUntilNul(card.cover.caption[:]),
                 .action = AppsLabel(language, ifx action != "" then action else "open"),
-                .disabled = card.disabled || !AppsSupported(card, Rules.APPS_OPEN)}
+                .disabled = dialog != 0 || card.disabled ||
+                (!AppsSupported(card, Rules.APPS_OPEN) && !(!card.on_device && AppsSupported(card, Rules.APPS_INSTALL)))}
         }
         cover_time += 1.0 / 60.0
         entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
-                .label = TextUntilNul(title[:]), .now = cover_time, .key_pressed = AppKey(), .scale = scale, .dark = AppDark(),
+                .label = TextUntilNul(title[:]), .now = cover_time, .key_pressed = ifx dialog != 0 then 0 else AppKey(), .scale = scale, .dark = AppDark(),
                 .previous_label = AppsLabel(language, "previous"), .next_label = AppsLabel(language, "next")},
             cover_items[:cards.count], *cover_state)
-        if entered >= 0 { AppsAct("open", cards[entered].id) }
+        if entered >= 0 {
+            card := *cards[entered]
+            if !card.on_device && AppsSupported(card, Rules.APPS_INSTALL) {
+                AppsDownloadOpen(card)
+            } else {
+                AppsAct("open", card.id)
+            }
+        }
         if can_back && Button(session, ButtonProps.{.key = cast(u64)2, .label = AppsLabel(language, "back"),
                 .bounds = Rectangle.{bounds.x + 12.0 * scale, bounds.y + 12.0 * scale, 84.0 * scale, 44.0 * scale},
                 .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0 { AppsAct("back", empty_target) }
@@ -823,6 +831,7 @@ AppsFrame :: () -> bool {
             AppsText(session, cast(u64)4, Rectangle.{bounds.x + 20.0 * scale, bounds.y + bounds.height - 64.0 * scale,
                     bounds.width - 40.0 * scale, 44.0 * scale}, AppsLabel(language, "rejected"), font)
         }
+        AppsDialog(session, scale, language, font)
         return true
     }
     gap := 12.0 * scale

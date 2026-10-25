@@ -365,7 +365,7 @@ NativeLoadCatalog :: (name: string) -> bool {
     return true
 }
 
-NativeDraw :: (quiet: bool = false) -> bool {
+NativeDraw :: (quiet: bool = false, cards_only: bool = true) -> bool {
     native_tiles = 0; native_actions = 0; native_dots = 0
     native_size_detail = false
     BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
@@ -385,7 +385,7 @@ NativeDraw :: (quiet: bool = false) -> bool {
     WidgetHostEnd()
     if outer { End(ui_session) }
     if EndFrame(ui_session) != cast(FrameStatus)FrameOk || native_bad { return false }
-    return ran && native_tiles == 1 && native_actions == 2
+    return ran && (!cards_only || (native_tiles == 1 && native_actions == 2))
 }
 
 NativeLabel :: (label: string, kind: s32 = -1) -> s32 {
@@ -559,6 +559,15 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("download-request") || !NativeDraw() || NativeLabel("Download size: 4.1 kB") < 0 ||
     !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
     NativeLabel("Download size: 4.1 kB") >= 0 { return 641 }
+    covered := native_queued
+    native_icon_mode = false
+    if !NativeLoadCatalog("cover-download") || !NativeDraw(false, false) { return 642 }
+    if NativeLabel("Open", WidgetKindButton) < 0 { return 643 }
+    if !NativeClick("Open", WidgetKindButton) { return 644 }
+    if !NativeDraw(false, false) || NativeLabel("Download size: 4.1 kB") < 0 { return 645 }
+    if native_queued != covered { return 646 }
+    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) { return 647 }
+    native_icon_mode = true
     // A host chooses compact cards without discarding bytes from its catalog.
     if !NativeLoadCatalog("simple-grid") || !NativeDraw() || NativeLabel("12.3 kB") >= 0 { return 88 }
     if !NativeLoadCatalog("simple-downloading") || !NativeDraw() ||
