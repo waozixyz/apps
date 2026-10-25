@@ -888,11 +888,11 @@ AppsFrame :: () -> bool {
     picture_height := 168.0 * scale
     if cover_grid {
         picture_height = card_width * (ifx bounds.height < 480.0 * scale && bounds.width > bounds.height then 2.0 / 3.0 else 1.5)
-        if bounds.width > bounds.height && picture_height > area.height - 72.0 * scale {
-            picture_height = area.height - 72.0 * scale
+        if bounds.width > bounds.height && picture_height > area.height - 36.0 * scale {
+            picture_height = area.height - 36.0 * scale
             if picture_height < 120.0 * scale { picture_height = 120.0 * scale }
         }
-        card_height = picture_height + 72.0 * scale
+        card_height = picture_height + 36.0 * scale
     }
     rows := (cast(s32)cards.count + columns - 1) / columns
     opened: bool
@@ -962,13 +962,15 @@ AppsFrame :: () -> bool {
                         .bounds = Rectangle.{x + gap * 2.0, y + gap * 2.0, logo_width, logo_width * 0.36}})
             }
             title_y := ifx cover_grid then y + picture_height + 10.0 * scale else y + 188.0 * scale
-            AppsText(session, key + cast(u64)3, Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
+            if !cover_grid {
+                AppsText(session, key + cast(u64)3, Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
+            }
             if cover_grid && !card.on_device && !hide_sizes {
                 size_text: [32]u8
                 if AppsSize(card.bytes, size_text[:]) {
                     Text(session, TextProps.{.key = key + cast(u64)9, .text = TextUntilNul(size_text[:]),
                             .font = cast(s32)(14.0 * scale), .class_name = muted_class,
-                            .bounds = Rectangle.{x + 4.0 * scale, title_y + 30.0 * scale, card_width - 8.0 * scale, 20.0 * scale},
+                            .bounds = Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale, 20.0 * scale},
                             .wrap = cast(TextWrap)TextWrapNone})
                 }
             }
