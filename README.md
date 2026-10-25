@@ -21,7 +21,8 @@ Hosts customize the same cards through the catalog's `presentation` object.
 Set `hide_sizes: true` for a simple launcher that shows app names and icons
 without package sizes, in either list or grid mode. The native host exposes
 the same option as `AppPresentation.hide_sizes`. The default keeps sizes
-visible; download progress remains visible in either presentation.
+visible for apps not yet on the device. Installed apps never show a download
+size; download progress remains visible in either presentation.
 
 A card for an app not on the device shows a download symbol. It opens a
 dialog with the package size and what the app may reach, and the dialog's

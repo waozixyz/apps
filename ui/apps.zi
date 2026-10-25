@@ -127,6 +127,7 @@ dialog: s32;
 // since, for the bar of a download whose size is not known.
 download_started: bool;
 download_frames: s32;
+last_download_request: s64;
 dialog_target: Rules.AppVersion;
 dialog_message: [2048]u8;
 
@@ -204,6 +205,9 @@ AppsReadCatalog :: () -> bool {
     list_mode = TextUntilNul(mode[:]) == "list"
     icon_mode = list_mode || TextUntilNul(mode[:]) == "icon"
     hide_sizes = AppsBool(text, FieldAt(text, presentation, "hide_sizes"))
+    requested_download: [128]u8
+    if !AppsOptionalText(text, presentation, "download_id", requested_download[:]) { return false }
+    download_request := cast(s64)AppsNumber(text, FieldAt(text, presentation, "download_request"))
     has_section_break = FieldAt(text, presentation, "section_break") >= 0
     section_break = cast(s32)AppsNumber(text, FieldAt(text, presentation, "section_break"))
     presentation_columns = cast(s32)AppsNumber(text, FieldAt(text, presentation, "columns"))
@@ -304,6 +308,15 @@ AppsReadCatalog :: () -> bool {
         if !VecPush(cards, card) { return false }
         at = Space(text, ValueEnd(text, at, 0))
         if index + 1 < count { at = Space(text, at + 1) }
+    }
+    // A native navigation shortcut can ask for this same download dialog.
+    // Consume each request once so Cancel and Hide keep working.
+    if download_request > last_download_request && requested_download[0] != 0 {
+        target := AppsFind(requested_download)
+        if target != null && !target.on_device && AppsSupported(target, Rules.APPS_INSTALL) {
+            AppsDownloadOpen(target)
+            last_download_request = download_request
+        }
     }
     // Hosts without revisions are asked for the whole catalog every frame.
     revision := ReadNumber(text, FieldAt(text, 0, "revision"))
@@ -587,6 +600,11 @@ AppsDownloadOpen :: (card: *AppCard) {
 // ends with Open, or Try again when the download failed.
 AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: string, font: s32) {
     if !download_started && (card.on_device || !AppsSupported(card, Rules.APPS_INSTALL)) { AppsPropertiesClose(); return }
+    if download_started && card.on_device {
+        AppsAct("open", card.id)
+        AppsPropertiesClose()
+        return
+    }
     gap := 12.0 * scale
     line := 24.0 * scale
     control := 44.0 * scale
@@ -893,7 +911,7 @@ AppsFrame :: () -> bool {
         list_size: [32]u8
         if list_mode {
             if card.downloading { tile.detail = AppsLabel(language, "downloading") }
-            else if !hide_sizes && AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
+            else if !card.on_device && !hide_sizes && AppsSize(card.bytes, list_size[:]) { tile.detail = TextUntilNul(list_size[:]) }
         }
         // An app not on this device opens its download dialog instead of a
         // screen that has nothing to show yet.
@@ -915,7 +933,7 @@ AppsFrame :: () -> bool {
             if card.downloading {
                 unused CopyCString(AppsLabel(language, "downloading"), size_text[:])
             }
-            if !list_mode && (card.downloading || (!hide_sizes && AppsSize(card.bytes, size_text[:]))) {
+            if !list_mode && (card.downloading || (!card.on_device && !hide_sizes && AppsSize(card.bytes, size_text[:]))) {
                 Text(session, TextProps.{.key = key + cast(u64)4, .text = TextUntilNul(size_text[:]), .font = cast(s32)(11.0 * scale),
                         .bounds = Rectangle.{x + 8.0 * scale, y + card_height - 16.0 * scale, card_width - 16.0 * scale, 12.0 * scale},
                         .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})

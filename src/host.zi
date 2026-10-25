@@ -46,6 +46,8 @@ AppPlatformDownload :: #type (context: *void, parent: *AppNode, entry: *AppEntry
 
 AppDownload :: struct {
     downloading: bool
+    // Transfer size supplied by the delivery provider, when known.
+    bytes: s64
     // Percent arrived, or -1 while unknown.
     progress: s32
     failed: bool
@@ -241,11 +243,13 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
             VecFree(bytes)
             return AppHostReply(host, AppRejected("app state unavailable"))
         }
+        download := AppDownload.{.progress = -1}
+        missing := host.platform.download != null && host.platform.download(host.platform.context, node, *item.entry, *download)
+        if missing && download.bytes > 0 { state.bytes = download.bytes }
         BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
             state.installed, state.favorite, state.launcher, state.selected, state.disabled, state.bytes)
         AppHostVersions(*bytes, *state, host.platform.version_effect != null)
-        download := AppDownload.{.progress = -1}
-        if host.platform.download != null && host.platform.download(host.platform.context, node, *item.entry, *download) {
+        if missing {
             BuilderPrint(*bytes, ",\"on_device\":false,\"downloading\":%,\"progress\":%,\"download_failed\":%",
                 download.downloading, download.progress, download.failed)
         }

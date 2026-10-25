@@ -460,7 +460,7 @@ NativeControllerCheck :: () -> s32 {
         FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256"), platform) { return 51 }
     // The options carry the update's dot instead of a separate update symbol.
     if !NativeDraw() || native_dots != 1 || native_queued != 0 || NativeLabel("Update available") >= 0 ||
-    NativeLabel("Native apps") >= 0 || NativeLabel("12.3 kB") < 0 { return 52 }
+    NativeLabel("Native apps") >= 0 || NativeLabel("12.3 kB") >= 0 { return 52 }
     // Opening them shows Update first and marks exactly that offer as seen.
     if !NativeClick("App options") || !NativeDraw() || native_queued != 1 || native_request.operation != APPS_SEEN ||
     TextUntilNul(native_request.version[:]) != "2.0" ||
@@ -550,6 +550,15 @@ NativeControllerCheck :: () -> s32 {
     native_queued != queued + 2 || native_request.operation != APPS_INSTALL { return 637 }
     if !NativeClick("Close", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
     NativeLabel("Download failed") >= 0 { return 638 }
+    // A requested download opens as soon as the host reports verified bytes.
+    completed := native_queued
+    if !NativeLoadCatalog("download") || !NativeDraw() || !NativeClick("Clock", WidgetKindButton) || !NativeDraw() ||
+    !NativeClickLast("Download", WidgetKindButton) || !NativeDraw() ||
+    !NativeLoadCatalog("download-ready") || !NativeDraw() || native_queued != completed + 2 ||
+    native_request.operation != APPS_OPEN || !NativeDraw() || NativeLabel("Hide", WidgetKindButton) >= 0 { return 640 }
+    if !NativeLoadCatalog("download-request") || !NativeDraw() || NativeLabel("Download size: 4.1 kB") < 0 ||
+    !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
+    NativeLabel("Download size: 4.1 kB") >= 0 { return 641 }
     // A host chooses compact cards without discarding bytes from its catalog.
     if !NativeLoadCatalog("simple-grid") || !NativeDraw() || NativeLabel("12.3 kB") >= 0 { return 88 }
     if !NativeLoadCatalog("simple-downloading") || !NativeDraw() ||
@@ -557,7 +566,7 @@ NativeControllerCheck :: () -> s32 {
     native_icon_mode = false
     if !NativeLoadCatalog("simple-list") || !NativeDraw() || native_size_detail { return 90 }
     if !NativeLoadCatalog("reorder-list") || !NativeDraw() || NativeLabel("Move app") < 0 ||
-    !native_size_detail ||
+    native_size_detail ||
     native_tile_bounds.x < native_handle_bounds.x + native_handle_bounds.width ||
     native_other_bounds.x != native_tile_bounds.x ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 84 }
@@ -1304,6 +1313,7 @@ RemoteBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAs
 RemoteDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool {
     if TextUntilNul(entry.id[:]) != "fixture.remote" || remote_bytes.count > 0 { return false }
     download.downloading = remote_fetches > 0
+    download.bytes = 4096
     download.progress = ifx remote_fetches > 0 then 40 else -1
     return true
 }
@@ -1366,7 +1376,7 @@ DeclaredChildCheck :: () -> s32 {
     catalog := AppArgumentText(AppHostCatalog(runtime.frontend))
     remote := CatalogCard(catalog, "fixture.remote")
     packed := CatalogCard(catalog, "fixture.counter")
-    if !TextHas(remote, "\"on_device\":false") || !TextHas(remote, "\"downloading\":false") ||
+    if !TextHas(remote, "\"on_device\":false") || !TextHas(remote, "\"downloading\":false") || !TextHas(remote, "\"bytes\":4096") ||
     packed == "" || TextHas(packed, "on_device") { return 902 }
     // Not on the device: Open verifies nothing and opens nothing.
     unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}")

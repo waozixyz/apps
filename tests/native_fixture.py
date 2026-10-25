@@ -103,7 +103,7 @@ def main():
          child('fixture.remote', leaf, 'app/1', 'counter', 'assets/remote.zx')], {'assets/child.zx': leaf}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-request', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -112,7 +112,7 @@ def main():
             candidate['children'][0]['update_available'] = False
         if name == 'changed-update':
             candidate['children'][0]['available_sha256'] = 'd' * 64
-        if name in ('download', 'downloading', 'download-failed', 'simple-downloading'):
+        if name in ('download', 'downloading', 'download-failed', 'download-request', 'simple-downloading'):
             candidate['children'][1].update(on_device=False, downloading=name in ('downloading', 'simple-downloading'),
                                             bytes=4096, actions=['open', 'install'],
                                             permissions=['account', 'media', 'unknown-later'])
@@ -120,6 +120,8 @@ def main():
             candidate['children'][1]['progress'] = 40
         if name == 'download-failed':
             candidate['children'][1]['download_failed'] = True
+        if name == 'download-request':
+            candidate['presentation'].update(download_id='native.clock', download_request=1)
         if name.startswith('simple-'):
             candidate['presentation']['hide_sizes'] = True
             candidate['presentation']['mode'] = 'list' if name == 'simple-list' else 'icon'
