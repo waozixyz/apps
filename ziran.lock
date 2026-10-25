@@ -2,6 +2,14 @@
   "format": 1,
   "packages": [
     {
+      "commit": "f0be5a97246ad7872b7dd40c459421faa577955c",
+      "dependencies": {"raylib": "p5a77c9c35110e925"},
+      "id": "p0ec8982e71df3e2b",
+      "name": "kryon",
+      "ref": "master",
+      "url": "https://github.com/kryonlabs/kryon.git"
+    },
+    {
       "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
       "dependencies": {},
       "id": "p5a77c9c35110e925",
@@ -17,18 +25,10 @@
       "name": "crypto",
       "ref": "master",
       "url": "https://github.com/ziranlang/crypto.git"
-    },
-    {
-      "commit": "d5720a9c7f16fe71d42962555f981368c7eb7736",
-      "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "pf6075ae27cb62c8f",
-      "name": "kryon",
-      "ref": "master",
-      "url": "https://github.com/kryonlabs/kryon.git"
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pf039d7a776333200", "kryon": "pf6075ae27cb62c8f"},
+    "dependencies": {"crypto": "pf039d7a776333200", "kryon": "p0ec8982e71df3e2b"},
     "name": "Apps"
   },
   "toolchain": {
