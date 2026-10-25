@@ -65,6 +65,14 @@ AppsReply :: struct {
 
 AppVersion :: struct { version: [64]u8; sha256: [65]u8 }
 
+AppCover :: struct {
+    portrait: [512]u8
+    landscape: [512]u8
+    logo: [512]u8
+    caption: [256]u8
+    action: [64]u8
+}
+
 AppPresentation :: struct {
     // False preserves the screenshot collection presentation.
     icon: bool

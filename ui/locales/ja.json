@@ -47,5 +47,6 @@
   "ready": "開く準備ができました",
   "hide": "隠す",
   "close": "閉じる",
-  "download_waiting": "ダウンロード待ち"
+  "download_waiting": "ダウンロード待ち",
+  "download_dependency": "必須"
 }

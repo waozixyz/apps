@@ -47,5 +47,6 @@
   "ready": "열 준비 완료",
   "hide": "숨기기",
   "close": "닫기",
-  "download_waiting": "다운로드 대기 중"
+  "download_waiting": "다운로드 대기 중",
+  "download_dependency": "필수"
 }

@@ -598,6 +598,10 @@ NativeControllerCheck :: () -> s32 {
     // Uninstalled covers show their download size; installed covers omit it.
     if !NativeLoadCatalog("cover-grid-download") || !NativeDraw(false, false) ||
     NativeLabel("4.1 kB", WidgetKindText) < 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 95 }
+    if !NativeLoadCatalog("cover-grid-dependencies") || !NativeDraw(false, false) ||
+    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
+    NativeLabel("Breathing (required) · 100 B", WidgetKindText) < 0 ||
+    NativeLabel("Clock · 40 B", WidgetKindText) < 0 { return 97 }
     if !AppControllerClose(*native_controller) { return 65 }
     AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""
     return 0
@@ -1380,6 +1384,35 @@ TextHas :: (text: string, needle: string) -> bool {
     return false
 }
 
+DependencyAssetsCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_DEPENDENCY_ROOT_BUNDLE"))
+    if !found { return 127 }
+    defer { AppFileFree(bytes) }
+    live := PreparationTestLive()
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
+    for corrupt: cast(s32)0..1 {
+        host: AppHost
+        if !AppHostStart(*host, bytes, "fixture.test", "fixture.dependencies", "collection",
+            FixtureEnvironment("APPS_FIXTURE_DEPENDENCY_ROOT_SHA256"), "account-a", platform,
+            FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 128 }
+        root := AppTreeNode(*host.tree, host.tree.active)
+        if corrupt == 1 {
+            base := AppCatalogAt(*root.catalog, 0)
+            base.sha256[0] = ifx base.sha256[0] == #char "a" then #char "b" else #char "a"
+        }
+        unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.editor\"}")
+        if corrupt == 0 {
+            editor := AppTreeNode(*host.tree, host.tree.active)
+            if editor == root { return 129 }
+            resource := AppHostAsset(editor, "assets/counter/shared.wav")
+            if !resource.found || resource.data.count < 4 || resource.data[:4] != "RIFF" ||
+            AppHostAsset(editor, "assets/other/sound.wav").found { return 130 }
+        } else if host.tree.nodes.count != 1 { return 131 }
+        if !AppHostStop(*host) || PreparationTestLive() != live { return 132 }
+    }
+    return 0
+}
+
 // A game its collection only declares is downloaded on its own: its card says
 // it is not on the device, Install fetches it without opening anything, and
 // it opens only from the platform's bytes that match the catalog digest.
@@ -1440,8 +1473,69 @@ DeclaredChildCheck :: () -> s32 {
     return 0
 }
 
+dependency_installed: bool;
+dependency_fetches: s32;
+dependency_queued: bool;
+dependency_first: [128]u8;
+
+DependencyCatalog :: (catalog: *AppCatalog, base_dependencies: string = "", required: string = "game", source: string = "assets/game/sprites/") -> bool {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"schema\":1,\"id\":\"collection\",\"title\":\"Games\",\"harness\":\"assets/apps.zx\",\"children\":[")
+    BuilderPrint(*bytes, "{\"id\":\"game\",\"title\":\"Original\",\"bundle\":\"assets/game.zx\",\"protocol\":\"node/2\",\"expected_id\":\"game\",\"version\":\"1\",\"sha256\":\"%\"%},", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", base_dependencies)
+    BuilderPrint(*bytes, "{\"id\":\"editor\",\"title\":\"Editor\",\"bundle\":\"assets/editor.zx\",\"protocol\":\"node/2\",\"expected_id\":\"editor\",\"version\":\"1\",\"sha256\":\"%\",\"dependencies\":[\"%\"],\"resources\":[{\"dependency\":\"%\",\"path\":\"assets/editor/shared/\",\"source\":\"%\"}]}]}", "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", required, required, source)
+    result := AppCatalogRead(TextView(VecSlice(bytes, 0, bytes.count)), "collection", catalog)
+    VecFree(bytes)
+    return result
+}
+
+DependencyDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool {
+    if TextUntilNul(entry.id[:]) == "game" {
+        if dependency_installed { return false }
+        download.bytes = 100
+    } else { download.bytes = 40 }
+    download.progress = -1
+    return true
+}
+
+DependencyFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry, operation: s32, reply: *AppsReply) -> bool {
+    if dependency_fetches == 0 { dependency_first = entry.id }
+    dependency_fetches += 1
+    reply.status = ifx dependency_queued then APPS_QUEUED else APPS_APPLIED
+    return true
+}
+
+DependenciesCheck :: () -> s32 {
+    parent: AppNode
+    if !DependencyCatalog(*parent.catalog) { return 120 }
+    defer { AppCatalogClear(*parent.catalog) }
+    if DependencyCatalog(*parent.catalog, ",\"dependencies\":[\"editor\"]") || parent.catalog.count != 2 { return 121 }
+    if DependencyCatalog(*parent.catalog, "", "missing") || parent.catalog.count != 2 { return 122 }
+    if DependencyCatalog(*parent.catalog, "", "game", "assets/other/sprites/") ||
+    DependencyCatalog(*parent.catalog, "", "game", "assets/game/../private/") { return 123 }
+    host: AppHost
+    host.platform.download = DependencyDownload
+    host.platform.fetch = DependencyFetch
+    editor := AppCatalogAt(*parent.catalog, 1)
+    plan: AppInstallPlan
+    if !AppHostInstallPlan(*host, *parent, editor, *plan) || plan.count != 2 ||
+    plan.download.bytes != 140 || TextUntilNul(plan.entries[0].id[:]) != "game" { return 124 }
+    reply: AppsReply
+    if !AppHostFetch(cast(*void)(*host), "local", *parent, editor, APPS_INSTALL, *reply) ||
+    reply.status != APPS_APPLIED || dependency_fetches != 2 || TextUntilNul(dependency_first[:]) != "game" { return 125 }
+    dependency_installed = true
+    if !AppHostInstallPlan(*host, *parent, editor, *plan) || plan.count != 1 || plan.download.bytes != 40 ||
+    TextUntilNul(plan.entries[0].id[:]) != "editor" { return 126 }
+    dependency_queued = true
+    dependency_fetches = 0
+    if !AppHostFetch(cast(*void)(*host), "local", *parent, editor, APPS_INSTALL, *reply) ||
+    reply.status != APPS_QUEUED || dependency_fetches != 1 { return 133 }
+    return 0
+}
+
 #program_export
 Check :: () -> s32 {
+    dependencies := DependenciesCheck()
+    if dependencies != 0 { return dependencies }
     PreparationTestBegin()
     bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_ROOT_BUNDLE"))
     digest := FixtureEnvironment("APPS_FIXTURE_ROOT_SHA256")
@@ -1470,6 +1564,8 @@ Check :: () -> s32 {
     if locator_result != 0 {
         return locator_result
     }
+    shared := DependencyAssetsCheck()
+    if shared != 0 { return shared }
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
     root := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)root.runtime

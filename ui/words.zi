@@ -50,6 +50,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Skrýt" }
         if key == "close" { return "Zavřít" }
         if key == "download_waiting" { return "Čeká na stažení" }
+        if key == "download_dependency" { return "vyžadováno" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -101,6 +102,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Ausblenden" }
         if key == "close" { return "Schließen" }
         if key == "download_waiting" { return "Wartet auf Download" }
+        if key == "download_dependency" { return "erforderlich" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -152,6 +154,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Ocultar" }
         if key == "close" { return "Cerrar" }
         if key == "download_waiting" { return "Esperando para descargar" }
+        if key == "download_dependency" { return "necesario" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -203,6 +206,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Masquer" }
         if key == "close" { return "Fermer" }
         if key == "download_waiting" { return "En attente de téléchargement" }
+        if key == "download_dependency" { return "requis" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -254,6 +258,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Sembunyikan" }
         if key == "close" { return "Tutup" }
         if key == "download_waiting" { return "Menunggu diunduh" }
+        if key == "download_dependency" { return "diperlukan" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -305,6 +310,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Nascondi" }
         if key == "close" { return "Chiudi" }
         if key == "download_waiting" { return "In attesa del download" }
+        if key == "download_dependency" { return "necessario" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -356,6 +362,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "隠す" }
         if key == "close" { return "閉じる" }
         if key == "download_waiting" { return "ダウンロード待ち" }
+        if key == "download_dependency" { return "必須" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -407,6 +414,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "숨기기" }
         if key == "close" { return "닫기" }
         if key == "download_waiting" { return "다운로드 대기 중" }
+        if key == "download_dependency" { return "필수" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -458,6 +466,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Ocultar" }
         if key == "close" { return "Fechar" }
         if key == "download_waiting" { return "Aguardando download" }
+        if key == "download_dependency" { return "necessário" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -509,6 +518,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "Скрыть" }
         if key == "close" { return "Закрыть" }
         if key == "download_waiting" { return "Ожидает загрузки" }
+        if key == "download_dependency" { return "требуется" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -560,6 +570,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "hide" { return "隐藏" }
         if key == "close" { return "关闭" }
         if key == "download_waiting" { return "等待下载" }
+        if key == "download_dependency" { return "必需" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -610,5 +621,6 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "hide" { return "Hide" }
     if key == "close" { return "Close" }
     if key == "download_waiting" { return "Waiting to download" }
+    if key == "download_dependency" { return "required" }
     return key
 }

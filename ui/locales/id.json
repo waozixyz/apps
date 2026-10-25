@@ -47,5 +47,6 @@
   "ready": "Siap dibuka",
   "hide": "Sembunyikan",
   "close": "Tutup",
-  "download_waiting": "Menunggu diunduh"
+  "download_waiting": "Menunggu diunduh",
+  "download_dependency": "diperlukan"
 }

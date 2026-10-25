@@ -101,9 +101,16 @@ def main():
     bundle('collection', remote_root, stage('remote-stage', 'fixture.remote-root',
         [child('fixture.counter', leaf, 'app/1', 'counter'),
          child('fixture.remote', leaf, 'app/1', 'counter', 'assets/remote.zx')], {'assets/child.zx': leaf}, controller))
+    dependency_root = WORK / 'dependency-root.zx'
+    editor = child('fixture.editor', leaf, 'app/1', 'counter', 'assets/editor.zx')
+    editor.update(dependencies=['fixture.node'], resources=[dict(dependency='fixture.node',
+        path='assets/counter/shared.wav', source='assets/node/sound.wav')])
+    bundle('collection', dependency_root, stage('dependency-stage', 'fixture.dependencies',
+        [child('fixture.node', node, 'node/2', 'node', 'assets/node.zx'), editor],
+        {'assets/node.zx': node, 'assets/editor.zx': leaf}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'download-ready', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -139,13 +146,16 @@ def main():
             candidate['presentation']['mode'] = 'preview'
             for card in candidate['children']:
                 card['preview'] = 'assets/preview.png'
-        if name in ('cover-grid', 'cover-grid-download'):
+        if name in ('cover-grid', 'cover-grid-download', 'cover-grid-dependencies'):
             candidate['presentation']['mode'] = 'covers'
             for card in candidate['children']:
                 card['cover'] = {'portrait': 'assets/preview.png', 'landscape': 'assets/preview.png',
                                  'logo': 'assets/preview.png', 'action': 'open'}
         if name == 'cover-grid-download':
             candidate['children'][1].update(on_device=False, bytes=4096, actions=['open', 'install'])
+        if name == 'cover-grid-dependencies':
+            candidate['children'][1].update(on_device=False, bytes=140, actions=['open', 'install'], downloads=[
+                dict(title='Breathing', bytes=100, dependency=True), dict(title='Clock', bytes=40, dependency=False)])
         (WORK / (name + '-catalog.json')).write_text(json.dumps(candidate))
     os.environ['APPS_FIXTURE_NATIVE_CATALOG_ROOT'] = runtime_path(WORK)
     output = WORK / 'c'
@@ -172,6 +182,8 @@ def main():
     os.environ['APPS_FIXTURE_ROOT_SHA256'] = digest(root)
     os.environ['APPS_FIXTURE_REMOTE_ROOT_BUNDLE'] = runtime_path(remote_root)
     os.environ['APPS_FIXTURE_REMOTE_ROOT_SHA256'] = digest(remote_root)
+    os.environ['APPS_FIXTURE_DEPENDENCY_ROOT_BUNDLE'] = runtime_path(dependency_root)
+    os.environ['APPS_FIXTURE_DEPENDENCY_ROOT_SHA256'] = digest(dependency_root)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = digest(controller)
     os.environ['APPS_FIXTURE_NODE_BUNDLE'] = runtime_path(node)
     os.environ['APPS_FIXTURE_NODE_SHA256'] = digest(node)

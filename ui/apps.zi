@@ -32,7 +32,6 @@
 #import "kryon/loading_indicator"
 #import "kryon/widget_palette"
 #import "appearance"
-Cover :: #import "catalog";
 Rules :: #import "protocol";
 #import, file "words.zi";
 
@@ -54,10 +53,17 @@ APP_PERMISSION_FRIENDS :: 2
 APP_PERMISSION_AUDIO :: 4
 APP_PERMISSION_MEDIA :: 8
 
+AppDownloadItem :: struct {
+    title: [256]u8
+    bytes: s64
+    dependency: bool
+    next: *AppDownloadItem
+}
+
 AppCard :: struct {
     id: [128]u8
     title: [256]u8
-    cover: Cover.AppCover
+    cover: Rules.AppCover
     // Present while the person's own title replaces the app's title.
     original_title: [256]u8
     // The offered icon the person chose; empty shows the app's own icon.
@@ -82,6 +88,8 @@ AppCard :: struct {
     selected: bool
     disabled: bool
     bytes: s64
+    downloads: *AppDownloadItem
+    download_count: s32
     actions: u64
     current_version: [64]u8
     available: Rules.AppVersion
@@ -223,6 +231,7 @@ AppsReadCatalog :: () -> bool {
     children := FieldAt(text, 0, "children")
     count := ArrayCount(text, children)
     if count < 0 || count > 4096 { return false }
+    for index: cast(s64)0..cards.count - 1 { AppsDownloadItemsClear(*cards[index]) }
     VecClear(cards)
     has_reorder_handles = false
     cover_mode = false
@@ -311,7 +320,26 @@ AppsReadCatalog :: () -> bool {
         for previous: cast(s64)0..cards.count - 1 {
             if TextUntilNul(cards[previous].id[:]) == TextUntilNul(card.id[:]) { return false }
         }
-        if !VecPush(cards, card) { return false }
+        downloads := FieldAt(text, at, "downloads")
+        if downloads >= 0 {
+            download_count := ArrayCount(text, downloads)
+            if download_count < 0 || download_count > 32 { return false }
+            last: *AppDownloadItem
+            for index: cast(s32)0..download_count - 1 {
+                row := ElementAt(text, downloads, index)
+                item := New(AppDownloadItem)
+                if item == null { AppsDownloadItemsClear(*card); return false }
+                if last == null { card.downloads = item }
+                else { last.next = item }
+                last = item
+                if !Rules.AppsReadText(text, row, "title", item.title[:]) { AppsDownloadItemsClear(*card); return false }
+                item.bytes = cast(s64)AppsNumber(text, FieldAt(text, row, "bytes"))
+                item.dependency = AppsBool(text, FieldAt(text, row, "dependency"))
+
+            }
+            card.download_count = cast(s32)download_count
+        }
+        if !VecPush(cards, card) { AppsDownloadItemsClear(*card); return false }
         at = Space(text, ValueEnd(text, at, 0))
         if index + 1 < count { at = Space(text, at + 1) }
     }
@@ -625,6 +653,7 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
         if (card.permissions & (cast(u32)1 << bit)) != cast(u32)0 { permission_count += 1 }
     }
     content_height := icon_size + gap + control
+    if card.download_count > 1 { content_height += cast(float32)card.download_count * line + gap }
     if asking && permission_count > 0 { content_height += line + cast(float32)permission_count * line + gap }
     if card.downloading || (download_started && !card.on_device && !card.download_failed) { content_height += bar + gap }
     frame := ModalFrame(session, ModalFrameProps.{.key = cast(u64)19, .title = TextUntilNul(card.title[:]),
@@ -656,6 +685,23 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
             .bounds = Rectangle.{x + icon_size + gap, y, width - icon_size - gap, icon_size},
             .wrap = cast(TextWrap)TextWrapEllipsis, .vertical_align = cast(TextAlign)TextAlignCenter})
     y += icon_size + gap
+    if card.download_count > 1 {
+        item := card.downloads
+        for index: cast(s32)0..card.download_count - 1 {
+            size: [32]u8
+            label: Vec(u8)
+            BuilderPrint(*label, "%", TextUntilNul(item.title[:]))
+            if item.dependency { BuilderPrint(*label, " (%)", AppsLabel(language, "download_dependency")) }
+            if AppsSize(item.bytes, size[:]) { BuilderPrint(*label, " · %", TextUntilNul(size[:])) }
+            text: [512]u8
+            unused CopyCString(TextView(VecSlice(label, 0, label.count)), text[:])
+            VecFree(label)
+            AppsText(session, cast(u64)100 + cast(u64)index, Rectangle.{x, y, width, line}, TextUntilNul(text[:]), font)
+            y += line
+            item = item.next
+        }
+        y += gap
+    }
     if asking && permission_count > 0 {
         AppsText(session, cast(u64)22, Rectangle.{x, y, width, line}, AppsLabel(language, "app_can"), font)
         y += line
@@ -770,7 +816,7 @@ AppsDialog :: (session: Session, scale: float32, language: string, font: s32) {
 }
 
 AppsSize :: (bytes: s64, output: []u8) -> bool {
-    if bytes <= 0 || bytes > 67108864 { return false }
+    if bytes <= 0 || bytes > 2147483647 { return false }
     value: Vec(u8)
     if bytes < 1000 { BuilderPrint(*value, "% B", bytes) }
     else {
@@ -1045,4 +1091,11 @@ Main :: () -> s32 {
     if mode == APP_FRAME { return ifx AppsFrame() then 0 else 1 }
     if mode == APP_COMMAND { AppReply(AppService("apps", AppCommand())) }
     return 0
+}
+
+AppsDownloadItemsClear :: (card: *AppCard) {
+    item := card.downloads
+    while item != null { next := item.next; free(item); item = next }
+    card.downloads = null
+    card.download_count = 0
 }

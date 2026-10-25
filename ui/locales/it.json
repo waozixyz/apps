@@ -47,5 +47,6 @@
   "ready": "Pronta da aprire",
   "hide": "Nascondi",
   "close": "Chiudi",
-  "download_waiting": "In attesa del download"
+  "download_waiting": "In attesa del download",
+  "download_dependency": "necessario"
 }

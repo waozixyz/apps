@@ -119,12 +119,16 @@ AppRuntime :: struct {
     retired: bool
     byte_charge: s64
     busy: bool
+    dependency_count: s32
+    dependency_entries: [32]*AppEntry
+    dependency_apps: [32]HostedApp
     // The catalog this controller last received and its revision. A
     // controller that already holds it is told so instead of parsing it
     // again in the VM on every frame.
     catalog: string
     catalog_revision: s64
 }
+
 
 AppHostBytesMatch :: (bytes: string, digest: string) -> bool {
     actual: [65]u8
@@ -247,8 +251,13 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
             VecFree(bytes)
             return AppHostReply(host, AppRejected("app state unavailable"))
         }
-        download := AppDownload.{.progress = -1}
-        missing := host.platform.download != null && host.platform.download(host.platform.context, node, *item.entry, *download)
+        plan: AppInstallPlan
+        if !AppHostInstallPlan(host, node, *item.entry, *plan) {
+            VecFree(bytes)
+            return AppHostReply(host, AppRejected("app dependency unavailable"))
+        }
+        download := plan.download
+        missing := plan.count > 0
         if missing { state.installed = false; state.favorite = false }
         if missing && download.bytes > 0 { state.bytes = download.bytes }
         BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
@@ -257,6 +266,14 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         if missing {
             BuilderPrint(*bytes, ",\"on_device\":false,\"downloading\":%,\"progress\":%,\"download_failed\":%",
                 download.downloading, download.progress, download.failed)
+            BuilderPrint(*bytes, ",\"downloads\":[")
+            for index: cast(s32)0..plan.count - 1 {
+                if index > 0 { BuilderPrint(*bytes, ",") }
+                BuilderPrint(*bytes, "{\"title\":")
+                AppHostWriteQuoted(*bytes, TextUntilNul(plan.entries[index].title[:]))
+                BuilderPrint(*bytes, ",\"bytes\":%,\"dependency\":%}", plan.sizes[index], plan.entries[index] != *item.entry)
+            }
+            BuilderPrint(*bytes, "]")
         }
         BuilderPrint(*bytes, "}")
         item = item.next
@@ -429,7 +446,7 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
     if node == null || node.runtime == null || !AppAssetPathValid(path) { return HostedAsset.{} }
     runtime := cast(*AppRuntime)node.runtime
     if runtime.retired { return HostedAsset.{} }
-    return HostedAppAsset(AppContextRuntime(*runtime.app), path)
+    return AppHostResource(runtime, *node.entry, path, 0)
 }
 
 // A child's packed bundle, or the platform's copy of one its collection only
@@ -445,6 +462,21 @@ AppHostChildBundle :: (host: *AppHost, owner: *AppRuntime, parent: *AppNode, ent
 AppHostFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
     operation: s32, reply: *AppsReply) -> bool {
     host := cast(*AppHost)context
+    if operation == APPS_INSTALL && entry.dependency_count > 0 {
+        plan: AppInstallPlan
+        if !AppHostInstallPlan(host, parent, entry, *plan) || host.platform.fetch == null { return false }
+        if plan.count > 0 {
+            queued: bool
+            for index: cast(s32)0..plan.count - 1 {
+                response: AppsReply
+                if !host.platform.fetch(host.platform.context, account, parent, plan.entries[index], operation, *response) ||
+                (response.status != APPS_APPLIED && response.status != APPS_QUEUED) { reply.* = AppRejected("app dependency download failed"); return true }
+                queued = queued || response.status == APPS_QUEUED
+            }
+            reply.status = ifx queued then APPS_QUEUED else APPS_APPLIED
+            return true
+        }
+    }
     return host.platform.fetch != null &&
     host.platform.fetch(host.platform.context, account, parent, entry, operation, reply)
 }
@@ -856,6 +888,7 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
     // Charge a conservative fixed amount for the native context as well as
     // packed bytes. This is separate from the VM's own allocation policy.
     candidate.bytes = resource.data.count + 65536 + cast(s64)size_of(AppNode)
+    if !AppHostDependenciesOpen(runtime, parent, entry, 0) { return false }
     candidate.collection = entry.protocol == APPS_COLLECTION_PROTOCOL
     if candidate.collection {
         manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
@@ -1023,6 +1056,7 @@ AppHostCollect :: (host: *AppHost) {
             free(runtime.frontend)
         }
         HostedAppClose(AppContextRuntime(*runtime.app))
+        for index: cast(s32)0..runtime.dependency_count - 1 { HostedAppClose(*runtime.dependency_apps[index]) }
         AppFileFree(runtime.catalog)
         free(runtime)
         runtime = next
@@ -1202,4 +1236,120 @@ AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool) {
         BuilderPrint(bytes, "}")
     }
     BuilderPrint(bytes, "]")
+}
+
+// One installation plan is shared by consent, progress and the actual fetch.
+// Already present packages are omitted, and a shared dependency appears once.
+AppInstallPlan :: struct {
+    visited: [32]*AppEntry
+    visited_count: s32
+    entries: [32]*AppEntry
+    sizes: [32]s64
+    count: s32
+    received: s64
+    progress_known: bool
+    download: AppDownload
+}
+
+AppHostPlanEntry :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, plan: *AppInstallPlan, depth: s32) -> bool {
+    if entry == null || depth > 32 { return false }
+    for index: cast(s32)0..plan.visited_count - 1 { if plan.visited[index] == entry { return true } }
+    if plan.visited_count >= 32 { return false }
+    plan.visited[plan.visited_count] = entry
+    plan.visited_count += 1
+    for index: cast(s32)0..entry.dependency_count - 1 {
+        dependency := AppCatalogAt(*parent.catalog, AppCatalogFind(*parent.catalog, TextUntilNul(entry.dependencies[index][:])))
+        if !AppHostPlanEntry(host, parent, dependency, plan, depth + 1) { return false }
+    }
+    download := AppDownload.{.progress = -1}
+    if host.platform.download == null || !host.platform.download(host.platform.context, parent, entry, *download) { return true }
+    size := ifx download.bytes > 0 then download.bytes else entry.bytes
+    plan.entries[plan.count] = entry
+    plan.sizes[plan.count] = size
+    plan.count += 1
+    plan.download.progress = ifx plan.count == 1 then download.progress else -1
+    plan.download.bytes += size
+    plan.download.downloading = plan.download.downloading || download.downloading
+    plan.download.failed = plan.download.failed || download.failed
+    if download.progress < 0 || size <= 0 { plan.progress_known = false }
+    else { plan.received += size * download.progress / 100 }
+    return true
+}
+
+AppHostInstallPlan :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, plan: *AppInstallPlan) -> bool {
+    plan.* = AppInstallPlan.{.progress_known = true}
+    plan.download.progress = -1
+    if !AppHostPlanEntry(host, parent, entry, plan, 0) { return false }
+    if plan.count > 1 && plan.progress_known && plan.download.bytes > 0 {
+        plan.download.progress = cast(s32)(plan.received * 100 / plan.download.bytes)
+    }
+    return true
+}
+
+AppHostDependenciesOpen :: (runtime: *AppRuntime, parent: *AppNode, entry: *AppEntry, depth: s32) -> bool {
+    if depth > 32 { return false }
+    for index: cast(s32)0..entry.dependency_count - 1 {
+        dependency := AppCatalogAt(*parent.catalog, AppCatalogFind(*parent.catalog, TextUntilNul(entry.dependencies[index][:])))
+        if dependency == null { return false }
+        known: bool
+        for opened: cast(s32)0..runtime.dependency_count - 1 {
+            known = known || runtime.dependency_entries[opened] == dependency
+        }
+        if known { continue }
+        if runtime.dependency_count >= 32 { return false }
+        packed: bool
+        resource := AppHostChildBundle(runtime.host, cast(*AppRuntime)parent.runtime, parent, dependency, *packed)
+        if !resource.found || !AppHostBytesMatch(resource.data, TextUntilNul(dependency.sha256[:])) ||
+        resource.data.count + 65536 > runtime.host.tree.byte_limit - runtime.host.tree.bytes - runtime.host.retired_bytes - runtime.node.bytes { return false }
+        opened := runtime.dependency_count
+        if !HostedAppOpen(*runtime.dependency_apps[opened], resource.data) { return false }
+        if dependency.protocol == APPS_NODE_PROTOCOL {
+            node := NodeContext.{.app = *runtime.dependency_apps[opened]}
+            if !NodeAssetsValid(*node, TextUntilNul(dependency.id[:]), TextUntilNul(dependency.expected_id[:])) {
+                HostedAppClose(*runtime.dependency_apps[opened])
+                return false
+            }
+        }
+        runtime.dependency_entries[opened] = dependency
+        runtime.dependency_count += 1
+        runtime.node.bytes += resource.data.count + 65536
+        if !AppHostDependenciesOpen(runtime, parent, dependency, depth + 1) { return false }
+    }
+    return true
+}
+
+AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth: s32) -> HostedAsset {
+    if depth > 32 { return HostedAsset.{} }
+    app: *HostedApp
+    if entry == *runtime.node.entry { app = AppContextRuntime(*runtime.app) }
+    else {
+        for index: cast(s32)0..runtime.dependency_count - 1 {
+            if runtime.dependency_entries[index] == entry { app = *runtime.dependency_apps[index] }
+        }
+    }
+    if app == null { return HostedAsset.{} }
+    resource := HostedAppAsset(app, path)
+    if resource.found {
+        if entry != *runtime.node.entry && resource.data.count > 16777216 { return HostedAsset.{} }
+        return resource
+    }
+    for index: cast(s32)0..entry.resource_count - 1 {
+        link := AppResourceAt(entry, index)
+        prefix := TextUntilNul(link.path[:])
+        if !AppPathPrefix(path, prefix) || (path.count > prefix.count && prefix[prefix.count - 1] != #char "/") { continue }
+        dependency: *AppEntry
+        for opened: cast(s32)0..runtime.dependency_count - 1 {
+            candidate := runtime.dependency_entries[opened]
+            if TextUntilNul(candidate.id[:]) == TextUntilNul(entry.dependencies[link.dependency][:]) { dependency = candidate }
+        }
+        if dependency == null { return HostedAsset.{} }
+        target: Vec(u8)
+        BuilderPrint(*target, "%", TextUntilNul(link.source[:]))
+        BuilderPrint(*target, "%", path[prefix.count:])
+        resolved := BuilderFinish(target)
+        result := AppHostResource(runtime, dependency, resolved, depth + 1)
+        AppFileFree(resolved)
+        return result
+    }
+    return HostedAsset.{}
 }

@@ -46,6 +46,12 @@ state, `AppPlatform.fetch` installs or removes it without opening it, and
 `AppPlatform.bundle` returns its downloaded bytes, which the host checks
 against the catalog digest before every open.
 
+An add-on declares its sibling `dependencies` in the same signed catalog.
+Installation lists every missing package and its total size, and skips
+dependencies already on the device. Read-only `resources` links reuse explicit
+asset paths from those verified packages. Missing dependencies, cycles,
+altered payloads and paths outside the declared app namespaces are rejected.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its

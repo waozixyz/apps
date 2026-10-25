@@ -47,5 +47,6 @@
   "ready": "可以打开了",
   "hide": "隐藏",
   "close": "关闭",
-  "download_waiting": "等待下载"
+  "download_waiting": "等待下载",
+  "download_dependency": "必需"
 }

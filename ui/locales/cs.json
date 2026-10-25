@@ -47,5 +47,6 @@
   "ready": "Připraveno k otevření",
   "hide": "Skrýt",
   "close": "Zavřít",
-  "download_waiting": "Čeká na stažení"
+  "download_waiting": "Čeká na stažení",
+  "download_dependency": "vyžadováno"
 }

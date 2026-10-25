@@ -1,17 +1,20 @@
 #import "std/json_scan"
 #import "std/text_buffer"
+#import "std/vec"
 #import, file "protocol.zi";
 
 APP_MANIFEST_BYTE_LIMIT :: 1048576
 APP_CATALOG_ENTRY_LIMIT :: 4096
+APP_DEPENDENCY_LIMIT :: 8
+APP_RESOURCE_LINK_LIMIT :: 16
 
-AppCover :: struct {
-    portrait: [512]u8
-    landscape: [512]u8
-    logo: [512]u8
-    caption: [256]u8
-    action: [64]u8
+AppResourceLink :: struct {
+    dependency: s32
+    path: [512]u8
+    source: [512]u8
+    next: *AppResourceLink
 }
+
 
 AppEntry :: struct {
     id: [128]u8
@@ -26,7 +29,13 @@ AppEntry :: struct {
     protocol: s32
     bytes: s64
     cover: AppCover
+    dependency_count: s32
+    dependencies: [APP_DEPENDENCY_LIMIT][128]u8
+    resource_count: s32
+    // Catalog owns these links; a routed entry borrows them from its parent.
+    resources: *AppResourceLink
 }
+
 
 AppCatalog :: struct {
     id: [128]u8
@@ -78,12 +87,12 @@ AppCatalogAppend :: (catalog: *AppCatalog, entry: AppEntry) -> bool {
 
 AppCatalogClear :: (catalog: *AppCatalog) {
     item := catalog.children
-    while item != null { next := item.next; free(item); item = next }
+    while item != null { next := item.next; AppEntryResourcesClear(*item.entry); free(item); item = next }
     catalog.* = AppCatalog.{}
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [12]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes"]
+    keys: [14]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -128,6 +137,7 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
         if FieldAt(text, cover, "caption") >= 0 && !AppsReadText(text, cover, "caption", parsed.cover.caption[:]) { return false }
         if FieldAt(text, cover, "action") >= 0 && !AppsReadText(text, cover, "action", parsed.cover.action[:]) { return false }
     }
+    if !AppReadDependencies(text, at, *parsed) { AppEntryResourcesClear(*parsed); return false }
     entry.* = parsed
     return true
 }
@@ -158,15 +168,127 @@ AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> b
     cursor := Space(text, children + 1)
     for index: cast(s32)0..count - 1 {
         entry: AppEntry
-        if !AppReadEntry(text, cursor, *entry) || AppCatalogFind(*parsed, TextUntilNul(entry.id[:])) >= 0 ||
+        if !AppReadEntry(text, cursor, *entry) {
+            AppCatalogClear(*parsed)
+            return false
+        }
+        if AppCatalogFind(*parsed, TextUntilNul(entry.id[:])) >= 0 ||
         TextUntilNul(entry.id[:]) == expected_id || !AppCatalogAppend(*parsed, entry) {
+            AppEntryResourcesClear(*entry)
             AppCatalogClear(*parsed)
             return false
         }
         cursor = Space(text, ValueEnd(text, cursor, 0))
         if index + 1 < count { cursor = Space(text, cursor + 1) }
     }
+    if !AppCatalogDependenciesValid(*parsed) {
+        AppCatalogClear(*parsed)
+        return false
+    }
     AppCatalogClear(catalog)
     catalog.* = parsed
     return true
+}
+
+// Resource links grant read-only access to explicit prefixes of a sibling
+// whose exact bundle digest is fixed by the same signed collection.
+AppPathPrefix :: (path: string, prefix: string) -> bool {
+    return prefix.count > 0 && path.count >= prefix.count && path[:prefix.count] == prefix
+}
+
+AppResourcePrefixValid :: (path: string, name: string) -> bool {
+    end := 7 + name.count
+    if path.count <= end + 1 || path[:7] != "assets/" || path[7:end] != name || path[end] != #char "/" { return false }
+    return AppAssetPathValid(ifx path[path.count - 1] == #char "/" then path[:path.count - 1] else path)
+}
+
+AppReadDependencies :: (text: string, at: s32, entry: *AppEntry) -> bool {
+    dependencies := FieldAt(text, at, "dependencies")
+    if dependencies >= 0 {
+        count := ArrayCount(text, dependencies)
+        if count < 1 || count > APP_DEPENDENCY_LIMIT { return false }
+        for index: cast(s32)0..count - 1 {
+            if ReadStringText(text, ElementAt(text, dependencies, index), entry.dependencies[index][:]) < 0 { return false }
+            id := TextUntilNul(entry.dependencies[index][:])
+            if !AppIdValid(id) || id == TextUntilNul(entry.id[:]) { return false }
+            for previous: cast(s32)0..index - 1 {
+                if TextUntilNul(entry.dependencies[previous][:]) == id { return false }
+            }
+        }
+        entry.dependency_count = cast(s32)count
+    }
+    links := FieldAt(text, at, "resources")
+    if links < 0 { return true }
+    count := ArrayCount(text, links)
+    if count < 1 || count > APP_RESOURCE_LINK_LIMIT || entry.dependency_count == 0 { return false }
+    fields: [3]string = .["dependency", "path", "source"]
+    for index: cast(s32)0..count - 1 {
+        row := ElementAt(text, links, index)
+        id: [128]u8
+        link: AppResourceLink
+        if !AppsObjectValid(text, row, fields[:]) || !AppsReadText(text, row, "dependency", id[:]) ||
+        !AppsReadText(text, row, "path", link.path[:]) || !AppsReadText(text, row, "source", link.source[:]) ||
+        !AppResourcePrefixValid(TextUntilNul(link.path[:]), TextUntilNul(entry.expected_id[:])) { return false }
+        link.dependency = -1
+        for dependency: cast(s32)0..entry.dependency_count - 1 {
+            if TextUntilNul(entry.dependencies[dependency][:]) == TextUntilNul(id[:]) { link.dependency = dependency }
+        }
+        if link.dependency < 0 { return false }
+        for previous: cast(s32)0..index - 1 {
+            previous_link := AppResourceAt(entry, previous)
+            before := TextUntilNul(previous_link.path[:])
+            path := TextUntilNul(link.path[:])
+            if AppPathPrefix(path, before) || AppPathPrefix(before, path) { return false }
+        }
+        stored := New(AppResourceLink)
+        if stored == null { return false }
+        stored.* = link
+        if entry.resources == null { entry.resources = stored }
+        else { tail := AppResourceAt(entry, index - 1); tail.next = stored }
+        entry.resource_count += 1
+    }
+    entry.resource_count = cast(s32)count
+    return true
+}
+
+AppDependencyVisit :: (catalog: *AppCatalog, index: s64, marks: []u8, depth: s32) -> bool {
+    if depth > 32 || marks[index] == 1 { return false }
+    if marks[index] == 2 { return true }
+    marks[index] = 1
+    entry := AppCatalogAt(catalog, index)
+    for dependency: cast(s32)0..entry.dependency_count - 1 {
+        found := AppCatalogFind(catalog, TextUntilNul(entry.dependencies[dependency][:]))
+        if found < 0 || !AppDependencyVisit(catalog, found, marks, depth + 1) { return false }
+    }
+    for index: cast(s32)0..entry.resource_count - 1 {
+        link := AppResourceAt(entry, index)
+        dependency := AppCatalogAt(catalog, AppCatalogFind(catalog, TextUntilNul(entry.dependencies[link.dependency][:])))
+        if !AppResourcePrefixValid(TextUntilNul(link.source[:]), TextUntilNul(dependency.expected_id[:])) { return false }
+    }
+    marks[index] = 2
+    return true
+}
+
+AppCatalogDependenciesValid :: (catalog: *AppCatalog) -> bool {
+    marks: [APP_CATALOG_ENTRY_LIMIT]u8
+    for index: cast(s64)0..catalog.count - 1 {
+        if !AppDependencyVisit(catalog, index, marks[:], 0) { return false }
+    }
+    return true
+}
+
+AppResourceAt :: (entry: *AppEntry, index: s32) -> *AppResourceLink {
+    link := entry.resources
+    for at: cast(s32)0..index - 1 {
+        if link == null { return null }
+        link = link.next
+    }
+    return link
+}
+
+AppEntryResourcesClear :: (entry: *AppEntry) {
+    link := entry.resources
+    while link != null { next := link.next; free(link); link = next }
+    entry.resources = null
+    entry.resource_count = 0
 }
