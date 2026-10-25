@@ -313,6 +313,18 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
             pending.reply.request = sequence
             continue
         }
+        // A child that is not on the device has nothing to prepare or open.
+        if pending.request.operation != APPS_OPEN && pending.request.operation != APPS_BACK &&
+        tree.provider.fetch != null {
+            at := AppCatalogFind(*node.catalog, TextUntilNul(pending.request.id[:]))
+            if at >= 0 && tree.provider.fetch(tree.provider.context, TextUntilNul(tree.account[:]), node,
+                AppCatalogAt(*node.catalog, at), pending.request.operation, *pending.reply) {
+                pending.complete = true
+                if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }
+                pending.reply.request = sequence
+                continue
+            }
+        }
         if tree.provider.prepare != null && pending.request.operation != APPS_BACK {
             at := AppCatalogFind(*node.catalog, TextUntilNul(pending.request.id[:]))
             if at < 0 {
@@ -358,13 +370,6 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
         }
         // Copy the manifest entry before growing the node vector.
         entry := AppCatalogAt(*node.catalog, entry_index).*
-        if request.operation != APPS_OPEN && tree.provider.fetch != null &&
-        tree.provider.fetch(tree.provider.context, TextUntilNul(tree.account[:]), node, *entry,
-            request.operation, *pending.reply) {
-            if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }
-            pending.reply.request = sequence
-            continue
-        }
         child := AppTreeOpenChild(tree, caller, *entry)
         candidate := AppTreeNode(tree, child)
         if candidate == null {

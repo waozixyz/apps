@@ -1361,6 +1361,8 @@ DeclaredChildCheck :: () -> s32 {
         FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 901 }
     root := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)root.runtime
+    // As once native discovery has run: queued requests prepare first.
+    host.tree.provider.prepare = AppHostPrepareChild
     catalog := AppArgumentText(AppHostCatalog(runtime.frontend))
     remote := CatalogCard(catalog, "fixture.remote")
     packed := CatalogCard(catalog, "fixture.counter")
@@ -1381,7 +1383,14 @@ DeclaredChildCheck :: () -> s32 {
     remote_bytes = counter
     remote = CatalogCard(AppArgumentText(AppHostCatalog(runtime.frontend)), "fixture.remote")
     if remote == "" || TextHas(remote, "on_device") { return 907 }
-    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}") || host.tree.nodes.count != 2 { return 908 }
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}") { return 908 }
+    // Preparation opens it on a worker; later frames finish the open.
+    deadline := PreparationTestNow() + 10.0
+    while host.tree.nodes.count != 2 && PreparationTestNow() < deadline {
+        unused AppTreeDrain(*host.tree)
+        PreparationTestYield()
+    }
+    if host.tree.nodes.count != 2 { return 911 }
     opened := AppTreeNode(*host.tree, host.tree.active)
     if opened == null || TextUntilNul(opened.identity.id[:]) != "fixture.remote" { return 909 }
     end := PreparationTestNow() + 10.0
