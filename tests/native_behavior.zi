@@ -1318,6 +1318,9 @@ PreparationLocatorCheck :: (bytes: string, digest: string, harness_digest: strin
     AppLocatorClear(*locator)
     if !stopped || PreparationTestLive() != live || PreparationTestFrameOpens() != frame_opens ||
     locator_maximum_poll > 0.05 {
+        print("Preparation stop: stopped=%, live=%/%, frame opens=%/%, maximum poll=% ms\n",
+            stopped, PreparationTestLive(), live, PreparationTestFrameOpens(), frame_opens,
+            locator_maximum_poll * 1000.0)
         return 807
     }
     PreparationTestLocatorTiming(synchronous, locator_maximum_poll)
