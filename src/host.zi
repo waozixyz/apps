@@ -36,6 +36,20 @@ AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function:
     arguments: *HostValue, count: s32, result: *HostValue) -> s32;
 AppPlatformSave :: #type (context: *void, node: *AppNode) -> bool;
 AppPlatformState :: #type (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool;
+// A child its collection declares but does not pack, such as a game that is
+// downloaded on its own. Found once the platform has its bytes, which the
+// host checks against the catalog digest on every open. The platform keeps
+// returned bytes unchanged until AppHostStop.
+AppPlatformBundle :: #type (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset;
+// True for such a child that is not on the device yet, with its download.
+AppPlatformDownload :: #type (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool;
+
+AppDownload :: struct {
+    downloading: bool
+    // Percent arrived, or -1 while unknown.
+    progress: s32
+    failed: bool
+}
 
 AppPlatform :: struct {
     context: *void
@@ -48,6 +62,9 @@ AppPlatform :: struct {
     presentation: AppPresentation
     state: AppPlatformState
     open_effect: AppProviderOpenEffect
+    bundle: AppPlatformBundle
+    download: AppPlatformDownload
+    fetch: AppProviderFetch
 }
 
 // A favorite is prepared beside the working route and replaces it only after
@@ -227,6 +244,11 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
             state.installed, state.favorite, state.launcher, state.selected, state.disabled, state.bytes)
         AppHostVersions(*bytes, *state, host.platform.version_effect != null)
+        download := AppDownload.{.progress = -1}
+        if host.platform.download != null && host.platform.download(host.platform.context, node, *item.entry, *download) {
+            BuilderPrint(*bytes, ",\"on_device\":false,\"downloading\":%,\"progress\":%,\"download_failed\":%",
+                download.downloading, download.progress, download.failed)
+        }
         BuilderPrint(*bytes, "}")
         item = item.next
     }
@@ -401,6 +423,23 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
     return HostedAppAsset(AppContextRuntime(*runtime.app), path)
 }
 
+// A child's packed bundle, or the platform's copy of one its collection only
+// declares. packed tells which; platform bytes are hashed on every open.
+AppHostChildBundle :: (host: *AppHost, owner: *AppRuntime, parent: *AppNode, entry: *AppEntry,
+    packed: *bool) -> HostedAsset {
+    resource := HostedAppAsset(AppContextRuntime(*owner.app), TextUntilNul(entry.bundle[:]))
+    packed.* = resource.found
+    if resource.found || host.platform.bundle == null { return resource }
+    return host.platform.bundle(host.platform.context, parent, entry)
+}
+
+AppHostFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    host := cast(*AppHost)context
+    return host.platform.fetch != null &&
+    host.platform.fetch(host.platform.context, account, parent, entry, operation, reply)
+}
+
 AppHostPreparationCurrent :: (host: *AppHost) -> bool {
     if host.preparation == null || host.preparation_canceled ||
     host.preparation_epoch != host.tree.account_epoch {
@@ -497,7 +536,8 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
         }
         return 1
     }
-    resource := HostedAppAsset(AppContextRuntime(*owner.app), TextUntilNul(entry.bundle[:]))
+    packed: bool
+    resource := AppHostChildBundle(host, owner, parent, entry, *packed)
     charge := resource.data.count + 65536 + cast(s64)size_of(AppNode)
     if !resource.found || charge > host.tree.byte_limit - host.tree.bytes - host.retired_bytes {
         return -1
@@ -769,8 +809,9 @@ AppHostOpenLocator :: (host: *AppHost, locator: *AppLocator) -> s32 {
 AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
     host := cast(*AppHost)context
     parent_runtime := cast(*AppRuntime)parent.runtime
+    packed: bool
+    resource := AppHostChildBundle(host, parent_runtime, parent, entry, *packed)
     bundle := TextUntilNul(entry.bundle[:])
-    resource := HostedAppAsset(AppContextRuntime(*parent_runtime.app), bundle)
     preparation: *AppPreparation
     if host.preparation != null && host.preparation_owner == parent_runtime &&
     host.preparation_epoch == host.tree.account_epoch &&
@@ -791,8 +832,9 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
             unused AppHostClearPreparation(host)
         }
     }
-    if !resource.found || (preparation == null &&
-        !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:]))) { return false }
+    if !resource.found || (preparation == null && (ifx packed
+        then !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:]))
+        else !AppHostBytesMatch(resource.data, TextUntilNul(entry.sha256[:])))) { return false }
     if resource.data.count + 65536 + cast(s64)size_of(AppNode) > host.tree.byte_limit - host.tree.bytes - host.retired_bytes { return false }
     if entry.protocol != APPS_CONTEXT_PROTOCOL && entry.protocol != APPS_COLLECTION_PROTOCOL &&
     entry.protocol != APPS_NODE_PROTOCOL { return false }
@@ -1057,6 +1099,7 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
         .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}
     if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
     if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
+    if platform.fetch != null { provider.fetch = AppHostFetch }
     if preparation != null { provider.prepare = AppHostPrepareChild }
     if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime, preparation))) ||
     !AppTreeStart(*host.tree, root, account, provider) {

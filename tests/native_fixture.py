@@ -96,6 +96,11 @@ def main():
     bundle('collection', middle, stage('middle-stage', 'fixture.middle', entries, payloads, controller))
     bundle('collection', root, stage('root-stage', 'fixture.root',
         [child('fixture.middle', middle, 'collection/1', 'collection')], {'assets/child.zx': middle}, controller))
+    # A collection that declares a game it does not pack, as Arcade does.
+    remote_root = WORK / 'remote-root.zx'
+    bundle('collection', remote_root, stage('remote-stage', 'fixture.remote-root',
+        [child('fixture.counter', leaf, 'app/1', 'counter'),
+         child('fixture.remote', leaf, 'app/1', 'counter', 'assets/remote.zx')], {'assets/child.zx': leaf}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
                  'download-failed', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
@@ -152,6 +157,8 @@ def main():
     os.environ['APPS_FIXTURE_UI_BUNDLE'] = runtime_path(controller)
     os.environ['APPS_FIXTURE_ROOT_BUNDLE'] = runtime_path(root)
     os.environ['APPS_FIXTURE_ROOT_SHA256'] = digest(root)
+    os.environ['APPS_FIXTURE_REMOTE_ROOT_BUNDLE'] = runtime_path(remote_root)
+    os.environ['APPS_FIXTURE_REMOTE_ROOT_SHA256'] = digest(remote_root)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = digest(controller)
     os.environ['APPS_FIXTURE_NODE_BUNDLE'] = runtime_path(node)
     os.environ['APPS_FIXTURE_NODE_SHA256'] = digest(node)

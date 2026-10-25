@@ -5,6 +5,7 @@
 #import "std/c_string"
 #import "std/bundle_host"
 #import "std/json_scan"
+#import "kryon/hosted_app"
 #import "kryon/hosted_values"
 #import "kryon/app_context_host"
 #import "kryon/app_protocol"
@@ -99,6 +100,8 @@ RasterRoundedRectangle :: (bounds: Rectangle, radius: float32, segments: s32, co
 RasterRoundedRectangleOutline :: (bounds: Rectangle, radius: float32, segments: s32, width: float32, color: Color) {}
 #program_export
 RasterLine :: (line: Rectangle, color: Color) {}
+#program_export
+RasterTriangles :: (points: []Vector2, color: Color) {}
 #program_export
 RasterText :: (value: string, x: s32, y: s32, font: s32, color: Color) {}
 #program_export
@@ -1290,6 +1293,108 @@ PreparationLocatorCheck :: (bytes: string, digest: string, harness_digest: strin
     return 0
 }
 
+remote_bytes: string;
+remote_fetches: s32;
+
+RemoteBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    if TextUntilNul(entry.id[:]) != "fixture.remote" || remote_bytes.count == 0 { return HostedAsset.{} }
+    return HostedAsset.{.found = true, .data = remote_bytes}
+}
+
+RemoteDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool {
+    if TextUntilNul(entry.id[:]) != "fixture.remote" || remote_bytes.count > 0 { return false }
+    download.downloading = remote_fetches > 0
+    download.progress = ifx remote_fetches > 0 then 40 else -1
+    return true
+}
+
+RemoteFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    if TextUntilNul(entry.id[:]) != "fixture.remote" || remote_bytes.count > 0 || operation != APPS_INSTALL { return false }
+    remote_fetches += 1
+    reply.status = APPS_QUEUED
+    return true
+}
+
+// The card text of one child in a catalog reply.
+CatalogCard :: (catalog: string, id: string) -> string {
+    needle := TextJoinForTest("{\"id\":\"", id)
+    at: s64 = 0
+    while at + needle.count <= catalog.count && catalog[at:at + needle.count] != needle { at += 1 }
+    if at + needle.count > catalog.count { return "" }
+    end := at + 1
+    while end + 6 <= catalog.count && catalog[end:end + 6] != "{\"id\":" { end += 1 }
+    return catalog[at:ifx end + 6 <= catalog.count then end else catalog.count]
+}
+
+TextJoinForTest :: (left: string, right: string) -> string {
+    out: Vec(u8)
+    BuilderPrint(*out, "%", left)
+    BuilderPrint(*out, "%", right)
+    BuilderPrint(*out, "\"")
+    return BuilderFinish(out)
+}
+
+TextHas :: (text: string, needle: string) -> bool {
+    at: s64 = 0
+    while at + needle.count <= text.count {
+        if text[at:at + needle.count] == needle { return true }
+        at += 1
+    }
+    return false
+}
+
+// A game its collection only declares is downloaded on its own: its card says
+// it is not on the device, Install fetches it without opening anything, and
+// it opens only from the platform's bytes that match the catalog digest.
+DeclaredChildCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_REMOTE_ROOT_BUNDLE"))
+    counter, counter_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_COUNTER_BUNDLE"))
+    other, other_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_NODE_BUNDLE"))
+    if !found || !counter_found || !other_found { return 900 }
+    // Without the open effect, which inspects the main check's host.
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect,
+        .state = State, .bundle = RemoteBundle, .download = RemoteDownload, .fetch = RemoteFetch}
+    host: AppHost
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.remote-root", "collection",
+        FixtureEnvironment("APPS_FIXTURE_REMOTE_ROOT_SHA256"), "account-a", platform,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 901 }
+    root := AppTreeNode(*host.tree, host.tree.active)
+    runtime := cast(*AppRuntime)root.runtime
+    catalog := AppArgumentText(AppHostCatalog(runtime.frontend))
+    remote := CatalogCard(catalog, "fixture.remote")
+    packed := CatalogCard(catalog, "fixture.counter")
+    if !TextHas(remote, "\"on_device\":false") || !TextHas(remote, "\"downloading\":false") ||
+    packed == "" || TextHas(packed, "on_device") { return 902 }
+    // Not on the device: Open verifies nothing and opens nothing.
+    unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}")
+    if host.tree.nodes.count != 1 { return 903 }
+    if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.remote\"}") || remote_fetches != 1 ||
+    host.tree.nodes.count != 1 || host.retired_bytes != 0 { return 904 }
+    remote = CatalogCard(AppArgumentText(AppHostCatalog(runtime.frontend)), "fixture.remote")
+    if !TextHas(remote, "\"downloading\":true,\"progress\":40") { return 905 }
+    // Downloaded bytes that are not the declared game never open.
+    remote_bytes = other
+    unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}")
+    if host.tree.nodes.count != 1 || AppHostActiveRuntime(*host) != runtime { return 906 }
+    AppHostCollect(*host)
+    remote_bytes = counter
+    remote = CatalogCard(AppArgumentText(AppHostCatalog(runtime.frontend)), "fixture.remote")
+    if remote == "" || TextHas(remote, "on_device") { return 907 }
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.remote\"}") || host.tree.nodes.count != 2 { return 908 }
+    opened := AppTreeNode(*host.tree, host.tree.active)
+    if opened == null || TextUntilNul(opened.identity.id[:]) != "fixture.remote" { return 909 }
+    end := PreparationTestNow() + 10.0
+    stopped := false
+    while !stopped && PreparationTestNow() < end {
+        stopped = AppHostStop(*host)
+        PreparationTestYield()
+    }
+    remote_bytes = ""
+    if !stopped { return 910 }
+    return 0
+}
+
 #program_export
 Check :: () -> s32 {
     PreparationTestBegin()
@@ -1311,6 +1416,10 @@ Check :: () -> s32 {
     discovery := PreparationChildCheck(bytes, digest, harness_digest, platform)
     if discovery != 0 {
         return discovery
+    }
+    declared := DeclaredChildCheck()
+    if declared != 0 {
+        return declared
     }
     locator_result := PreparationLocatorCheck(bytes, digest, harness_digest, platform)
     if locator_result != 0 {

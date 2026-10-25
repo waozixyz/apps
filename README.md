@@ -30,6 +30,12 @@ to Try again when it failed. Hosts describe this per card with
 `permissions` (`account`, `friends`, `audio`, `media`), `progress` (percent
 while `downloading`) and `download_failed`.
 
+A collection may declare children it does not pack, such as Arcade's games,
+which are downloaded one by one. `AppPlatform.download` gives such a card's
+state, `AppPlatform.fetch` installs or removes it without opening it, and
+`AppPlatform.bundle` returns its downloaded bytes, which the host checks
+against the catalog digest before every open.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its

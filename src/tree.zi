@@ -65,6 +65,12 @@ APP_OPEN_HANDLED :: 2
 AppProviderOpenEffect :: #type (context: *void, account: string, locator: *AppLocator,
     request: *AppsRequest, reply: *AppsReply) -> s32;
 
+// Install or uninstall of a child that is not on the device, such as a game
+// its collection only declares: the provider downloads or removes it without
+// opening it. False leaves the request to the verified path below.
+AppProviderFetch :: #type (context: *void, account: string, parent: *AppNode,
+    entry: *AppEntry, operation: s32, reply: *AppsReply) -> bool;
+
 AppProvider :: struct {
     context: *void
     open: AppProviderOpen
@@ -74,6 +80,7 @@ AppProvider :: struct {
     effect: AppProviderEffect
     version_effect: AppProviderVersionEffect
     open_effect: AppProviderOpenEffect
+    fetch: AppProviderFetch
 }
 
 AppPending :: struct {
@@ -351,6 +358,13 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
         }
         // Copy the manifest entry before growing the node vector.
         entry := AppCatalogAt(*node.catalog, entry_index).*
+        if request.operation != APPS_OPEN && tree.provider.fetch != null &&
+        tree.provider.fetch(tree.provider.context, TextUntilNul(tree.account[:]), node, *entry,
+            request.operation, *pending.reply) {
+            if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }
+            pending.reply.request = sequence
+            continue
+        }
         child := AppTreeOpenChild(tree, caller, *entry)
         candidate := AppTreeNode(tree, child)
         if candidate == null {
