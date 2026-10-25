@@ -801,7 +801,7 @@ AppsFrame :: () -> bool {
     if cover_grid {
         unused WidgetPaletteUse(session, AppCoversPalette())
         Box(session, BoxProps.{.key = cast(u64)50010, .bounds = bounds,
-            .fill = Color.{17, 18, 35, 255}, .fill_bottom = Color.{28, 24, 46, 255}, .has_fill_bottom = true})
+                .fill = Color.{17, 18, 35, 255}, .fill_bottom = Color.{28, 24, 46, 255}, .has_fill_bottom = true})
     }
     if request > 0 && TextUntilNul(status[:]) == "queued" {
         bytes: Vec(u8)
