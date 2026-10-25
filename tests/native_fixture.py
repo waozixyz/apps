@@ -103,7 +103,7 @@ def main():
          child('fixture.remote', leaf, 'app/1', 'counter', 'assets/remote.zx')], {'assets/child.zx': leaf}, controller))
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'download-ready', 'download-request', 'cover-download', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-request', 'cover-download', 'cover-grid', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -139,6 +139,11 @@ def main():
             candidate['presentation']['mode'] = 'preview'
             for card in candidate['children']:
                 card['preview'] = 'assets/preview.png'
+        if name == 'cover-grid':
+            candidate['presentation']['mode'] = 'covers'
+            for card in candidate['children']:
+                card['cover'] = {'portrait': 'assets/preview.png', 'landscape': 'assets/preview.png',
+                                 'logo': 'assets/preview.png', 'action': 'open'}
         (WORK / (name + '-catalog.json')).write_text(json.dumps(candidate))
     os.environ['APPS_FIXTURE_NATIVE_CATALOG_ROOT'] = runtime_path(WORK)
     output = WORK / 'c'

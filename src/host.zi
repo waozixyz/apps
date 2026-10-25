@@ -206,7 +206,8 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
     AppHostWriteQuoted(*bytes, TextUntilNul(host.locale[:]))
     presentation := host.platform.presentation
     BuilderPrint(*bytes, ",\"presentation\":{\"mode\":\"%\",\"hide_sizes\":%,\"tile_class\":%,\"action_class\":%,\"muted_class\":%}",
-        ifx presentation.icon then "icon" else "preview", ifx presentation.hide_sizes then "true" else "false",
+        ifx presentation.cover_grid then "covers" else ifx presentation.icon then "icon" else "preview",
+        ifx presentation.hide_sizes then "true" else "false",
         presentation.tile_class, presentation.action_class, presentation.muted_class)
     BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
     item := node.catalog.children

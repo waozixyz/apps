@@ -96,6 +96,7 @@ locale: [16]u8;
 can_back: bool;
 icon_mode: bool;
 cover_mode: bool;
+cover_grid: bool;
 cover_state: CarouselState;
 // The launcher transition advances with rendered frames; no game clock or
 // optional host time capability is required by icon/list-only controllers.
@@ -204,6 +205,7 @@ AppsReadCatalog :: () -> bool {
     if !AppsOptionalText(text, presentation, "mode", mode[:]) { return false }
     list_mode = TextUntilNul(mode[:]) == "list"
     icon_mode = list_mode || TextUntilNul(mode[:]) == "icon"
+    cover_grid = TextUntilNul(mode[:]) == "covers"
     hide_sizes = AppsBool(text, FieldAt(text, presentation, "hide_sizes"))
     requested_download: [128]u8
     if !AppsOptionalText(text, presentation, "download_id", requested_download[:]) { return false }
@@ -798,7 +800,7 @@ AppsFrame :: () -> bool {
         AppsResponse(AppService("apps", TextView(VecSlice(bytes, 0, bytes.count))))
         VecFree(bytes)
     }
-    if cover_mode && !icon_mode {
+    if cover_mode && !icon_mode && !cover_grid {
         cover_items: [4096]CarouselItem
         for index: cast(s32)0..cast(s32)cards.count - 1 {
             card := *cards[index]
@@ -867,7 +869,18 @@ AppsFrame :: () -> bool {
         card_height = 64.0 * scale
         gap = 4.0 * scale
     }
+    if cover_grid {
+        columns = cast(s32)((area.width + gap) / (220.0 * scale + gap))
+        if columns < 1 { columns = 1 }
+        if columns > 4 { columns = 4 }
+        if cards.count > 0 && columns > cast(s32)cards.count { columns = cast(s32)cards.count }
+    }
     card_width := (area.width - gap * cast(float32)(columns - 1)) / cast(float32)columns
+    picture_height := 168.0 * scale
+    if cover_grid {
+        picture_height = (card_width - gap * 2.0) * (ifx bounds.height > bounds.width then 1.5 else 2.0 / 3.0)
+        card_height = picture_height + 128.0 * scale
+    }
     rows := (cast(s32)cards.count + columns - 1) / columns
     opened: bool
     if !icon_mode {
@@ -910,11 +923,25 @@ AppsFrame :: () -> bool {
             fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
             unused Box(session, BoxProps.{.key = key + cast(u64)1, .bounds = tile.bounds, .radius = 12.0 * scale, .fill = fill})
             preview := TextUntilNul(card.preview[:])
+            if cover_grid && card.cover.portrait[0] != 0 {
+                preview = TextUntilNul(card.cover.portrait[:])
+                if bounds.width >= bounds.height && card.cover.landscape[0] != 0 {
+                    preview = TextUntilNul(card.cover.landscape[:])
+                }
+            }
             if preview != "" {
                 Image(session, ImageProps.{.key = key + cast(u64)2, .asset_path = preview, .alt_text = TextUntilNul(card.title[:]),
-                        .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, 168.0 * scale}, .fit = cast(ImageFit)ImageFitContain, .smooth = true})
+                        .bounds = Rectangle.{x + gap, y + gap, card_width - gap * 2.0, picture_height},
+                        .fit = ifx cover_grid then ImageFit.ImageFitCover else ImageFit.ImageFitContain, .smooth = true})
             }
-            AppsText(session, key + cast(u64)3, Rectangle.{x + gap, y + 188.0 * scale, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
+            if cover_grid && card.cover.logo[0] != 0 {
+                logo_width := card_width - gap * 4.0
+                Image(session, ImageProps.{.key = key + cast(u64)8, .asset_path = TextUntilNul(card.cover.logo[:]),
+                        .alt_text = TextUntilNul(card.title[:]), .smooth = true, .fit = ImageFit.ImageFitContain,
+                        .bounds = Rectangle.{x + gap * 2.0, y + gap * 2.0, logo_width, logo_width * 0.36}})
+            }
+            title_y := ifx cover_grid then y + gap + picture_height + 8.0 * scale else y + 188.0 * scale
+            AppsText(session, key + cast(u64)3, Rectangle.{x + gap, title_y, card_width - gap * 2.0, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
             tile.invisible = true
         }
         list_size: [32]u8
@@ -929,6 +956,18 @@ AppsFrame :: () -> bool {
         if Button(session, tile) != 0 {
             if download_first { AppsDownloadOpen(card) }
             else { AppsAct("open", card.id) }
+        }
+        if cover_grid {
+            action_name := TextUntilNul(card.cover.action[:])
+            if action_name == "" { action_name = "open" }
+            if Button(session, ButtonProps.{.key = key + cast(u64)7,
+                    .label = AppsLabel(language, ifx download_first then "download" else action_name),
+                    .bounds = Rectangle.{x + gap, y + card_height - gap - 56.0 * scale, card_width - gap * 2.0, 56.0 * scale},
+                    .disabled = tile.disabled, .size = ControlSize.ControlSizeLarge, .pill = true,
+                    .tone = ButtonTone.ButtonToneSuccess, .emphasis = ButtonEmphasis.ButtonEmphasisFilled}) != 0 {
+                if download_first { AppsDownloadOpen(card) }
+                else { AppsAct("open", card.id) }
+            }
         }
         if icon_mode && card.reorderable {
             unused Button(session, ButtonProps.{.key = Rules.AppReorderKey(TextUntilNul(card.id[:])),

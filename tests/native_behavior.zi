@@ -584,6 +584,18 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("reorder-grid") || !NativeDraw() || NativeLabel("Move app") < 0 ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 86 }
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
+    // Large cover cards keep both apps visible together and expose a real
+    // primary action, rather than routing the catalog into the carousel.
+    if !NativeLoadCatalog("cover-grid") || !NativeDraw(false, false) ||
+    NativeLabel("Native apps") < 0 || NativeLabel("Next", WidgetKindButton) >= 0 { return 91 }
+    if native_tile_bounds.width < 220.0 || native_tile_bounds.height < 400.0 ||
+    native_other_bounds.y != native_tile_bounds.y || native_other_bounds.x <= native_tile_bounds.x { return 92 }
+    if NativeLabel("Open", WidgetKindButton) < 0 || native_label_bounds.height < 56.0 ||
+    native_label_bounds.width < 180.0 { return 93 }
+    cover_opened := native_queued
+    if !NativeClick("Open", WidgetKindButton) || !NativeDraw(false, false) ||
+    native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
+    TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
     if !AppControllerClose(*native_controller) { return 65 }
     AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""
     return 0
