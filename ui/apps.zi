@@ -925,7 +925,10 @@ AppsFrame :: () -> bool {
         gap = 4.0 * scale
     }
     if cover_grid {
-        columns = cast(s32)((area.width + gap) / (200.0 * scale + gap))
+        // Phones show two or three small covers a row; wider screens larger ones.
+        narrow := area.width < 600.0 * scale
+        if narrow { gap = 12.0 * scale }
+        columns = cast(s32)((area.width + gap) / ((ifx narrow then 104.0 else 200.0) * scale + gap))
         if columns < 1 { columns = 1 }
         if columns > 4 { columns = 4 }
         if cards.count > 0 && columns > cast(s32)cards.count { columns = cast(s32)cards.count }
