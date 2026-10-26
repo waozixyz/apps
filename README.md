@@ -51,6 +51,13 @@ Installation lists every missing package and its total size, and skips
 dependencies already on the device. Read-only `resources` links reuse explicit
 asset paths from those verified packages. Missing dependencies, cycles,
 altered payloads and paths outside the declared app namespaces are rejected.
+An add-on with `shared_code: true` also links its declared dependencies as
+portable code libraries. Build it with Ziran's `--library` option against
+those exact payloads; the base package uses `--retain` for additional entry
+points the add-on needs. Verification happens on the preparation worker,
+before guest code runs. Each instance keeps its own mutable state. Libraries'
+assets remain behind the same explicit resource links, and their bytes count
+toward the collection's memory limit.
 
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.

@@ -21,6 +21,29 @@ APP_PREPARATION_THREADS :: !#defined(PLATFORM_WEB)
     }
 }
 
+AppPreparationLibrary :: struct {
+    bytes: string
+    entry: *AppEntry
+    bundle: *void
+}
+
+AppPreparationImports :: struct {
+    shared_code: bool
+    dependency_count: s32
+    dependencies: [APP_DEPENDENCY_LIMIT][128]u8
+}
+
+AppPreparationImportsFor :: (entry: *AppEntry) -> AppPreparationImports {
+    return AppPreparationImports.{.shared_code = entry.shared_code,
+        .dependency_count = entry.dependency_count, .dependencies = entry.dependencies}
+}
+
+AppPreparationLibraries :: struct {
+    items: [32]AppPreparationLibrary
+    count: s32
+    root: AppPreparationImports
+}
+
 AppPreparation :: struct {
     bytes: string
     digest: [65]u8
@@ -34,6 +57,7 @@ AppPreparation :: struct {
     controller_bytes: s64
     ready: bool
     valid: bool
+    libraries: AppPreparationLibraries
     #if APP_PREPARATION_THREADS {
         thread: Thread
     }
@@ -43,8 +67,8 @@ preparation_c :: #system_library "c";
 AppPreparationAllocate :: (size: usize) -> *void #foreign preparation_c "malloc";
 AppPreparationFree :: (memory: *void) #foreign preparation_c "free";
 
-AppPreparationAsset :: (bundle: *void, path: string) -> string {
-    count := BundleAssets(bundle)
+AppPreparationAsset :: (bundle: *void, path: string, own_only: bool = false) -> string {
+    count := ifx own_only then BundleOwnAssets(bundle) else BundleAssets(bundle)
     index: u64 = 0
     while index < count {
         if TextFromCString(BundleAssetPath(bundle, index)) == path {
@@ -65,6 +89,29 @@ AppPreparationOpen :: (bytes: string) -> *void {
     return OpenBundleBytes(descriptor.data, cast(u64)bytes.count)
 }
 
+// Library code is supplied only by the exact siblings named in the signed
+// catalog. Each dependency is opened after its own dependencies.
+AppPreparationOpenWithLibraries :: (bytes: string, entry: *AppPreparationImports,
+    libraries: *AppPreparationLibraries, available: s32) -> *void {
+    if !entry.shared_code {
+        return AppPreparationOpen(bytes)
+    }
+    handles: [32]*void
+    for index: cast(s32)0..entry.dependency_count - 1 {
+        for previous: cast(s32)0..available - 1 {
+            item := libraries.items[previous]
+            if TextUntilNul(item.entry.id[:]) == TextUntilNul(entry.dependencies[index][:]) {
+                handles[index] = item.bundle
+                break
+            }
+        }
+        if handles[index] == null { return null }
+    }
+    descriptor := cast(*TextDescriptor)(*bytes)
+    return OpenBundleBytesWithLibraries(descriptor.data, cast(u64)bytes.count,
+        *handles[0], cast(u64)entry.dependency_count)
+}
+
 AppPreparationRun :: (argument: *void) {
     preparation := cast(*AppPreparation)argument
     actual: [65]u8
@@ -72,11 +119,21 @@ AppPreparationRun :: (argument: *void) {
     if TextUntilNul(actual[:]) != TextUntilNul(preparation.digest[:]) {
         return
     }
-    preparation.bundle = AppPreparationOpen(preparation.bytes)
+    for index: cast(s32)0..preparation.libraries.count - 1 {
+        item := *preparation.libraries.items[index]
+        AppPreparationHash(item.bytes, actual[:])
+        if TextUntilNul(actual[:]) != TextUntilNul(item.entry.sha256[:]) { return }
+        imports := AppPreparationImportsFor(item.entry)
+        item.bundle = AppPreparationOpenWithLibraries(item.bytes, *imports,
+            *preparation.libraries, index)
+        if item.bundle == null { return }
+    }
+    preparation.bundle = AppPreparationOpenWithLibraries(preparation.bytes,
+        *preparation.libraries.root, *preparation.libraries, preparation.libraries.count)
     if preparation.bundle == null {
         return
     }
-    manifest := AppPreparationAsset(preparation.bundle, APPS_CATALOG_ASSET)
+    manifest := AppPreparationAsset(preparation.bundle, APPS_CATALOG_ASSET, true)
     if manifest.count == 0 {
         preparation.valid = true
         return
@@ -104,7 +161,8 @@ AppPreparationRun :: (argument: *void) {
 // to cancel. One preparation checks a root and its optional collection
 // controller. The host still authorizes that controller before instantiation.
 AppPrepare :: (bytes: string, digest: string, id: string,
-    byte_limit: s64 = APP_PREPARATION_BYTE_LIMIT) -> *AppPreparation {
+    byte_limit: s64 = APP_PREPARATION_BYTE_LIMIT,
+    libraries: *AppPreparationLibraries = null) -> *AppPreparation {
     if byte_limit < 0 || byte_limit > APP_PREPARATION_BYTE_LIMIT ||
     bytes.count < 8 || bytes.count > byte_limit - 65536 - cast(s64)size_of(AppNode) ||
     !AppDigestValid(digest) || !AppIdValid(id) {
@@ -117,6 +175,23 @@ AppPrepare :: (bytes: string, digest: string, id: string,
     preparation.* = AppPreparation.{}
     preparation.bytes = bytes
     preparation.byte_limit = byte_limit
+    if libraries != null {
+        if libraries.count < 0 || libraries.count > 32 {
+            AppPreparationFree(cast(*void)preparation)
+            return null
+        }
+        charge := bytes.count + 65536 + cast(s64)size_of(AppNode)
+        for index: cast(s32)0..libraries.count - 1 {
+            item := libraries.items[index]
+            if item.entry == null || item.bytes.count < 8 ||
+            item.bytes.count > byte_limit - charge - 65536 {
+                AppPreparationFree(cast(*void)preparation)
+                return null
+            }
+            charge += item.bytes.count + 65536
+        }
+        preparation.libraries = libraries.*
+    }
     unused CopyCString(digest, preparation.digest[:])
     unused CopyCString(id, preparation.id[:])
     #if APP_PREPARATION_THREADS {
@@ -178,6 +253,9 @@ AppPreparationClose :: (preparation: *AppPreparation) -> bool {
     }
     CloseBundle(preparation.bundle)
     CloseBundle(preparation.controller)
+    for index: cast(s32)0..preparation.libraries.count - 1 {
+        CloseBundle(preparation.libraries.items[index].bundle)
+    }
     AppPreparationFree(cast(*void)preparation)
     return true
 }

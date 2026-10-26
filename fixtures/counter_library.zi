@@ -1,0 +1,1 @@
+SharedCounterStep :: (value: s32) -> s32 { return value + 1 }

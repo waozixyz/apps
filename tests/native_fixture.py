@@ -35,11 +35,13 @@ def child(identifier, path, protocol, expected, asset='assets/child.zx'):
                 protocol=protocol, expected_id=expected, version='1', sha256=digest(path))
 
 
-def bundle(source, path, assets=None):
+def bundle(source, path, assets=None, library=None):
     arguments = [ZIRAN, 'bundle', '--project', *LOCK_FLAGS, '--root', str(ROOT / 'fixtures'),
                  '--entry', source + ':Main', '-o', str(path)]
     if assets:
         arguments += ['--asset-dir', 'assets=' + str(assets)]
+    if library:
+        arguments += ['--library', str(library)]
     run(*arguments, str(ROOT / 'fixtures' / (source + '.zi')))
 
 
@@ -108,6 +110,16 @@ def main():
     bundle('collection', dependency_root, stage('dependency-stage', 'fixture.dependencies',
         [child('fixture.node', node, 'node/2', 'node', 'assets/node.zx'), editor],
         {'assets/node.zx': node, 'assets/editor.zx': leaf}, controller))
+    thin = WORK / 'counter-addon.zx'
+    bundle('counter_addon', thin, library=leaf)
+    thin_entry = child('fixture.addon', thin, 'app/1', 'counter-addon', 'assets/addon.zx')
+    thin_entry.update(dependencies=['fixture.counter'], shared_code=True)
+    thin_root = WORK / 'thin-root.zx'
+    bundle('collection', thin_root, stage('thin-stage', 'fixture.thin',
+        [child('fixture.counter', leaf, 'app/1', 'counter'), thin_entry],
+        {'assets/child.zx': leaf, 'assets/addon.zx': thin}, controller))
+    os.environ['APPS_FIXTURE_THIN_ROOT_BUNDLE'] = runtime_path(thin_root)
+    os.environ['APPS_FIXTURE_THIN_ROOT_SHA256'] = digest(thin_root)
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
                  'download-failed', 'download-ready', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
@@ -175,6 +187,7 @@ def main():
         *shlex.split(os.environ.get('CFLAGS', '')),
         *includes, *map(str, sorted(output.rglob('*.c'))), str(ROOT / 'tests/preparation_host.c'),
         sys.argv[1], '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
+        '-Wl,--wrap=BundleOpenBytesWithLibraries',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
         '-lm', *platform_flags, '-o', str(executable))
     os.environ['APPS_FIXTURE_UI_BUNDLE'] = runtime_path(controller)

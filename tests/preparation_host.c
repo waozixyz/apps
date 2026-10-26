@@ -117,6 +117,22 @@ Bundle *__wrap_BundleOpenBytes(const unsigned char *bytes, size_t count)
 }
 
 void __real_BundleClose(Bundle *bundle);
+Bundle *__real_BundleOpenBytesWithLibraries(const unsigned char *bytes, size_t count,
+    Bundle *const *libraries, size_t library_count);
+Bundle *__wrap_BundleOpenBytesWithLibraries(const unsigned char *bytes, size_t count,
+    Bundle *const *libraries, size_t library_count)
+{
+    atomic_fetch_add(&opens, 1);
+    if (FrameThread()) atomic_fetch_add(&frame_opens, 1);
+    if (atomic_load(&blocked)) {
+        atomic_store(&started, true);
+        while (atomic_load(&blocked)) PreparationTestYield();
+    }
+    Bundle *bundle = __real_BundleOpenBytesWithLibraries(bytes, count, libraries, library_count);
+    if (bundle) atomic_fetch_add(&live, 1);
+    return bundle;
+}
+
 void __wrap_BundleClose(Bundle *bundle)
 {
     if (bundle) atomic_fetch_sub(&live, 1);

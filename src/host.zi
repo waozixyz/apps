@@ -366,6 +366,21 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
             return null
         }
     }
+    if !controller && preparation != null {
+        if !AppHostTakePreparedLibraries(runtime, preparation) {
+            HostedAppClose(opened)
+            for index: cast(s32)0..runtime.dependency_count - 1 {
+                HostedAppClose(*runtime.dependency_apps[index])
+            }
+            free(runtime)
+            return null
+        }
+    }
+    // A thin child must come through the worker that verified its libraries.
+    if node.entry.shared_code && preparation == null {
+        free(runtime)
+        return null
+    }
     ready: bool
     if protocol == APPS_NODE_PROTOCOL {
         runtime.legacy.app = AppContextRuntime(*runtime.app)
@@ -385,6 +400,9 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
+        for index: cast(s32)0..runtime.dependency_count - 1 {
+            HostedAppClose(*runtime.dependency_apps[index])
+        }
         free(runtime)
         return null
     }
@@ -529,6 +547,31 @@ AppHostCollectPreparation :: (host: *AppHost) {
     }
 }
 
+AppHostPrepareLibraries :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
+    libraries: *AppPreparationLibraries, depth: s32) -> bool {
+    if depth > 32 { return false }
+    owner := cast(*AppRuntime)parent.runtime
+    for index: cast(s32)0..entry.dependency_count - 1 {
+        dependency := AppCatalogAt(*parent.catalog,
+            AppCatalogFind(*parent.catalog, TextUntilNul(entry.dependencies[index][:])))
+        if dependency == null { return false }
+        known: bool
+        for previous: cast(s32)0..libraries.count - 1 {
+            known = known || libraries.items[previous].entry == dependency
+        }
+        if known { continue }
+        if !AppHostPrepareLibraries(host, parent, dependency, libraries, depth + 1) ||
+        libraries.count >= 32 { return false }
+        packed: bool
+        resource := AppHostChildBundle(host, owner, parent, dependency, *packed)
+        if !resource.found { return false }
+        libraries.items[libraries.count] = AppPreparationLibrary.{
+            .bytes = resource.data, .entry = dependency}
+        libraries.count += 1
+    }
+    return true
+}
+
 // One child at a time owns a worker. Its parent runtime stays alive
 // until that worker has stopped borrowing the packed bytes, even after Back
 // retires the parent. Only this boundary touches the shared asset index.
@@ -583,8 +626,10 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
     if !resource.found || charge > host.tree.byte_limit - host.tree.bytes - host.retired_bytes {
         return -1
     }
+    libraries := AppPreparationLibraries.{.root = AppPreparationImportsFor(entry)}
+    if !AppHostPrepareLibraries(host, parent, entry, *libraries, 0) { return -1 }
     preparation := AppPrepare(resource.data, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]),
-        host.tree.byte_limit - host.tree.bytes - host.retired_bytes)
+        host.tree.byte_limit - host.tree.bytes - host.retired_bytes, *libraries)
     if preparation == null {
         return -1
     }
@@ -882,13 +927,13 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
     candidate.identity.authority = parent.identity.authority
     candidate.identity.id = entry.id
     candidate.entry = entry.*
-    runtime := AppHostRuntime(host, candidate, resource.data, TextUntilNul(candidate.entry.expected_id[:]), false, entry.protocol, preparation)
-    if runtime == null { return false }
-    candidate.runtime = cast(*void)runtime
     // Charge a conservative fixed amount for the native context as well as
     // packed bytes. This is separate from the VM's own allocation policy.
     candidate.bytes = resource.data.count + 65536 + cast(s64)size_of(AppNode)
-    if !AppHostDependenciesOpen(runtime, parent, entry, 0) { return false }
+    runtime := AppHostRuntime(host, candidate, resource.data, TextUntilNul(candidate.entry.expected_id[:]), false, entry.protocol, preparation)
+    if runtime == null { return false }
+    candidate.runtime = cast(*void)runtime
+    if preparation == null && !AppHostDependenciesOpen(runtime, parent, entry, 0) { return false }
     candidate.collection = entry.protocol == APPS_COLLECTION_PROTOCOL
     if candidate.collection {
         manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
@@ -1144,7 +1189,14 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
     if platform.fetch != null { provider.fetch = AppHostFetch }
     if preparation != null { provider.prepare = AppHostPrepareChild }
-    if (manifest.found && (!AppCatalogRead(manifest.data, id, *root.catalog) || !AppHostController(host, root, runtime, preparation))) ||
+    catalog_ready := !manifest.found || (AppCatalogRead(manifest.data, id, *root.catalog) &&
+        AppHostController(host, root, runtime, preparation))
+    item := root.catalog.children
+    while item != null {
+        if item.entry.shared_code { provider.prepare = AppHostPrepareChild }
+        item = item.next
+    }
+    if !catalog_ready ||
     !AppTreeStart(*host.tree, root, account, provider) {
         AppHostClose(cast(*void)host, root)
         AppCatalogClear(*root.catalog)
@@ -1282,6 +1334,25 @@ AppHostInstallPlan :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, plan:
     if !AppHostPlanEntry(host, parent, entry, plan, 0) { return false }
     if plan.count > 1 && plan.progress_known && plan.download.bytes > 0 {
         plan.download.progress = cast(s32)(plan.received * 100 / plan.download.bytes)
+    }
+    return true
+}
+
+AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparation) -> bool {
+    for index: cast(s32)0..preparation.libraries.count - 1 {
+        item := *preparation.libraries.items[index]
+        opened := runtime.dependency_count
+        if item.bundle == null || item.entry == null || opened >= 32 { return false }
+        runtime.dependency_apps[opened].bundle = item.bundle
+        runtime.dependency_entries[opened] = item.entry
+        item.bundle = null
+        runtime.dependency_count += 1
+        runtime.node.bytes += item.bytes.count + 65536
+        if item.entry.protocol == APPS_NODE_PROTOCOL {
+            node := NodeContext.{.app = *runtime.dependency_apps[opened]}
+            if !NodeAssetsValid(*node, TextUntilNul(item.entry.id[:]),
+                TextUntilNul(item.entry.expected_id[:])) { return false }
+        }
     }
     return true
 }

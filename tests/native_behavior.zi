@@ -1384,6 +1384,43 @@ TextHas :: (text: string, needle: string) -> bool {
     return false
 }
 
+DependencyCodeCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_THIN_ROOT_BUNDLE"))
+    if !found { return 134 }
+    defer { AppFileFree(bytes) }
+    live := PreparationTestLive()
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
+    for corrupt: cast(s32)0..2 {
+        host: AppHost
+        if !AppHostStart(*host, bytes, "fixture.test", "fixture.thin", "collection",
+            FixtureEnvironment("APPS_FIXTURE_THIN_ROOT_SHA256"), "account-a", platform,
+            FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 135 }
+        root := AppTreeNode(*host.tree, host.tree.active)
+        if corrupt == 1 {
+            base := AppCatalogAt(*root.catalog, 0)
+            base.sha256[0] = ifx base.sha256[0] == #char "a" then #char "b" else #char "a"
+        }
+        if corrupt == 2 { AppCatalogAt(*root.catalog, 1).shared_code = false }
+        unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}")
+        deadline := PreparationTestNow() + 10.0
+        while AppTreeNode(*host.tree, host.tree.active) == root && PreparationTestNow() < deadline {
+            unused AppTreeDrain(*host.tree)
+            AppHostCollect(*host)
+            if host.tree.pending.count > 0 && host.tree.pending[host.tree.pending.count - 1].complete { break }
+            PreparationTestYield()
+        }
+        if corrupt == 0 {
+            if AppTreeNode(*host.tree, host.tree.active) == root { return 136 }
+            runtime := AppHostActiveRuntime(*host)
+            if runtime.dependency_count != 1 { return 137 }
+            runtime.app.command = "shared"
+            if !AppHostRun(*host, APP_COMMAND) || runtime.app.reply != "shared code" { return 138 }
+        } else if host.tree.nodes.count != 1 { return 139 }
+        if !AppHostStop(*host) || PreparationTestLive() != live { return 140 }
+    }
+    return 0
+}
+
 DependencyAssetsCheck :: () -> s32 {
     bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_DEPENDENCY_ROOT_BUNDLE"))
     if !found { return 127 }
@@ -1509,6 +1546,7 @@ DependenciesCheck :: () -> s32 {
     if !DependencyCatalog(*parent.catalog) { return 120 }
     defer { AppCatalogClear(*parent.catalog) }
     if DependencyCatalog(*parent.catalog, ",\"dependencies\":[\"editor\"]") || parent.catalog.count != 2 { return 121 }
+    if DependencyCatalog(*parent.catalog, ",\"shared_code\":true") { return 141 }
     if DependencyCatalog(*parent.catalog, "", "missing") || parent.catalog.count != 2 { return 122 }
     if DependencyCatalog(*parent.catalog, "", "game", "assets/other/sprites/") ||
     DependencyCatalog(*parent.catalog, "", "game", "assets/game/../private/") { return 123 }
@@ -1566,6 +1604,8 @@ Check :: () -> s32 {
     }
     shared := DependencyAssetsCheck()
     if shared != 0 { return shared }
+    code := DependencyCodeCheck()
+    if code != 0 { return code }
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, harness_digest) { return 2 }
     root := AppTreeNode(*host.tree, host.tree.active)
     runtime := cast(*AppRuntime)root.runtime

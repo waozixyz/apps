@@ -32,7 +32,7 @@
     "name": "Apps"
   },
   "toolchain": {
-    "commit": "620c4077a801d63984fa4bc6893e857659a5e7e9",
+    "commit": "6c952032c6f337fba5a6b41bd1acbf114ed84fb4",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }

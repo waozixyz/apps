@@ -165,7 +165,10 @@ NodeAssetsValid :: (node: *NodeContext, id: string, expected_id: string) -> bool
     BuilderPrint(*prefix_bytes, "assets/%/", expected_id)
     prefix := BuilderFinish(prefix_bytes)
     defer { AppFileFree(prefix) }
-    count := BundleAssets(node.app.bundle)
+    // Inherited code libraries carry their own separately verified assets.
+    // Only this package's own table is subject to its namespace here; reads
+    // from other packages still require the catalog's explicit resource links.
+    count := BundleOwnAssets(node.app.bundle)
     if count == cast(u64)0 || count > cast(u64)2048 { return false }
     total: u64 = 0
     for index: cast(u64)0..count - 1 {

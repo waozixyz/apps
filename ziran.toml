@@ -1,6 +1,6 @@
 [package]
 name = "Apps"
-module_roots = ["src", "ui"]
+module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"

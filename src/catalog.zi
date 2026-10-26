@@ -30,6 +30,7 @@ AppEntry :: struct {
     bytes: s64
     cover: AppCover
     dependency_count: s32
+    shared_code: bool
     dependencies: [APP_DEPENDENCY_LIMIT][128]u8
     resource_count: s32
     // Catalog owns these links; a routed entry borrows them from its parent.
@@ -92,7 +93,7 @@ AppCatalogClear :: (catalog: *AppCatalog) {
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [14]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources"]
+    keys: [15]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources", "shared_code"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -216,6 +217,13 @@ AppReadDependencies :: (text: string, at: s32, entry: *AppEntry) -> bool {
             }
         }
         entry.dependency_count = cast(s32)count
+    }
+    code := FieldAt(text, at, "shared_code")
+    if code >= 0 {
+        value := text[code:ValueEnd(text, code, 0)]
+        if value != "true" && value != "false" { return false }
+        entry.shared_code = value == "true"
+        if entry.shared_code && entry.dependency_count == 0 { return false }
     }
     links := FieldAt(text, at, "resources")
     if links < 0 { return true }

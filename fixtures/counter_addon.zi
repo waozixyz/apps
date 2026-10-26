@@ -1,0 +1,15 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+#import, file "counter_library.zi";
+
+#program_export
+Main :: () -> s32 {
+    if SharedCounterStep(40) != 41 { return 1 }
+    if AppMode() == APP_IDENTIFY {
+        AppIdentity("counter-addon")
+        AppDescribe("Counter add-on", "")
+        return APP_PROTOCOL
+    }
+    if AppMode() == APP_COMMAND { AppReply("shared code") }
+    return 0
+}
