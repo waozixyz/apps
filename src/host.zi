@@ -493,6 +493,15 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
 
 APPS_ART_BUNDLE :: "assets/apps/art.zx"
 
+// Whether a path may be art the platform is still downloading. Hosts allow
+// it and resolve it to "", which draws as loading until the art arrives.
+AppHostAssetPending :: (node: *AppNode, path: string) -> bool {
+    if node == null || node.runtime == null || !AppAssetPathValid(path) { return false }
+    runtime := cast(*AppRuntime)node.runtime
+    return !runtime.retired && !runtime.art_open && node.collection &&
+    node.catalog.art_sha256[0] != 0 && path != APPS_ART_BUNDLE
+}
+
 // The separate art bundle as a child the platform downloads and keeps like
 // any other: the signed catalog fixes its digest and size.
 AppHostArtEntry :: (node: *AppNode, entry: *AppEntry) -> bool {

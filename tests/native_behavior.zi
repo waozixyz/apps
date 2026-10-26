@@ -1574,7 +1574,8 @@ SlimCollectionCheck :: () -> s32 {
     }
     root := AppTreeNode(*host.tree, host.tree.active)
     // The art is missing until it arrives; the first request asks for it once.
-    if AppHostAsset(root, "assets/preview.png").found || slim_art_fetches != 1 { unused SlimStop(*host); return 1204 }
+    if AppHostAsset(root, "assets/preview.png").found || slim_art_fetches != 1 ||
+    !AppHostAssetPending(root, "assets/preview.png") || AppHostAssetPending(root, "../preview.png") { unused SlimStop(*host); return 1204 }
     unused AppHostAsset(root, "assets/preview.png")
     if slim_art_fetches != 1 { unused SlimStop(*host); return 1205 }
     // Bytes that are not the catalog's art never open.
@@ -1582,7 +1583,8 @@ SlimCollectionCheck :: () -> s32 {
     if AppHostAsset(root, "assets/preview.png").found { unused SlimStop(*host); return 1206 }
     slim_art = art
     preview := AppHostAsset(root, "assets/preview.png")
-    if !preview.found || preview.data.count < 8 || preview.data[1:4] != "PNG" { unused SlimStop(*host); return 1207 }
+    if !preview.found || preview.data.count < 8 || preview.data[1:4] != "PNG" ||
+    AppHostAssetPending(root, "assets/missing.png") { unused SlimStop(*host); return 1207 }
     if !SlimStop(*host) { return 1208 }
     slim_controller = ""
     slim_art = ""
