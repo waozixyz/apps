@@ -59,6 +59,15 @@ before guest code runs. Each instance keeps its own mutable state. Libraries'
 assets remain behind the same explicit resource links, and their bytes count
 toward the collection's memory limit.
 
+A base app may export a few flat saved-record names in `shared_records`.
+Only a direct, verified dependent in that signed catalog may read them through
+`apps.records` with `{"operation":"get","app":"BASE_ID","record":"NAME"}`.
+The reply contains `status` (`done`, `missing`, `rejected` or `unavailable`)
+and `text` for a successful read. The host keeps the current account and
+authority, applies its ordinary storage policy and bounds replies to 64 KiB.
+This grants no writes, no undeclared records and no access through a mere
+dependency declaration. Code libraries still keep independent mutable state.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its

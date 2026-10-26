@@ -10,6 +10,11 @@ Main :: () -> s32 {
         AppDescribe("Counter add-on", "")
         return APP_PROTOCOL
     }
-    if AppMode() == APP_COMMAND { AppReply("shared code") }
+    if AppMode() == APP_COMMAND {
+        answer := AppService("apps.records", "{\"operation\":\"get\",\"app\":\"fixture.counter\",\"record\":\"local.campaign\"}")
+        if !AppSupports("apps.records") || answer != "{\"status\":\"done\",\"text\":\"counter campaign\"}" {
+            AppReply("shared record failed")
+        } else { AppReply("shared code") }
+    }
     return 0
 }

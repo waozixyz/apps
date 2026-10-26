@@ -5,6 +5,7 @@
 #import "std/bundle_host"
 #import "std/c_string"
 #import "std/text_buffer"
+#import "std/json_scan"
 #import "crypto/sha256"
 #import "kryon/hosted_app"
 #import "kryon/hosted_values"
@@ -180,6 +181,7 @@ AppHostAssetMatches :: (container: *AppNode, path: string, bytes: string, digest
 AppHostAllows :: (context: *void, function: string) -> bool {
     runtime := cast(*AppRuntime)context
     if runtime.retired { return false }
+    if function == "apps.records" { return runtime.node.entry.dependency_count > 0 && runtime.host.platform.call != null }
     if function == APPS_SERVICE { return runtime.controller && runtime.node.collection }
     platform := runtime.host.platform
     return platform.allows != null && platform.allows(platform.context, runtime.node, function)
@@ -319,6 +321,12 @@ AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValu
     name := TextFromCString(function)
     if name == "AppServiceHost" && count == 2 &&
     HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
+    HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == "apps.records" {
+        result.* = AppHostDependencyRecord(runtime, AppArgumentText(arguments[1]))
+        return 1
+    }
+    if name == "AppServiceHost" && count == 2 &&
+    HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
     HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == APPS_SERVICE {
         if !runtime.controller || !runtime.node.collection { return 0 }
         request: AppsRequest
@@ -334,6 +342,64 @@ AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValu
     platform := runtime.host.platform
     if platform.call == null { return 0 }
     return platform.call(platform.context, runtime.node, module, function, arguments, count, result)
+}
+
+AppHostSharedRecord :: (runtime: *AppRuntime, app: string, record: string) -> *AppEntry {
+    if runtime == null || runtime.retired || runtime.node == null || runtime.node.collection ||
+    !AppSharedRecordNameValid(record) { return null }
+    // A dependency declaration alone grants no access to saved data. The
+    // donor must explicitly export this record in the verified catalog.
+    direct: bool
+    for index: cast(s32)0..runtime.node.entry.dependency_count - 1 {
+        direct = direct || TextUntilNul(runtime.node.entry.dependencies[index][:]) == app
+    }
+    if !direct { return null }
+    for index: cast(s32)0..runtime.dependency_count - 1 {
+        entry := runtime.dependency_entries[index]
+        if entry == null || TextUntilNul(entry.id[:]) != app { continue }
+        for shared: cast(s32)0..entry.shared_record_count - 1 {
+            if TextUntilNul(entry.shared_records[shared][:]) == record { return entry }
+        }
+    }
+    return null
+}
+
+AppHostDependencyRecord :: (runtime: *AppRuntime, request: string) -> HostValue {
+    if runtime == null || runtime.host == null { return AppHostText("{\"status\":\"rejected\"}") }
+    fields: [3]string = .["operation", "app", "record"]
+    operation: [8]u8; app: [128]u8; record: [64]u8
+    entry: *AppEntry
+    if request.count <= 4096 && Space(request, 0) == 0 && ValueEnd(request, 0, 0) == cast(s32)request.count &&
+    AppsObjectValid(request, 0, fields[:]) && AppsReadText(request, 0, "operation", operation[:]) &&
+    TextUntilNul(operation[:]) == "get" && AppsReadText(request, 0, "app", app[:]) &&
+    AppsReadText(request, 0, "record", record[:]) {
+        entry = AppHostSharedRecord(runtime, TextUntilNul(app[:]), TextUntilNul(record[:]))
+    }
+    answer: Vec(u8)
+    if entry == null || runtime.host.platform.call == null || runtime.host.platform.allows == null {
+        BuilderPrint(*answer, "{\"status\":\"rejected\"}")
+    } else {
+        // Only metadata is projected; never open or reenter the donor VM.
+        // Authority and account stay those of the verified current host.
+        donor := AppNode.{.identity = AppIdentity.{.authority = runtime.node.identity.authority, .id = entry.id},
+            .entry = entry.*, .parent = runtime.node.parent}
+        arguments: [1]HostValue = .[AppHostText(TextUntilNul(record[:]))]
+        value: HostValue
+        platform := runtime.host.platform
+        read := platform.allows(platform.context, *donor, "AppRecordHost") &&
+        platform.call(platform.context, *donor, HostTextData("apps"), HostTextData("AppRecordHost"), *arguments[0], 1, *value) == 1 &&
+        HostScalarValid(value, "string", cast(s32)HostString) && value.length < 65536
+        if !read { BuilderPrint(*answer, "{\"status\":\"unavailable\"}") }
+        else {
+            text := AppArgumentText(value)
+            BuilderPrint(*answer, "{\"status\":\"%\",\"text\":", ifx text.count == 0 then "missing" else "done")
+            AppHostWriteQuoted(*answer, text)
+            BuilderPrint(*answer, "}")
+        }
+    }
+    AppFileFree(runtime.host.reply)
+    runtime.host.reply = BuilderFinish(answer)
+    return AppHostText(runtime.host.reply)
 }
 
 AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,

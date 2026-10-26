@@ -115,8 +115,10 @@ def main():
     thin_entry = child('fixture.addon', thin, 'app/1', 'counter-addon', 'assets/addon.zx')
     thin_entry.update(dependencies=['fixture.counter'], shared_code=True)
     thin_root = WORK / 'thin-root.zx'
+    thin_base = child('fixture.counter', leaf, 'app/1', 'counter')
+    thin_base['shared_records'] = ['local.campaign']
     bundle('collection', thin_root, stage('thin-stage', 'fixture.thin',
-        [child('fixture.counter', leaf, 'app/1', 'counter'), thin_entry],
+        [thin_base, thin_entry],
         {'assets/child.zx': leaf, 'assets/addon.zx': thin}, controller))
     # A slim collection like Arcade's: no packed controller, and its children's
     # preview art in one separate bundle.

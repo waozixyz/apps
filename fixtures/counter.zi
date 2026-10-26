@@ -12,6 +12,10 @@ Main :: () -> s32 {
     }
     if AppMode() == APP_COMMAND {
         command := AppCommand()
+        if command == "bridge-support" {
+            if AppSupports("apps.records") { AppReply(AppService("apps.records", "{}")) }
+            return 0
+        }
         if command == "write" {
             if !DocumentWrite("position", "after") { return 1 }
         }

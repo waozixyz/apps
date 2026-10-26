@@ -31,6 +31,8 @@ AppEntry :: struct {
     cover: AppCover
     dependency_count: s32
     shared_code: bool
+    shared_record_count: s32
+    shared_records: [8][64]u8
     dependencies: [APP_DEPENDENCY_LIMIT][128]u8
     resource_count: s32
     // Catalog owns these links; a routed entry borrows them from its parent.
@@ -98,7 +100,7 @@ AppCatalogClear :: (catalog: *AppCatalog) {
 }
 
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [15]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources", "shared_code"]
+    keys: [16]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources", "shared_code", "shared_records"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -218,6 +220,20 @@ AppResourcePrefixValid :: (path: string, name: string) -> bool {
 }
 
 AppReadDependencies :: (text: string, at: s32, entry: *AppEntry) -> bool {
+    records := FieldAt(text, at, "shared_records")
+    if records >= 0 {
+        count := ArrayCount(text, records)
+        if count < 1 || count > 8 { return false }
+        for index: cast(s32)0..cast(s32)count - 1 {
+            if ReadStringText(text, ElementAt(text, records, index), entry.shared_records[index][:]) <= 0 { return false }
+            name := TextUntilNul(entry.shared_records[index][:])
+            if !AppSharedRecordNameValid(name) { return false }
+            for previous: cast(s32)0..index - 1 {
+                if TextUntilNul(entry.shared_records[previous][:]) == name { return false }
+            }
+        }
+        entry.shared_record_count = cast(s32)count
+    }
     dependencies := FieldAt(text, at, "dependencies")
     if dependencies >= 0 {
         count := ArrayCount(text, dependencies)
@@ -270,6 +286,16 @@ AppReadDependencies :: (text: string, at: s32, entry: *AppEntry) -> bool {
         entry.resource_count += 1
     }
     entry.resource_count = cast(s32)count
+    return true
+}
+
+// Only flat, bounded record names can be exported to a declared add-on.
+AppSharedRecordNameValid :: (name: string) -> bool {
+    if name.count < 1 || name.count > 63 || name == "." || name == ".." { return false }
+    for byte: name {
+        if !((byte >= #char "a" && byte <= #char "z") || (byte >= #char "A" && byte <= #char "Z") ||
+            (byte >= #char "0" && byte <= #char "9") || byte == #char "." || byte == #char "-" || byte == #char "_") { return false }
+    }
     return true
 }
 

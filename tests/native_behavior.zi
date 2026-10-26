@@ -237,6 +237,10 @@ Call :: (context: *void, node: *AppNode, module: *u8, function: *u8,
         return 0
     }
     if TextUntilNul(node.identity.id[:]) != "fixture.counter" { return 0 }
+    if name == "AppRecordHost" && count == 1 && AppArgumentText(arguments[0]) == "local.campaign" {
+        result.* = AppHostText("counter campaign")
+        return 1
+    }
     if name == "DocumentReadHost" && count == 1 {
         result.* = AppHostText(stored)
         return 1
@@ -1622,6 +1626,76 @@ DependencyFetch :: (context: *void, account: string, parent: *AppNode, entry: *A
     return true
 }
 
+shared_record_reads: s32;
+shared_record_denied: bool;
+
+SharedRecordAllows :: (context: *void, node: *AppNode, function: string) -> bool {
+    return !shared_record_denied && function == "AppRecordHost" &&
+    TextUntilNul(node.identity.authority[:]) == "trusted.test" && TextUntilNul(node.identity.id[:]) == "game"
+}
+
+SharedRecordCall :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if !SharedRecordAllows(context, node, TextFromCString(function)) || count != 1 ||
+    AppArgumentText(arguments[0]) != "local.campaign" { return 0 }
+    shared_record_reads += 1
+    result.* = AppHostText("private \"board\"")
+    return 1
+}
+
+SharedRecordsCheck :: () -> s32 {
+    parent: AppNode
+    if !DependencyCatalog(*parent.catalog, ",\"shared_records\":[\"local.campaign\"]") { return 200 }
+    defer { AppCatalogClear(*parent.catalog) }
+    if DependencyCatalog(*parent.catalog, ",\"shared_records\":[\"../campaign\"]") ||
+    DependencyCatalog(*parent.catalog, ",\"shared_records\":[\"local.campaign\",\"local.campaign\"]") ||
+    DependencyCatalog(*parent.catalog, ",\"shared_records\":[]") { return 201 }
+    donor := AppCatalogAt(*parent.catalog, 0)
+    guest := AppNode.{.entry = AppCatalogAt(*parent.catalog, 1).*}
+    unused CopyCString("trusted.test", guest.identity.authority[:])
+    unused CopyCString("editor", guest.identity.id[:])
+    host: AppHost
+    host.platform.allows = SharedRecordAllows
+    host.platform.call = SharedRecordCall
+    runtime := AppRuntime.{.host = *host, .node = *guest, .dependency_count = 1}
+    runtime.dependency_entries[0] = donor
+    defer { AppFileFree(host.reply) }
+    if !AppHostAllows(cast(*void)*runtime, "apps.records") { return 202 }
+    answer := AppArgumentText(AppHostDependencyRecord(*runtime,
+        "{\"operation\":\"get\",\"app\":\"game\",\"record\":\"local.campaign\"}"))
+    text: [64]u8
+    if ReadStringText(answer, FieldAt(answer, 0, "text"), text[:]) < 0 ||
+    TextUntilNul(text[:]) != "private \"board\"" || shared_record_reads != 1 { return 203 }
+    requests: [5]string = .[
+    "{\"operation\":\"put\",\"app\":\"game\",\"record\":\"local.campaign\"}",
+    "{\"operation\":\"get\",\"app\":\"game\",\"record\":\"rewards\"}",
+    "{\"operation\":\"get\",\"app\":\"game\",\"record\":\"../local.campaign\"}",
+    "{\"operation\":\"get\",\"app\":\"other\",\"record\":\"local.campaign\"}",
+    "{\"operation\":\"get\",\"app\":\"game\",\"record\":\"local.campaign\",\"authority\":\"other\"}"
+    ]
+    for request: requests {
+        unused AppHostDependencyRecord(*runtime, request)
+        if shared_record_reads != 1 { return 204 }
+    }
+    request := "{\"operation\":\"get\",\"app\":\"game\",\"record\":\"local.campaign\"}"
+    shared_record_denied = true
+    unused AppHostDependencyRecord(*runtime, request)
+    shared_record_denied = false
+    runtime.retired = true
+    unused AppHostDependencyRecord(*runtime, request)
+    runtime.retired = false
+    runtime.dependency_count = 0
+    unused AppHostDependencyRecord(*runtime, request)
+    runtime.dependency_count = 1
+    guest.entry.dependency_count = 0
+    unused AppHostDependencyRecord(*runtime, request)
+    guest.entry.dependency_count = 1
+    donor.shared_record_count = 0
+    unused AppHostDependencyRecord(*runtime, request)
+    if shared_record_reads != 1 { return 205 }
+    return 0
+}
+
 DependenciesCheck :: () -> s32 {
     parent: AppNode
     if !DependencyCatalog(*parent.catalog) { return 120 }
@@ -1653,6 +1727,8 @@ DependenciesCheck :: () -> s32 {
 
 #program_export
 Check :: () -> s32 {
+    shared_records_check := SharedRecordsCheck()
+    if shared_records_check != 0 { return shared_records_check }
     dependencies := DependenciesCheck()
     if dependencies != 0 { return dependencies }
     PreparationTestBegin()
