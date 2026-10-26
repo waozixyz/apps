@@ -46,6 +46,11 @@ AppCatalog :: struct {
     tail: *AppCatalogItem
     count: s64
     cover_grid: bool
+    // The children's cover, preview and icon art, when it travels as one
+    // separate ZX the platform downloads like a child instead of in the
+    // collection's own bundle.
+    art_sha256: [65]u8
+    art_bytes: s64
 }
 
 AppCatalogItem :: struct { entry: AppEntry; next: *AppCatalogItem }
@@ -146,7 +151,7 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
 // Build a candidate first: rejection never replaces the visible collection.
 AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> bool {
     if text.count > APP_MANIFEST_BYTE_LIMIT || Space(text, ValueEnd(text, 0, 0)) != text.count { return false }
-    keys: [6]string = .["schema", "id", "title", "harness", "children", "presentation"]
+    keys: [7]string = .["schema", "id", "title", "harness", "children", "presentation", "art"]
     if !AppsObjectValid(text, 0, keys[:]) { return false }
     schema := ReadNumber(text, FieldAt(text, 0, "schema"))
     if !schema.valid || schema.value != 1.0 { return false }
@@ -158,6 +163,15 @@ AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> b
         if !AppsObjectValid(text, presentation, fields[:]) ||
         !AppsReadText(text, presentation, "mode", mode[:]) || TextUntilNul(mode[:]) != "covers" { return false }
         parsed.cover_grid = true
+    }
+    art := FieldAt(text, 0, "art")
+    if art >= 0 {
+        fields: [2]string = .["sha256", "bytes"]
+        size := ReadNumber(text, FieldAt(text, art, "bytes"))
+        if !AppsObjectValid(text, art, fields[:]) || !AppsReadText(text, art, "sha256", parsed.art_sha256[:]) ||
+        !AppDigestValid(TextUntilNul(parsed.art_sha256[:])) || !size.valid || size.value < 8.0 ||
+        size.value > 67108864.0 || cast(float64)cast(s64)size.value != size.value { return false }
+        parsed.art_bytes = cast(s64)size.value
     }
     if !AppsReadText(text, 0, "id", parsed.id[:]) || TextUntilNul(parsed.id[:]) != expected_id ||
     !AppIdValid(expected_id) || !AppsReadText(text, 0, "title", parsed.title[:]) ||

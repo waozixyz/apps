@@ -118,6 +118,25 @@ def main():
     bundle('collection', thin_root, stage('thin-stage', 'fixture.thin',
         [child('fixture.counter', leaf, 'app/1', 'counter'), thin_entry],
         {'assets/child.zx': leaf, 'assets/addon.zx': thin}, controller))
+    # A slim collection like Arcade's: no packed controller, and its children's
+    # preview art in one separate bundle.
+    art_assets = WORK / 'art-stage/assets'
+    art_assets.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(WORK / 'remote-stage/assets/preview.png', art_assets / 'preview.png')
+    art = WORK / 'art.zx'
+    bundle('collection', art, art_assets)
+    slim_assets = stage('slim-stage', 'fixture.slim', [child('fixture.counter', leaf, 'app/1', 'counter')],
+                        {'assets/child.zx': leaf}, controller)
+    (slim_assets / 'apps/apps.zx').unlink()
+    (slim_assets / 'preview.png').unlink()
+    slim_catalog = json.loads((slim_assets / 'apps/catalog.json').read_text())
+    slim_catalog['art'] = dict(sha256=digest(art), bytes=art.stat().st_size)
+    (slim_assets / 'apps/catalog.json').write_text(json.dumps(slim_catalog))
+    slim_root = WORK / 'slim-root.zx'
+    bundle('collection', slim_root, slim_assets)
+    os.environ['APPS_FIXTURE_SLIM_ROOT_BUNDLE'] = runtime_path(slim_root)
+    os.environ['APPS_FIXTURE_SLIM_ROOT_SHA256'] = digest(slim_root)
+    os.environ['APPS_FIXTURE_ART_BUNDLE'] = runtime_path(art)
     os.environ['APPS_FIXTURE_THIN_ROOT_BUNDLE'] = runtime_path(thin_root)
     os.environ['APPS_FIXTURE_THIN_ROOT_SHA256'] = digest(thin_root)
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())

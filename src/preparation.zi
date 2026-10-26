@@ -55,6 +55,8 @@ AppPreparation :: struct {
     controller_path: [512]u8
     controller_digest: [65]u8
     controller_bytes: s64
+    // The host's own controller, for a collection that does not pack one.
+    supplied_controller: string
     ready: bool
     valid: bool
     libraries: AppPreparationLibraries
@@ -147,6 +149,7 @@ AppPreparationRun :: (argument: *void) {
         return
     }
     controller := AppPreparationAsset(preparation.bundle, TextUntilNul(preparation.controller_path[:]))
+    if controller.count == 0 { controller = preparation.supplied_controller }
     charge := preparation.bytes.count + 131072 + cast(s64)size_of(AppNode)
     if controller.count == 0 || controller.count > preparation.byte_limit - charge {
         return
@@ -160,9 +163,11 @@ AppPreparationRun :: (argument: *void) {
 // The caller retains immutable source bytes until Ready, even after deciding
 // to cancel. One preparation checks a root and its optional collection
 // controller. The host still authorizes that controller before instantiation.
+// controller is the host's own trusted Apps controller, used only when a
+// collection names a harness it does not pack; the caller keeps it unchanged.
 AppPrepare :: (bytes: string, digest: string, id: string,
     byte_limit: s64 = APP_PREPARATION_BYTE_LIMIT,
-    libraries: *AppPreparationLibraries = null) -> *AppPreparation {
+    libraries: *AppPreparationLibraries = null, controller: string = "") -> *AppPreparation {
     if byte_limit < 0 || byte_limit > APP_PREPARATION_BYTE_LIMIT ||
     bytes.count < 8 || bytes.count > byte_limit - 65536 - cast(s64)size_of(AppNode) ||
     !AppDigestValid(digest) || !AppIdValid(id) {
@@ -175,6 +180,7 @@ AppPrepare :: (bytes: string, digest: string, id: string,
     preparation.* = AppPreparation.{}
     preparation.bytes = bytes
     preparation.byte_limit = byte_limit
+    preparation.supplied_controller = controller
     if libraries != null {
         if libraries.count < 0 || libraries.count > 32 {
             AppPreparationFree(cast(*void)preparation)

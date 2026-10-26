@@ -1510,6 +1510,85 @@ DeclaredChildCheck :: () -> s32 {
     return 0
 }
 
+slim_controller: string;
+slim_art: string;
+slim_art_fetches: s32;
+
+SlimController :: (context: *void) -> HostedAsset {
+    return HostedAsset.{.found = slim_controller.count > 0, .data = slim_controller}
+}
+
+SlimBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    if TextUntilNul(entry.bundle[:]) != "assets/apps/art.zx" || slim_art.count == 0 { return HostedAsset.{} }
+    return HostedAsset.{.found = true, .data = slim_art}
+}
+
+SlimFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    if TextUntilNul(entry.bundle[:]) != "assets/apps/art.zx" || operation != APPS_INSTALL { return false }
+    slim_art_fetches += 1
+    reply.status = APPS_QUEUED
+    return true
+}
+
+SlimStop :: (host: *AppHost) -> bool {
+    end := PreparationTestNow() + 10.0
+    stopped := false
+    while !stopped && PreparationTestNow() < end {
+        stopped = AppHostStop(host)
+        PreparationTestYield()
+    }
+    return stopped
+}
+
+// A collection like Arcade's: it packs neither the Apps controller, which the
+// host supplies by its exact digest, nor its children's art, which arrives
+// as one separate bundle the platform downloads like a child.
+SlimCollectionCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_BUNDLE"))
+    ui, ui_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_UI_BUNDLE"))
+    art, art_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_ART_BUNDLE"))
+    if !found || !ui_found || !art_found { return 1200 }
+    digest := FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256")
+    harness := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
+    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save,
+        .state = State, .bundle = SlimBundle, .fetch = SlimFetch}
+    // Without a host controller the collection cannot open.
+    refused: AppHost
+    if AppHostStart(*refused, bytes, "fixture.test", "fixture.slim", "collection", digest, "account-a", platform, harness) {
+        unused SlimStop(*refused)
+        return 1201
+    }
+    // Other bytes in the controller's place are refused.
+    platform.controller = SlimController
+    slim_controller = art
+    other: AppHost
+    if AppHostStart(*other, bytes, "fixture.test", "fixture.slim", "collection", digest, "account-a", platform, harness) {
+        unused SlimStop(*other)
+        return 1202
+    }
+    slim_controller = ui
+    host: AppHost
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.slim", "collection", digest, "account-a", platform, harness) {
+        return 1203
+    }
+    root := AppTreeNode(*host.tree, host.tree.active)
+    // The art is missing until it arrives; the first request asks for it once.
+    if AppHostAsset(root, "assets/preview.png").found || slim_art_fetches != 1 { unused SlimStop(*host); return 1204 }
+    unused AppHostAsset(root, "assets/preview.png")
+    if slim_art_fetches != 1 { unused SlimStop(*host); return 1205 }
+    // Bytes that are not the catalog's art never open.
+    slim_art = ui
+    if AppHostAsset(root, "assets/preview.png").found { unused SlimStop(*host); return 1206 }
+    slim_art = art
+    preview := AppHostAsset(root, "assets/preview.png")
+    if !preview.found || preview.data.count < 8 || preview.data[1:4] != "PNG" { unused SlimStop(*host); return 1207 }
+    if !SlimStop(*host) { return 1208 }
+    slim_controller = ""
+    slim_art = ""
+    return 0
+}
+
 dependency_installed: bool;
 dependency_fetches: s32;
 dependency_queued: bool;
@@ -1597,6 +1676,10 @@ Check :: () -> s32 {
     declared := DeclaredChildCheck()
     if declared != 0 {
         return declared
+    }
+    slim := SlimCollectionCheck()
+    if slim != 0 {
+        return slim
     }
     locator_result := PreparationLocatorCheck(bytes, digest, harness_digest, platform)
     if locator_result != 0 {

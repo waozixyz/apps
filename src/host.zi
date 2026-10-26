@@ -43,6 +43,10 @@ AppPlatformState :: #type (context: *void, account: string, identity: *AppIdenti
 AppPlatformBundle :: #type (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset;
 // True for such a child that is not on the device yet, with its download.
 AppPlatformDownload :: #type (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool;
+// The host's own trusted Apps controller, for a collection that names a
+// harness without packing it. The host accepts it only by its exact digest.
+// The platform keeps the bytes unchanged until AppHostStop.
+AppPlatformController :: #type (context: *void) -> HostedAsset;
 
 AppDownload :: struct {
     downloading: bool
@@ -67,6 +71,7 @@ AppPlatform :: struct {
     bundle: AppPlatformBundle
     download: AppPlatformDownload
     fetch: AppProviderFetch
+    controller: AppPlatformController
 }
 
 // A favorite is prepared beside the working route and replaces it only after
@@ -127,6 +132,10 @@ AppRuntime :: struct {
     // again in the VM on every frame.
     catalog: string
     catalog_revision: s64
+    // A collection's separate art bundle, opened once the platform has it.
+    art: HostedApp
+    art_open: bool
+    art_requested: bool
 }
 
 
@@ -412,20 +421,27 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
 AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime,
     preparation: *AppPreparation = null) -> bool {
     if !node.collection { return true }
+    // Separate art arrives after the library opens; the library draws as it does.
+    separate_art := node.catalog.art_sha256[0] != 0
     item := node.catalog.children
-    while item != null {
-        preview := TextUntilNul(item.entry.preview[:])
-        if preview != "" && !AppHostAsset(node, preview).found { return false }
-        icon := TextUntilNul(item.entry.icon[:])
-        if icon != "" && !AppHostAsset(node, icon).found { return false }
-        covers: [3]string = .[TextUntilNul(item.entry.cover.portrait[:]),
-        TextUntilNul(item.entry.cover.landscape[:]), TextUntilNul(item.entry.cover.logo[:])]
-        for path: covers { if path != "" && !AppHostAsset(node, path).found { return false } }
+    while item != null && !separate_art {
+        art: [5]string = .[TextUntilNul(item.entry.preview[:]), TextUntilNul(item.entry.icon[:]),
+        TextUntilNul(item.entry.cover.portrait[:]), TextUntilNul(item.entry.cover.landscape[:]),
+        TextUntilNul(item.entry.cover.logo[:])]
+        for path: art {
+            if path != "" && (!AppAssetPathValid(path) || !AppHostResource(runtime, *node.entry, path, 0).found) { return false }
+        }
         item = item.next
     }
     harness := TextUntilNul(node.catalog.harness[:])
     resource := HostedAppAsset(AppContextRuntime(*runtime.app), harness)
-    if !resource.found { return false }
+    // A collection that does not pack its controller uses the host's own.
+    supplied := !resource.found
+    if supplied {
+        if host.platform.controller == null { return false }
+        resource = host.platform.controller(host.platform.context)
+        if !resource.found { return false }
+    }
     digest := TextUntilNul(host.harness_sha256[:])
     trusted: bool
     if preparation != null {
@@ -436,10 +452,13 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime,
         }
         digest = TextUntilNul(preparation.controller_digest[:])
         trusted = digest == TextUntilNul(host.harness_sha256[:])
+    } else if supplied {
+        trusted = AppHostBytesMatch(resource.data, digest)
     } else {
         trusted = AppHostAssetMatches(node, harness, resource.data, digest)
     }
     for index: 0..APP_HOST_PREVIOUS_CONTROLLERS - 1 {
+        if supplied { break }
         previous := TextUntilNul(host.harness_previous[index][:])
         if preparation != null {
             trusted = trusted || (previous != "" && digest == previous)
@@ -464,7 +483,51 @@ AppHostAsset :: (node: *AppNode, path: string) -> HostedAsset {
     if node == null || node.runtime == null || !AppAssetPathValid(path) { return HostedAsset.{} }
     runtime := cast(*AppRuntime)node.runtime
     if runtime.retired { return HostedAsset.{} }
-    return AppHostResource(runtime, *node.entry, path, 0)
+    resource := AppHostResource(runtime, *node.entry, path, 0)
+    if resource.found || !node.collection || node.catalog.art_sha256[0] == 0 ||
+    path == APPS_ART_BUNDLE { return resource }
+    return AppHostArtAsset(runtime, node, path)
+}
+
+APPS_ART_BUNDLE :: "assets/apps/art.zx"
+
+// The separate art bundle as a child the platform downloads and keeps like
+// any other: the signed catalog fixes its digest and size.
+AppHostArtEntry :: (node: *AppNode, entry: *AppEntry) -> bool {
+    entry.* = AppEntry.{}
+    entry.protocol = APPS_CONTEXT_PROTOCOL
+    entry.bytes = node.catalog.art_bytes
+    entry.sha256 = node.catalog.art_sha256
+    return CopyCString(TextUntilNul(node.catalog.id[:]), entry.id[:]) &&
+    CopyCString(TextUntilNul(node.catalog.title[:]), entry.title[:]) &&
+    CopyCString(APPS_ART_BUNDLE, entry.bundle[:])
+}
+
+// Art the collection lists but does not pack. Missing until the platform has
+// the art bundle: the first request asks it to download, and the library
+// draws the art once it arrives.
+AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> HostedAsset {
+    host := runtime.host
+    if !runtime.art_open {
+        entry: AppEntry
+        if host == null || host.platform.bundle == null || !AppHostArtEntry(node, *entry) { return HostedAsset.{} }
+        bytes := host.platform.bundle(host.platform.context, node, *entry)
+        if !bytes.found {
+            if !runtime.art_requested && host.platform.fetch != null {
+                runtime.art_requested = true
+                reply: AppsReply
+                unused host.platform.fetch(host.platform.context, TextUntilNul(host.tree.account[:]),
+                    node, *entry, APPS_INSTALL, *reply)
+            }
+            return HostedAsset.{}
+        }
+        if bytes.data.count != entry.bytes || !AppHostBytesMatch(bytes.data, TextUntilNul(entry.sha256[:])) ||
+        !HostedAppOpen(*runtime.art, bytes.data) {
+            return HostedAsset.{}
+        }
+        runtime.art_open = true
+    }
+    return HostedAppAsset(*runtime.art, path)
 }
 
 // A child's packed bundle, or the platform's copy of one its collection only
@@ -1102,6 +1165,7 @@ AppHostCollect :: (host: *AppHost) {
         }
         HostedAppClose(AppContextRuntime(*runtime.app))
         for index: cast(s32)0..runtime.dependency_count - 1 { HostedAppClose(*runtime.dependency_apps[index]) }
+        if runtime.art_open { HostedAppClose(*runtime.art) }
         AppFileFree(runtime.catalog)
         free(runtime)
         runtime = next
