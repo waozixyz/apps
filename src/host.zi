@@ -219,6 +219,8 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
     AppHostWriteQuoted(*bytes, TextUntilNul(host.locale[:]))
     presentation := host.platform.presentation
     presentation.cover_grid = presentation.cover_grid || node.catalog.cover_grid
+    // A cover shows only its art; the download dialog names the size.
+    presentation.hide_sizes = presentation.hide_sizes || presentation.cover_grid
     BuilderPrint(*bytes, ",\"presentation\":{\"mode\":\"%\",\"hide_sizes\":%,\"tile_class\":%,\"action_class\":%,\"muted_class\":%,\"image_class\":%,\"download_request\":%,\"download_id\":",
         ifx presentation.cover_grid then "covers" else ifx presentation.icon then "icon" else "preview",
         ifx presentation.hide_sizes then "true" else "false",
