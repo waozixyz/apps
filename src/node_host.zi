@@ -52,24 +52,94 @@ NodeAllows :: (context: *void, module: string, name: string) -> bool {
     (node.allows != null && node.allows(node.context, name))
 }
 
-NodeLocale :: (text: string, key: string) -> string {
+// Apps ask for their labels every frame, and scanning the translations for
+// each one cost a phone part of every frame. Each text is indexed once: the
+// value of every "[key]" line is the lines after it up to the next "---"
+// line, and the first entry of a key wins, as a scan would find it.
+NodeLocaleEntry :: struct {
+    hash: u64
+    key_start: s64
+    key_count: s64
+    value_start: s64
+    value_count: s64
+}
+
+NodeLocaleIndex :: struct {
+    text: *u8
+    count: s64
+    fingerprint: u64
+    entries: Vec(NodeLocaleEntry)
+}
+
+// The few translation texts in use at a time: an app's and its controller's.
+node_locale_indexes: [4]NodeLocaleIndex;
+node_locale_next: s32;
+
+NodeLocaleHash :: (text: string) -> u64 {
+    hash: u64 = cast(u64)2166136261
+    for byte: text { hash = (hash ^ cast(u64)byte) * cast(u64)16777619 }
+    return hash
+}
+
+// Translations are bundle assets that never change while open; the ends of
+// the text also tell a later text at the same address apart.
+NodeLocaleFingerprint :: (text: string) -> u64 {
+    if text.count <= 128 { return NodeLocaleHash(text) }
+    return NodeLocaleHash(text[0:64]) ^ (NodeLocaleHash(text[text.count - 64:text.count]) * cast(u64)31)
+}
+
+NodeLocaleBuild :: (index: *NodeLocaleIndex, text: string) {
+    VecClear(index.entries)
     at: s64 = 0
     while at < text.count {
         end := at
         while end < text.count && text[end] != #char "\n" { end += 1 }
-        line := text[at:end]
-        if line.count == key.count + 2 && line[0] == #char "[" &&
-        line[line.count - 1] == #char "]" && line[1:line.count - 1] == key {
+        if end - at >= 2 && text[at] == #char "[" && text[end - 1] == #char "]" {
             start := end + 1
             last := start
             while last < text.count {
                 next := last
                 while next < text.count && text[next] != #char "\n" { next += 1 }
-                if text[last:next] == "---" { return text[start:ifx last > start then last - 1 else last] }
+                if text[last:next] == "---" {
+                    finish := ifx last > start then last - 1 else last
+                    entry := NodeLocaleEntry.{.hash = NodeLocaleHash(text[at + 1:end - 1]),
+                        .key_start = at + 1, .key_count = end - at - 2,
+                        .value_start = start, .value_count = finish - start}
+                    unused VecPush(index.entries, entry)
+                    break
+                }
                 last = next + 1
             }
         }
         at = end + 1
+    }
+}
+
+NodeLocale :: (text: string, key: string) -> string {
+    if text.count == 0 { return "" }
+    descriptor := cast(*TextDescriptor)(*text)
+    data := descriptor.data
+    fingerprint := NodeLocaleFingerprint(text)
+    index: *NodeLocaleIndex = null
+    for slot: cast(s32)0..3 {
+        cached := *node_locale_indexes[slot]
+        if cached.text == data && cached.count == text.count && cached.fingerprint == fingerprint { index = cached }
+    }
+    if index == null {
+        index = *node_locale_indexes[node_locale_next]
+        node_locale_next = (node_locale_next + 1) % 4
+        index.text = data
+        index.count = text.count
+        index.fingerprint = fingerprint
+        NodeLocaleBuild(index, text)
+    }
+    hash := NodeLocaleHash(key)
+    for at: cast(s64)0..index.entries.count - 1 {
+        entry := index.entries[at]
+        if entry.hash == hash && entry.key_count == key.count &&
+        text[entry.key_start:entry.key_start + entry.key_count] == key {
+            return text[entry.value_start:entry.value_start + entry.value_count]
+        }
     }
     return ""
 }
