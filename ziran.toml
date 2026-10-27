@@ -4,7 +4,7 @@ module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "master"
+ref = "6d4bfd4f79347b4744fd9686fe1a8703665b500a"
 
 [exports]
 appearance = "src/appearance.zi"
