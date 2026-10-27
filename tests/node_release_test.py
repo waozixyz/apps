@@ -50,15 +50,15 @@ class NodeAppHistoryTest(unittest.TestCase):
     def history(self):
         return json.loads((self.store / "inbe.photos" / "history-v2.json").read_bytes())["versions"]
 
-    def test_node_keeps_offering_the_newest_three_releases(self):
+    def test_node_keeps_the_newest_ten_releases(self):
         values = []
-        for sequence in range(1, 5):
+        for sequence in range(1, 13):
             value, data = self.release(sequence)
             self.publish(value, data)
             values.append(value)
-            self.assertEqual(self.history(), list(reversed(values))[:3])
-        # Every release stays archived; only the offer is limited to three.
-        self.assertEqual(len(list((self.store / "inbe.photos").glob("release-*.json"))), 4)
+            self.assertEqual(self.history(), list(reversed(values))[:10])
+        # Every release stays archived; only the history is limited to ten.
+        self.assertEqual(len(list((self.store / "inbe.photos").glob("release-*.json"))), 12)
 
     def test_history_lists_only_trusted_releases_with_their_bundle(self):
         for sequence in range(1, 4):
@@ -75,9 +75,9 @@ class NodeAppHistoryTest(unittest.TestCase):
     def test_hosts_from_before_the_zx_format_keep_their_last_release(self):
         legacy, data = self.release(1, signature=b"ZIB\0")
         self.publish(legacy, data)
-        for sequence in range(2, 6):
+        for sequence in range(2, 13):
             self.publish(*self.release(sequence))
-        self.assertEqual([value["sequence"] for value in self.history()], [5, 4, 1])
+        self.assertEqual([value["sequence"] for value in self.history()], [12, 11, 10, 9, 8, 7, 6, 5, 4, 1])
         directory = self.store / "inbe.photos"
         self.assertTrue((directory / (legacy["artifacts"][0]["sha256"] + ".zib")).is_file())
         latest = json.loads((directory / "latest-v2.json").read_bytes())

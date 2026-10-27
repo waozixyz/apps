@@ -32,9 +32,10 @@ NODE_APP_ID = re.compile(r"inbe\.[a-z][a-z0-9]{1,23}\Z")
 BUNDLED_IDS = {"inbe", "inbe.habits", "inbe.practices", "inbe.lists", "inbe.diary", "inbe.lumi",
                "inbe.leaderboard"}
 VERSION = re.compile(r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\Z")
-# The node offers each app's newest three releases, so a person can go back
-# to an earlier version that still runs on their device.
-RETAINED_RELEASES = 3
+# The node keeps each app's newest ten releases in its history, so a device
+# on an older host still finds one built for it; going back offers the
+# newest three of them that still run on the device.
+RETAINED_RELEASES = 10
 # Payload signatures and the suffixes the node stores them under: ZX portable
 # executables, and legacy bundles of hosts released before the ZX format.
 SUFFIXES = ((b"ZX\0\0", ".zx"), (b"ZIB\0", ".zib"))
@@ -174,7 +175,7 @@ def validate_release(value, app_id, publishers):
 
 
 def write_history(directory, app_id, publishers):
-    """Lists three releases, newest first, in history-v2.json.
+    """Lists up to ten releases, newest first, in history-v2.json.
 
     Every release stays archived. The history names the newest ones the node
     still trusts and still has the payload for, always including the newest
