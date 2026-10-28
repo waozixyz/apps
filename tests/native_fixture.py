@@ -143,7 +143,7 @@ def main():
     os.environ['APPS_FIXTURE_THIN_ROOT_SHA256'] = digest(thin_root)
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'download-ready', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-installed', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -153,13 +153,15 @@ def main():
         if name == 'changed-update':
             candidate['children'][0]['available_sha256'] = 'd' * 64
         if name in ('download', 'downloading', 'download-failed', 'download-request', 'cover-download', 'simple-downloading'):
-            candidate['children'][1].update(on_device=False, downloading=name in ('downloading', 'simple-downloading'),
+            candidate['children'][1].update(installed=False, on_device=False, downloading=name in ('downloading', 'simple-downloading'),
                                             bytes=4096, actions=['open', 'install'],
                                             permissions=['account', 'media', 'unknown-later'])
         if name == 'downloading':
             candidate['children'][1]['progress'] = 40
         if name == 'download-failed':
             candidate['children'][1]['download_failed'] = True
+        if name == 'download-ready':
+            candidate['children'][1].update(installed=False, on_device=True, actions=['open', 'install'])
         if name == 'download-request':
             candidate['presentation'].update(download_id='native.clock', download_request=1)
         if name == 'cover-download':

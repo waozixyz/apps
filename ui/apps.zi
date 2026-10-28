@@ -138,6 +138,7 @@ dialog: s32;
 // Whether Download was pressed in the open download dialog; frames drawn
 // since, for the bar of a download whose size is not known.
 download_started: bool;
+download_installing: bool;
 download_frames: s32;
 last_download_request: s64;
 dialog_target: Rules.AppVersion;
@@ -626,6 +627,7 @@ AppsDownloadOpen :: (card: *AppCard) {
     dialog_id = card.id
     dialog = 5
     download_started = card.downloading
+    download_installing = false
     download_frames = 0
 }
 
@@ -635,6 +637,18 @@ AppsDownloadOpen :: (card: *AppCard) {
 AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: string, font: s32) {
     if !download_started && (card.on_device || !AppsSupported(card, Rules.APPS_INSTALL)) { AppsPropertiesClose(); return }
     if download_started && card.on_device {
+        // The first install request only queued the missing payload. Finish
+        // the verified installation before opening so its stable membership
+        // survives a later catalog or host update.
+        if !card.installed {
+            if !download_installing {
+                AppsAct("install", card.id)
+                download_installing = true
+            } else if TextUntilNul(status[:]) == "rejected" {
+                AppsPropertiesClose()
+            }
+            return
+        }
         AppsAct("open", card.id)
         AppsPropertiesClose()
         return
@@ -753,7 +767,7 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
         End(session)
         if close { AppsPropertiesClose() }
         else if go && card.on_device { AppsAct("open", card.id); AppsPropertiesClose() }
-        else if go { AppsAct("install", card.id); download_started = true; download_frames = 0 }
+        else if go { AppsAct("install", card.id); download_started = true; download_installing = false; download_frames = 0 }
         return
     }
     // The download goes on without the dialog.

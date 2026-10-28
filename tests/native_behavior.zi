@@ -554,11 +554,13 @@ NativeControllerCheck :: () -> s32 {
     native_queued != queued + 2 || native_request.operation != APPS_INSTALL { return 637 }
     if !NativeClick("Close", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
     NativeLabel("Download failed") >= 0 { return 638 }
-    // A requested download opens as soon as the host reports verified bytes.
+    // A requested download finishes verified installation before opening.
     completed := native_queued
     if !NativeLoadCatalog("download") || !NativeDraw() || !NativeClick("Clock", WidgetKindButton) || !NativeDraw() ||
     !NativeClickLast("Download", WidgetKindButton) || !NativeDraw() ||
     !NativeLoadCatalog("download-ready") || !NativeDraw() || native_queued != completed + 2 ||
+    native_request.operation != APPS_INSTALL || !NativeDraw() || native_queued != completed + 2 ||
+    !NativeLoadCatalog("download-installed") || !NativeDraw() || native_queued != completed + 3 ||
     native_request.operation != APPS_OPEN || !NativeDraw() || NativeLabel("Hide", WidgetKindButton) >= 0 { return 640 }
     if !NativeLoadCatalog("download-request") || !NativeDraw() || NativeLabel("Download size: 4.1 kB") < 0 ||
     !NativeClick("Cancel", WidgetKindButton) || !NativeDraw() || !NativeDraw() ||
