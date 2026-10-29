@@ -19,13 +19,11 @@
 
 using HostValueKind;
 
-// The newest host interface a game may declare. Built with Ziran's compact
-// saved IR (format 59), this host runs games that need Inner Breeze 2.1.61's
-// host interface 41.
-NODE_HOST_API :: 41
-
 NodeContext :: struct {
     app: *HostedApp
+    // The host's own interface (AppPlatform.host_api); a catalog that needs a
+    // newer one is refused.
+    host_api: s32
     id: [128]u8
     name: [128]u8
     message: AppMessage
@@ -271,7 +269,7 @@ NodeAssetsValid :: (node: *NodeContext, id: string, expected_id: string) -> bool
     host_api := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "host_api"))
     save_schema := ReadNumber(manifest.data, FieldAt(manifest.data, 0, "save_schema"))
     if !contract.valid || contract.value != 1.0 || !module_api.valid || module_api.value != 2.0 ||
-    !host_api.valid || host_api.value < 1.0 || host_api.value > cast(float64)NODE_HOST_API ||
+    !host_api.valid || host_api.value < 1.0 || host_api.value > cast(float64)node.host_api ||
     cast(float64)cast(s32)host_api.value != host_api.value ||
     !save_schema.valid || save_schema.value < 1.0 || save_schema.value > 2147483647.0 ||
     cast(float64)cast(s32)save_schema.value != save_schema.value { return false }

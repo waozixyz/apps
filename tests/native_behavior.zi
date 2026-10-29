@@ -32,6 +32,9 @@
 #import, file "../src/node_host.zi";
 #import, file "../src/preparation.zi";
 Node :: #import "node_types";
+
+// The host interface these fixtures run on; their games declare an older one.
+TEST_HOST_API :: 41
 using HostValueKind;
 using FrameStatus;
 using PaintKind;
@@ -1395,7 +1398,7 @@ DependencyCodeCheck :: () -> s32 {
     if !found { return 134 }
     defer { AppFileFree(bytes) }
     live := PreparationTestLive()
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
     for corrupt: cast(s32)0..2 {
         host: AppHost
         if !AppHostStart(*host, bytes, "fixture.test", "fixture.thin", "collection",
@@ -1432,7 +1435,7 @@ DependencyAssetsCheck :: () -> s32 {
     if !found { return 127 }
     defer { AppFileFree(bytes) }
     live := PreparationTestLive()
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
     for corrupt: cast(s32)0..1 {
         host: AppHost
         if !AppHostStart(*host, bytes, "fixture.test", "fixture.dependencies", "collection",
@@ -1465,7 +1468,7 @@ DeclaredChildCheck :: () -> s32 {
     other, other_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_NODE_BUNDLE"))
     if !found || !counter_found || !other_found { return 900 }
     // Without the open effect, which inspects the main check's host.
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect,
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect,
         .state = State, .bundle = RemoteBundle, .download = RemoteDownload, .fetch = RemoteFetch}
     host: AppHost
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.remote-root", "collection",
@@ -1557,7 +1560,7 @@ SlimCollectionCheck :: () -> s32 {
     if !found || !ui_found || !art_found { return 1200 }
     digest := FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256")
     harness := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save,
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save,
         .state = State, .bundle = SlimBundle, .fetch = SlimFetch}
     // Without a host controller the collection cannot open.
     refused: AppHost
@@ -1739,7 +1742,7 @@ Check :: () -> s32 {
     harness_digest := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
     if !found { return 1 }
     host: AppHost
-    platform := AppPlatform.{.allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State, .version_effect = HostVersionEffect,
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .effect = Effect, .state = State, .version_effect = HostVersionEffect,
         .open_effect = HostOpenEffect}
     prepared := PreparationCheck(bytes, digest, harness_digest, platform)
     if prepared != 0 {

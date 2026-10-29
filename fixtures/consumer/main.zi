@@ -27,7 +27,7 @@ OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *
 
 #program_export
 Check :: () -> s32 {
-    platform := AppPlatform.{.state = State, .version_effect = VersionEffect, .open_effect = OpenEffect,
+    platform := AppPlatform.{.host_api = 41, .state = State, .version_effect = VersionEffect, .open_effect = OpenEffect,
         .presentation = AppPresentation.{.icon = true, .hide_sizes = true, .tile_class = 501}}
     identity: AppIdentity
     state: AppState
