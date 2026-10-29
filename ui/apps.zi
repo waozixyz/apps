@@ -994,10 +994,10 @@ AppsFrame :: () -> bool {
             if list_mode {
                 tile.content_alignment = cast(ContentAlignment)ContentAlignmentStart
                 tile.bounds.width -= 48.0 * scale
-                if has_reorder_handles {
-                    tile.bounds.x += 44.0 * scale
-                    tile.bounds.width -= 44.0 * scale
-                }
+            }
+            if has_reorder_handles {
+                tile.bounds.x += 44.0 * scale
+                tile.bounds.width -= 44.0 * scale
             }
         } else {
             fill := ifx AppDark() then Color.{33, 47, 44, 255} else Color.{249, 252, 250, 255}
