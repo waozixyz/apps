@@ -16,6 +16,7 @@ preparation = "src/preparation.zi"
 controller = "src/controller.zi"
 launcher = "src/launcher.zi"
 node_types = "src/node_types.zi"
+node_app = "src/node_app.zi"
 node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]

@@ -1,0 +1,30 @@
+// The node/2 handshake every hosted app answers. An app's entry supplies only
+// its frame and its Back; this module identifies it to the host, accepts the
+// route and returns each answer.
+#import "node_types"
+
+host_api :: #system_library "host_api";
+ReadAppHost :: () -> AppMessage #foreign host_api;
+WriteAppHost :: (message: AppMessage) #foreign host_api;
+
+// Draws one frame; false tells the host the frame failed.
+NodeAppFrame :: #type (message: AppMessage) -> bool;
+// Returns to an earlier page; false lets the host leave the app.
+NodeAppBack :: #type (message: AppMessage) -> bool;
+
+NodeAppLeave :: (message: AppMessage) -> bool {
+    unused message
+    return false
+}
+
+// Answers one call from the host.
+RunNodeApp :: (frame: NodeAppFrame, back: NodeAppBack = NodeAppLeave) -> s32 {
+    message := ReadAppHost()
+    if message.abi != MODULE_ABI { return -1 }
+    if message.action == MODULE_IDENTIFY { return MODULE_NODE_APP }
+    message.succeeded = message.action == APP_ROUTE
+    if message.action == APP_FRAME { message.succeeded = frame(message) }
+    if message.action == APP_BACK { message.succeeded = back(message) }
+    WriteAppHost(message)
+    return 0
+}
