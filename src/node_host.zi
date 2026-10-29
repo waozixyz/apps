@@ -19,7 +19,10 @@
 
 using HostValueKind;
 
-NODE_HOST_API :: 12
+// The newest host interface a game may declare. Built with Ziran's compact
+// saved IR (format 59), this host runs games that need Inner Breeze 2.1.61's
+// host interface 41.
+NODE_HOST_API :: 41
 
 NodeContext :: struct {
     app: *HostedApp
