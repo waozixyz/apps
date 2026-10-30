@@ -305,6 +305,19 @@ native_handle_bounds: Rectangle;
 native_tile_bounds: Rectangle;
 native_other_bounds: Rectangle;
 native_label_bounds: Rectangle;
+native_still_emphasis: s32;
+native_still_tone: s32;
+native_still_bounds: Rectangle;
+native_still_class: s32;
+native_still_icon_only: bool;
+native_reorder_emphasis: s32;
+native_reorder_tone: s32;
+native_reorder_bounds: Rectangle;
+native_reorder_class: s32;
+native_reorder_icon_only: bool;
+native_capture_actions: bool;
+native_still_captured: bool;
+native_reorder_captured: bool;
 
 NativeService :: (context: *void, text: string) -> string {
     request: AppsRequest
@@ -349,6 +362,23 @@ NativeWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostVa
             shape := ifx props.label == "Download" then download else options
             if props.bounds.height != 36.0 || !props.icon_only || props.class_name != 502 ||
             (cast(s32)props.emphasis != 3 && !(props.circle && cast(s32)props.emphasis == 1)) || props.icon_shape != shape { native_bad = true }
+            if native_capture_actions && native_actions == 1 {
+                if !native_still_captured {
+                    native_still_emphasis = cast(s32)props.emphasis
+                    native_still_tone = cast(s32)props.tone
+                    native_still_bounds = props.bounds
+                    native_still_class = props.class_name
+                    native_still_icon_only = props.icon_only
+                    native_still_captured = true
+                } else {
+                    native_reorder_emphasis = cast(s32)props.emphasis
+                    native_reorder_tone = cast(s32)props.tone
+                    native_reorder_bounds = props.bounds
+                    native_reorder_class = props.class_name
+                    native_reorder_icon_only = props.icon_only
+                    native_reorder_captured = true
+                }
+            }
         }
     }
     // An update not yet installed or seen is a small dot on the options.
@@ -578,7 +608,9 @@ NativeControllerCheck :: () -> s32 {
     if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) { return 647 }
     native_icon_mode = true
     // A host chooses compact cards without discarding bytes from its catalog.
+    native_capture_actions = true
     if !NativeLoadCatalog("simple-grid") || !NativeDraw() || NativeLabel("12.3 kB") >= 0 { return 88 }
+    native_capture_actions = false
     if !NativeLoadCatalog("simple-downloading") || !NativeDraw() ||
     NativeLabel("Downloading") < 0 || NativeLabel("12.3 kB") >= 0 { return 89 }
     native_icon_mode = false
@@ -590,8 +622,18 @@ NativeControllerCheck :: () -> s32 {
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 84 }
     hit := TreeHitAt(ui_session, native_handle_bounds.x + 22.0, native_handle_bounds.y + 22.0)
     if hit < 0 || TreeNodeAt(ui_session, hit).key != AppReorderKey("native.breathing") { return 85 }
+    native_capture_actions = true
     if !NativeLoadCatalog("reorder-grid") || !NativeDraw() || NativeLabel("Move app") < 0 ||
     native_other_bounds.y < native_tile_bounds.y + native_tile_bounds.height + 36.0 { return 86 }
+    if !native_still_captured || !native_reorder_captured { return 649 }
+    if native_still_emphasis != native_reorder_emphasis { return 648 }
+    if native_still_tone != native_reorder_tone { return 650 }
+    if native_still_bounds.x != native_reorder_bounds.x ||
+    native_still_bounds.y != native_reorder_bounds.y ||
+    native_still_bounds.width != native_reorder_bounds.width ||
+    native_still_bounds.height != native_reorder_bounds.height { return 651 }
+    if native_still_class != native_reorder_class ||
+    native_still_icon_only != native_reorder_icon_only { return 652 }
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
     // The covers themselves open apps, without separate launch buttons.
     if !NativeLoadCatalog("cover-grid") || !NativeDraw(false, false) ||

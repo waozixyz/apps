@@ -443,6 +443,20 @@ AppsMenu :: (session: Session, scale: float32, language: string) {
     if !menu.open { menu_id[0] = cast(u8)0 }
 }
 
+AppsActionProps :: (key: u64, card: *AppCard, action_class: s32, bounds: Rectangle,
+    language: string, cover_grid: bool) -> ButtonProps {
+    props := ButtonProps.{.key = key, .label = AppsLabel(language, "options"),
+        .icon_shape = APP_ELLIPSIS, .icon_only = true, .class_name = action_class,
+        .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost, .bounds = bounds,
+        .disabled = card.disabled, .fit_content = true}
+    if cover_grid {
+        props.emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft
+        props.circle = true
+    }
+    if card.selected { props.tone = cast(ButtonTone)ButtonToneAccent }
+    return props
+}
+
 // The icons the host offers for this app: its own first, then the rest.
 AppsIconsRead :: (id: [128]u8) {
     VecClear(icon_choices)
@@ -1069,12 +1083,10 @@ AppsFrame :: () -> bool {
                         .wrap = cast(TextWrap)TextWrapNone, .align = cast(TextAlign)TextAlignCenter, .class_name = muted_class})
             }
         }
-        action := ButtonProps.{.key = key + cast(u64)5, .label = AppsLabel(language, "options"), .icon_shape = APP_ELLIPSIS,
-            .icon_only = true, .class_name = action_class, .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost,
-            .bounds = Rectangle.{x + card_width - 40.0 * scale, y + (ifx list_mode then 14.0 * scale else 4.0 * scale), 36.0 * scale, 36.0 * scale},
-            .disabled = card.disabled, .fit_content = true}
-        if cover_grid { action.emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft; action.circle = true }
-        if card.selected { action.tone = cast(ButtonTone)ButtonToneAccent }
+        action := AppsActionProps(key + cast(u64)5, card, action_class,
+            Rectangle.{x + card_width - 40.0 * scale,
+                y + (ifx list_mode then 14.0 * scale else 4.0 * scale),
+                36.0 * scale, 36.0 * scale}, language, cover_grid)
         if !card.on_device {
             action.label = AppsLabel(language, "download")
             action.icon_shape = APP_DOWNLOAD
