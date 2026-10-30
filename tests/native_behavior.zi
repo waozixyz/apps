@@ -641,7 +641,7 @@ NativeControllerCheck :: () -> s32 {
     if native_tile_bounds.width < 200.0 || native_tile_bounds.height < 350.0 ||
     native_other_bounds.y != native_tile_bounds.y || native_other_bounds.x <= native_tile_bounds.x { return 92 }
     if NativeLabel("Open", WidgetKindButton) >= 0 || NativeLabel("Play", WidgetKindButton) >= 0 { return 93 }
-    if NativeLabel("Breathing", WidgetKindText) >= 0 || NativeLabel("Habits", WidgetKindText) >= 0 { return 96 }
+    if NativeLabel("Breathing", WidgetKindText) < 0 || NativeLabel("Clock", WidgetKindText) < 0 { return 96 }
     cover_opened := native_queued
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||

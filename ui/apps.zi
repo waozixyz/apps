@@ -1039,9 +1039,8 @@ AppsFrame :: () -> bool {
                         .bounds = Rectangle.{x + gap * 2.0, y + gap * 2.0, logo_width, logo_width * 0.36}})
             }
             title_y := ifx cover_grid then y + picture_height + 10.0 * scale else y + 188.0 * scale
-            if !cover_grid {
-                AppsText(session, key + cast(u64)3, Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale, 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
-            }
+            AppsText(session, key + cast(u64)3, Rectangle.{x + 4.0 * scale, title_y, card_width - 8.0 * scale,
+                    ifx cover_grid then 24.0 * scale else 32.0 * scale}, TextUntilNul(card.title[:]), font + 2)
             if cover_grid && !card.on_device && !hide_sizes {
                 size_text: [32]u8
                 if AppsSize(card.bytes, size_text[:]) {
