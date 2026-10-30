@@ -74,6 +74,38 @@ A portable node/2 app may request `kryon/frame_snapshot` and call
 to Kryon's widget-host boundary, which returns only the snapshot published for
 the active frame session; inactive and foreign-session calls fail closed.
 
+Portable node/2 and app/1 apps can use `kryon/Media`'s `MediaAudio` for packed
+asset effects and looping music. Apps recognizes the actual
+`media_audio.MediaAudioHost` capability, including its package-qualified name,
+through Kryon's existing widget dispatcher. Every operation requires the
+platform's existing `AppSoundHost` audio permission for that verified node;
+widget access or permission for legacy Media/video services grants no asset
+audio. Denied calls return `Denied` with no capability bits. Legacy Media
+services retain their existing dispatch and permission policy.
+
+The native consumer installs its provider once on its owning thread with
+`MediaAudioUseRaylib()` from `kryon/media_audio_raylib`. Without a provider,
+authorized calls return `Unsupported`; device/browser results retain Kryon's
+`Unavailable`/`Suspended` semantics. Apps supplies each actual `HostedApp.audio`
+owner and `AppHostAudioRead` to `WidgetHostAudioCall`, using the active node's
+verified bundle and explicit catalog resource links. Inherited code-library
+assets alone grant no audio reads. Paths cannot name host files or network
+URLs; Kryon bounds each asset to 8 MiB and each owner to 16 independent voices.
+The packed borrow lasts until `AppHostCollect`; providers own decoded/copied
+bytes before later reuse. Nodes sharing an outer Session keep separate voices
+and readers. No PCM interface is exposed.
+
+`WidgetHostEnd` only ends dispatch; music survives frames. Node retirement
+revokes audio immediately, before renderer/preparation storage is collected.
+`HostedAppClose` and successful `HostedAppRestart` also release voices; failed
+restart preserves the working instance. Account replacement uses the existing
+save/`AppHostStop`/`AppHostStart` lifecycle. If a native consumer changes an
+account, resource policy, or audio authority in place, it must first call
+`AppHostAudioReset(host)` on the owning thread, while owner storage is still
+alive. That hook resets all live instances/controllers and revokes a decoder
+already in flight; Apps cannot infer changes hidden inside platform context.
+Each run also revokes voices when `AppSoundHost` permission is withdrawn.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its
@@ -83,3 +115,12 @@ fail validation; never substitute another screen silently.
 `scripts/build-ui.py` builds the standalone package controller. The native
 fixture exercises real card/menu/dialog behavior; the external-consumer test
 verifies public package imports and launcher search/grouping.
+
+## Unreleased
+
+- Pin published Kryon asset audio and host it through Apps' existing audio
+  permission, verified resources and per-instance lifetime.
+- `RAYLIB_A=/path/to/libraylib.a python3 tests/audio_host_test.py /path/to/libziran.a`
+  exercises real hosted guests with dummy/no-provider and private null-device
+  Raylib hosts. Run `tests/native_fixture.py`, `tests/consumer_test.py` and
+  `tests/tree_test.sh` with the same resolved compiler/runtime graph too.

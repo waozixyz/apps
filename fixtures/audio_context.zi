@@ -1,0 +1,17 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+#import, file "audio_commands.zi";
+
+#program_export
+Main :: () -> s32 {
+    if AppMode() == APP_IDENTIFY {
+        AppIdentity("audio")
+        AppDescribe("Audio fixture", "")
+        return APP_PROTOCOL
+    }
+    if AppMode() == APP_FRAME {
+        bounds := AppBounds()
+        if !AudioFixture(AppSession(), cast(s32)bounds.width - 100, cast(MediaAudioCode)(cast(s32)bounds.height - 100)) { return -1 }
+    }
+    return 0
+}

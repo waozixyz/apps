@@ -1,0 +1,286 @@
+// Reuse the native suite's headless drawing/storage fixtures and real loader.
+#import, file "native_behavior.zi";
+#import "std/bundle_host"
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/file"
+#import "std/text_buffer"
+#import "std/vec"
+#import "host"
+#import "protocol"
+#import "tree"
+#import "node_host"
+Node :: #import "node_types";
+#import "kryon/app_context_host"
+#import "kryon/app_files"
+#import "kryon/app_protocol"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/session"
+#import "kryon/Frame"
+#import "kryon/tree"
+#import "kryon/geometry"
+#import "kryon/drawing_props"
+#import "kryon/widget_host"
+#import "kryon/widget_codec"
+#import "kryon/bundle_names"
+#import "kryon/media_audio"
+#import "kryon/media_audio_host"
+#if #defined(APPS_AUDIO_NATIVE_TEST) {
+    #import "kryon/media_audio_raylib"
+}
+using HostValueKind;
+using FrameStatus;
+
+audio_permission: bool = true;
+legacy_media_permission: bool;
+audio_resources: s32;
+audio_loads: s32;
+audio_revoke: *AppHost;
+audio_no_provider: MediaAudioProvider;
+audio_libc :: #system_library "libc";
+AudioTestBegin :: () #foreign audio_libc "PreparationTestBegin";
+
+AudioAllows :: (context: *void, node: *AppNode, function: string) -> bool {
+    return (function == "AppSoundHost" && audio_permission) || function == "MediaStateHost"
+}
+AudioServices :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if legacy_media_permission && TextFromCString(function) == "MediaStateHost" && count == 0 {
+        result.* = HostScalar("s32", 42)
+        return 1
+    }
+    return 0
+}
+AudioWidgets :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    // Deliberately permissive widget callback: it cannot grant audio.
+    return WidgetHostCall(context, module, function, arguments, count, result)
+}
+AudioDummy :: (voice: *MediaAudioVoice, command: MediaAudioCommand, bytes: string) -> MediaAudioResult {
+    if command.operation == .Capabilities { return .{.code = .Ok, .capabilities = cast(u32)7} }
+    if command.operation == .Load {
+        if bytes.count < 4 || bytes[:4] != "RIFF" { return .{.code = .Failed} }
+        voice.resource = cast(*void)New(s32)
+        voice.state = .Ready
+        voice.music = command.music
+        voice.gain = command.gain
+        audio_resources += 1
+        audio_loads += 1
+        if audio_revoke != null { AppHostAudioReset(audio_revoke) }
+    }
+    if command.operation == .Unload && voice.resource != null {
+        free(cast(*s32)voice.resource)
+        voice.resource = null
+        voice.state = .Unloaded
+        audio_resources -= 1
+    }
+    if command.operation == .Play { voice.state = .Playing }
+    if command.operation == .Stop { voice.state = .Stopped }
+    if command.operation == .Gain { voice.gain = command.gain }
+    return .{.code = .Ok, .state = voice.state, .capabilities = cast(u32)7}
+}
+AudioInstall :: () {
+    #if #defined(APPS_AUDIO_NATIVE_TEST) {
+        MediaAudioUseRaylib()
+    } else {
+        MediaAudioUseProvider(AudioDummy)
+    }
+}
+AudioDraw :: (host: *AppHost, scenario: s32, code: MediaAudioCode) -> bool {
+    runtime := AppHostActiveRuntime(host)
+    runtime.app.session = ui_session
+    runtime.app.bounds = Rectangle.{0.0, 0.0, cast(float32)(100 + scenario), cast(float32)(100 + cast(s32)code)}
+    runtime.legacy.frame.session = ui_session
+    runtime.legacy.frame.width = 100 + scenario
+    runtime.legacy.frame.height = 100 + cast(s32)code
+    BeginFrame(ui_session, cast(u64)1, runtime.app.bounds)
+    WidgetHostBegin(ui_session, MediaAudioAssetValid)
+    ran := AppHostRun(host, APP_FRAME)
+    WidgetHostEnd()
+    ended := EndFrame(ui_session) == cast(FrameStatus)FrameOk
+    return ran && ended
+}
+AudioOpen :: (host: *AppHost, kind: string, protocol: s32, id: string, expected: string) -> bool {
+    path: Vec(u8); hash: Vec(u8)
+    BuilderPrint(*path, "APPS_AUDIO_%_BUNDLE", kind)
+    BuilderPrint(*hash, "APPS_AUDIO_%_SHA256", kind)
+    key := BuilderFinish(path); digest_key := BuilderFinish(hash)
+    bytes, found := ReadEntireFile(FixtureEnvironment(key))
+    AppFileFree(key)
+    digest := FixtureEnvironment(digest_key)
+    AppFileFree(digest_key)
+    if !found { return false }
+    // BundleOpen owns its payload; never retain this read's temporary bytes.
+    defer { AppFileFree(bytes) }
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = AudioAllows,
+        .call = AudioServices, .widgets = AudioWidgets}
+    return AppHostStart(host, bytes, "fixture.audio", id, expected, digest, "account-a", platform,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256"), "en", protocol)
+}
+AudioAccept :: (context: *void) -> bool {
+    node := cast(*NodeContext)context
+    node.identifying = true
+    answer: s64
+    accepted := HostedAppRun(node.app, *answer) && answer == Node.MODULE_NODE_APP
+    node.identifying = false
+    return accepted
+}
+AudioReject :: (context: *void) -> bool { return false }
+
+AudioInheritedCheck :: () -> bool {
+    library_bytes, library_found := ReadEntireFile(FixtureEnvironment("APPS_AUDIO_LIBRARY_BUNDLE"))
+    thin_bytes, thin_found := ReadEntireFile(FixtureEnvironment("APPS_AUDIO_THIN_BUNDLE"))
+    if !library_found || !thin_found { return false }
+    defer { AppFileFree(library_bytes); AppFileFree(thin_bytes) }
+    library: HostedApp
+    if !HostedAppOpen(*library, library_bytes) { return false }
+    defer { HostedAppClose(*library) }
+    libraries: [1]*void = .[library.bundle]
+    descriptor := cast(*TextDescriptor)(*thin_bytes)
+    runtime: AppRuntime
+    runtime.app.app.bundle = OpenBundleBytesWithLibraries(descriptor.data, cast(u64)thin_bytes.count, *libraries[0], cast(u64)1)
+    defer { HostedAppClose(*runtime.app.app) }
+    node: AppNode
+    runtime.node = *node
+    // A real thin program with zero own assets must finish the ownership
+    // scan and cannot turn inherited library bytes into an audio grant.
+    return runtime.app.app.bundle != null && BundleOwnAssets(runtime.app.app.bundle) == cast(u64)0 &&
+        HostedAppAsset(*runtime.app.app, "assets/audio/tone.wav").found &&
+        !AppHostResource(*runtime, *node.entry, "assets/audio/tone.wav", 0, true).found
+}
+
+// Use the module the real source bundle actually imports, including package
+// identity. Exercise inactive/foreign/unknown/malformed calls without a VM trap.
+AudioBoundary :: (runtime: *AppRuntime) -> s32 {
+    node := *runtime.legacy
+    module := ""
+    for index: cast(u64)0..BundleCapabilities(node.app.bundle) - 1 {
+        if TextFromCString(BundleCapabilityFunctionName(node.app.bundle, index)) == "MediaAudioHost" {
+            module = TextFromCString(BundleCapabilityModuleName(node.app.bundle, index))
+        }
+    }
+    if module == "" || !ModuleName(module, "media_audio") ||
+    !NodeAllows(cast(*void)node, module, "MediaAudioHost") ||
+    NodeAllows(cast(*void)node, "other_media_audio", "MediaAudioHost") ||
+    !WidgetHostSupports(module, "MediaAudioHost") { return 1 }
+    fields: [6]HostField
+    fields[0] = HostField.{.name = HostTextData("operation"), .value = HostScalar("MediaAudioOperation", 0)}
+    fields[1] = HostField.{.name = HostTextData("voice"), .value = HostScalar("s32", 1)}
+    fields[2] = HostField.{.name = HostTextData("asset"), .value = AppHostText("")}
+    fields[3] = HostField.{.name = HostTextData("music"), .value = HostScalar("bool", 0)}
+    fields[4] = HostField.{.name = HostTextData("looping"), .value = HostScalar("bool", 0)}
+    fields[5] = HostField.{.name = HostTextData("gain"), .value = HostValue.{.kind = cast(s32)HostReal,
+        .type_name = HostTextData("float32"), .real = 0.0}}
+    args: [2]HostValue
+    args[0] = WidgetEncodeSession(ui_session, *session_codec)
+    args[1] = HostRecordValue("MediaAudioCommand", fields[:])
+    result: HostValue
+    WidgetHostBegin(ui_session, MediaAudioAssetValid)
+    // A valid outer frame alone is insufficient; the actual node must run.
+    if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 2 }
+    if !AppTreeBegin(*runtime.host.tree, runtime.host.tree.active) { return 3 }
+    runtime.busy = true
+    foreign := SessionOpen()
+    args[0] = WidgetEncodeSession(foreign, *session_codec)
+    if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 4 }
+    args[0] = WidgetEncodeSession(ui_session, *session_codec)
+    if NodeCall(cast(*void)node, HostTextData("other_media_audio"), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 5 }
+    args[1].kind = cast(s32)HostPointer
+    if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 6 }
+    args[1] = HostRecordValue("MediaAudioCommand", fields[:])
+    WidgetHostEnd()
+    if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 7 }
+    runtime.busy = false
+    unused AppTreeEnd(*runtime.host.tree, runtime.host.tree.active)
+    unused SessionClose(foreign)
+    return 0
+}
+
+#program_export
+AudioCheck :: () -> s32 {
+    AudioTestBegin()
+    if !AudioInheritedCheck() { return 700 }
+    ui_session = SessionOpen()
+    first: AppHost
+    if !AudioOpen(*first, "NODE", APPS_NODE_PROTOCOL, "fixture.audio", "audio") { return 701 }
+    // Missing provider is truthful. No host API/platform name claims success.
+    MediaAudioUseProvider(audio_no_provider)
+    if !AudioDraw(*first, 0, .Unsupported) { return 702 }
+    AppHostAudioReset(*first)
+    AudioInstall()
+    // widgets-only, media/video-only, and fully denied hosts cannot acquire
+    // audio. Legacy Media continues through the original service policy.
+    audio_permission = false
+    if !AudioDraw(*first, 0, .Denied) || !AudioDraw(*first, 1, .Denied) { return 703 }
+    legacy_media_permission = true
+    if !AudioDraw(*first, 0, .Denied) || !AudioDraw(*first, 7, .Ok) { return 704 }
+    legacy_media_permission = false
+    empty_platform: AppPlatform
+    first.platform.widgets = empty_platform.widgets
+    if !AudioDraw(*first, 0, .Denied) { return 705 }
+    first.platform.widgets = AudioWidgets
+    audio_permission = true
+    if !AudioDraw(*first, 0, .Ok) || !AudioDraw(*first, 1, .Ok) ||
+    !AudioDraw(*first, 2, .Ok) || !AudioDraw(*first, 3, .Ok) { return 706 }
+    runtime := AppHostActiveRuntime(*first)
+    boundary := AudioBoundary(runtime)
+    if boundary != 0 { return 710 + boundary }
+    audio_permission = false
+    if !AudioDraw(*first, 0, .Denied) || AppContextRuntime(*runtime.app).audio.voices[0].resource != null { return 718 }
+    audio_permission = true
+    if !AudioDraw(*first, 2, .Missing) || !AudioDraw(*first, 1, .Ok) { return 719 }
+    // A real nested child shares the outer session, never its voices/reader.
+    nested: AppHost
+    if !AudioOpen(*nested, "ROOT", APPS_COLLECTION_PROTOCOL, "fixture.audio.root", "collection") ||
+    !Command(*nested, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.audio.child\"}") { return 720 }
+    if !AudioDraw(*nested, 1, .Ok) || !AudioDraw(*nested, 4, .Ok) { return 721 }
+    child := AppHostActiveRuntime(*nested)
+    if AppContextRuntime(*runtime.app).audio.voices[0].resource == AppContextRuntime(*child.app).audio.voices[0].resource ||
+    !AudioDraw(*first, 2, .Ok) { return 722 }
+    // Reset before an in-place resource-policy update, including old grants.
+    AppHostAudioReset(*nested)
+    child.node.entry.resource_count = 0
+    if AppContextRuntime(*child.app).audio.voices[0].resource != null ||
+    !AudioDraw(*nested, 2, .Missing) || !AudioDraw(*nested, 4, .Missing) ||
+    !AudioDraw(*first, 2, .Ok) { return 723 }
+    if !AudioDraw(*nested, 1, .Ok) { return 724 }
+    // Retirement revokes immediately, before AppHostCollect releases bytes.
+    if AppHostBack(*nested) != 1 || AppContextRuntime(*child.app).audio.voices[0].resource != null { return 725 }
+    AppHostCollect(*nested)
+    if !AppHostStop(*nested) || !AudioDraw(*first, 2, .Ok) { return 726 }
+    if HostedAppRestart(runtime.legacy.app, NodeAllows, NodeCall, cast(*void)(*runtime.legacy), AudioReject) {
+        // Failed restart must retain the playing instance/voices.
+        return 727
+    }
+    if !AudioDraw(*first, 2, .Ok) { return 728 }
+    if !HostedAppRestart(runtime.legacy.app, NodeAllows, NodeCall, cast(*void)(*runtime.legacy), AudioAccept) ||
+    AppContextRuntime(*runtime.app).audio.voices[0].resource != null || !AudioDraw(*first, 2, .Missing) { return 729 }
+    // Simulate a yielding decoder whose verified host revokes the context.
+    AppHostAudioReset(*first)
+    MediaAudioUseProvider(AudioDummy)
+    audio_revoke = *first
+    if !AudioDraw(*first, 5, .Denied) || audio_resources != 0 { return 730 }
+    audio_revoke = null
+    AppHostAudioReset(*first)
+    AudioInstall()
+    if !AudioDraw(*first, 1, .Ok) { return 731 }
+    // The actual account switch hook saves/closes the whole tree first.
+    if !AppHostStop(*first) || audio_resources != 0 ||
+    !AudioOpen(*first, "NODE", APPS_NODE_PROTOCOL, "fixture.audio", "audio") ||
+    !AudioDraw(*first, 2, .Missing) { return 732 }
+    AppHostAudioReset(*first)
+    unused CopyCString("account-b", first.tree.account[:])
+    if !AudioDraw(*first, 2, .Missing) || !AppHostStop(*first) { return 733 }
+    // app/1 must not bypass the same gate in Kryon's default context dispatch.
+    context: AppHost
+    if !AudioOpen(*context, "CONTEXT", APPS_CONTEXT_PROTOCOL, "fixture.context", "audio") { return 734 }
+    audio_permission = false
+    if !AudioDraw(*context, 0, .Denied) { return 735 }
+    audio_permission = true
+    if !AudioDraw(*context, 1, .Ok) || !AudioDraw(*context, 2, .Ok) || !AppHostStop(*context) { return 736 }
+    if audio_resources != 0 { return 737 }
+    unused SessionClose(ui_session)
+    MediaAudioUseProvider(audio_no_provider)
+    return 0
+}

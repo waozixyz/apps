@@ -17,6 +17,9 @@
 #import "kryon/tree"
 #import "kryon/widget_host"
 #import "kryon/widget_kind"
+#import "kryon/bundle_names"
+#import "kryon/media_audio_host"
+#import "kryon/media_audio"
 Rules :: #import "protocol";
 Node :: #import "node_types";
 #import, file "node_host.zi";
@@ -409,9 +412,71 @@ AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostV
     count: s32, result: *HostValue) -> s32 {
     runtime := cast(*AppRuntime)context
     if runtime.retired { return 0 }
+    if ModuleName(TextFromCString(module), "media_audio") && TextFromCString(function) == "MediaAudioHost" {
+        return AppHostAudioCall(runtime, arguments, count, result)
+    }
     platform := runtime.host.platform
     if platform.widgets == null { return 0 }
     return platform.widgets(platform.context, runtime.node, module, function, arguments, count, result)
+}
+
+// Audio is optional, like AppSoundHost. Importing it grants no authority.
+// app/1's default dispatcher owns packed audio itself; intercept that exact
+// function here so both portable protocols use Apps' resource/permission gate.
+AppHostContextCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
+    count: s32, result: *HostValue) -> s32 {
+    app := cast(*AppContext)context
+    if ModuleName(TextFromCString(module), "media_audio") && TextFromCString(function) == "MediaAudioHost" {
+        if app.mode != APP_FRAME || !app.identified || !app.described { return 0 }
+        return AppHostWidgets(app.context, module, function, arguments, count, result)
+    }
+    return AppContextCall(context, module, function, arguments, count, result)
+}
+
+AppHostAudioActive :: (runtime: *AppRuntime) -> bool {
+    return runtime != null && !runtime.retired && runtime.node != null && runtime.busy &&
+    AppTreeNode(*runtime.host.tree, runtime.host.tree.running) == runtime.node
+}
+
+AppHostAudioRead :: (context: *void, path: string) -> string {
+    runtime := cast(*AppRuntime)context
+    if !AppHostAudioActive(runtime) || !AppHostAllows(context, "AppSoundHost") ||
+    !MediaAudioAssetValid(path) { return "" }
+    // Same verified bundle/dependency links as images, without downloaded art
+    // or host filenames. Packed bytes remain immutable until AppHostCollect;
+    // Kryon's provider copies/owns them before this borrow can be reused.
+    asset := AppHostResource(runtime, *runtime.node.entry, path, 0, true)
+    // Kryon bounds this borrowed view to 8 MiB before decoding/copying it.
+    return ifx asset.found then asset.data else ""
+}
+
+AppHostAudioCall :: (runtime: *AppRuntime, arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if !AppHostAudioActive(runtime) { return 0 }
+    // Reuse Kryon's typed arguments and active/foreign-session validation even
+    // for a denied caller. Never advertise a provider before authorization.
+    if WidgetHostAudioCall(null, WidgetHostAudioReadNone, null, arguments, count, result) != 1 { return 0 }
+    if !AppHostAllows(cast(*void)runtime, "AppSoundHost") {
+        AppContextAudioReset(*runtime.app)
+        zero: HostValue
+        HostFieldValue(result, 0, "code", *zero).* = HostScalar("MediaAudioCode", cast(s64)MediaAudioCode.Denied)
+        HostFieldValue(result, 3, "message", *zero).* = AppHostText("This app has no audio permission")
+        return 1
+    }
+    return WidgetHostAudioCall(*AppContextRuntime(*runtime.app).audio, AppHostAudioRead,
+        cast(*void)runtime, arguments, count, result)
+}
+
+// Call before the native provider changes account/resource/audio authority in
+// place. Normal account replacement uses Stop/Start; Close revokes immediately
+// even while retired packed bytes are retained for the renderer/preparer.
+AppHostAudioReset :: (host: *AppHost) {
+    for index: cast(s64)0..host.tree.nodes.count - 1 {
+        node := host.tree.nodes[index].node
+        if node == null || node.runtime == null { continue }
+        runtime := cast(*AppRuntime)node.runtime
+        AppContextAudioReset(*runtime.app)
+        if runtime.frontend != null { AppContextAudioReset(*runtime.frontend.app) }
+    }
 }
 
 AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: string,
@@ -474,10 +539,10 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
         } else {
             ready = NodeOpen(*runtime.legacy, bytes, TextUntilNul(node.identity.id[:]), expected_id)
         }
-    } else if preparation != null {
-        ready = AppContextRestart(*runtime.app)
     } else {
-        ready = AppContextOpen(*runtime.app, bytes)
+        ready = (preparation != null || HostedAppOpen(opened, bytes)) &&
+            HostedAppStart(opened, AppContextAllows, AppHostContextCall, cast(*void)(*runtime.app)) &&
+            AppContextIdentify(cast(*void)(*runtime.app))
     }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
@@ -1111,6 +1176,8 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     }
     if runtime.busy || !AppTreeBegin(*host.tree, host.tree.active) { return false }
     runtime.busy = true
+    if !AppHostAllows(cast(*void)runtime, "AppSoundHost") { AppContextAudioReset(*runtime.app) }
+    if runtime.protocol == APPS_NODE_PROTOCOL { MediaAudioOwnerTick(*AppContextRuntime(*runtime.app).audio) }
     handle := host.tree.active
     frame_session := runtime.app.session
     if runtime.protocol == APPS_NODE_PROTOCOL { frame_session = runtime.legacy.frame.session }
@@ -1211,6 +1278,8 @@ AppHostSave :: (context: *void, node: *AppNode) -> bool {
 AppHostClose :: (context: *void, node: *AppNode) {
     runtime := cast(*AppRuntime)node.runtime
     if runtime == null { return }
+    AppContextAudioReset(*runtime.app)
+    if runtime.frontend != null { AppContextAudioReset(*runtime.frontend.app) }
     host := cast(*AppHost)context
     runtime.retired = true
     runtime.byte_charge = node.bytes
@@ -1534,7 +1603,8 @@ AppHostDependenciesOpen :: (runtime: *AppRuntime, parent: *AppNode, entry: *AppE
     return true
 }
 
-AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth: s32) -> HostedAsset {
+AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth: s32,
+    own_only: bool = false) -> HostedAsset {
     if depth > 32 { return HostedAsset.{} }
     app: *HostedApp
     if entry == *runtime.node.entry { app = AppContextRuntime(*runtime.app) }
@@ -1544,7 +1614,17 @@ AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth:
         }
     }
     if app == null { return HostedAsset.{} }
-    resource := HostedAppAsset(app, path)
+    // Audio must not turn a code library's inherited table into a resource
+    // grant. Preserve the indexed image/legacy reader's existing behavior.
+    own := !own_only || BundleOwnAssets(app.bundle) == BundleAssets(app.bundle)
+    if !own {
+        index: u64 = 0
+        while index < BundleOwnAssets(app.bundle) {
+            own = own || TextFromCString(BundleAssetPath(app.bundle, index)) == path
+            index += 1
+        }
+    }
+    resource := ifx own then HostedAppAsset(app, path) else HostedAsset.{}
     if resource.found {
         if entry != *runtime.node.entry && resource.data.count > 16777216 { return HostedAsset.{} }
         return resource
@@ -1563,7 +1643,7 @@ AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth:
         BuilderPrint(*target, "%", TextUntilNul(link.source[:]))
         BuilderPrint(*target, "%", path[prefix.count:])
         resolved := BuilderFinish(target)
-        result := AppHostResource(runtime, dependency, resolved, depth + 1)
+        result := AppHostResource(runtime, dependency, resolved, depth + 1, own_only)
         AppFileFree(resolved)
         return result
     }

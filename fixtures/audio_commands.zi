@@ -1,0 +1,50 @@
+#import "kryon/session"
+using Audio :: #import "kryon/Media";
+
+AudioFixture :: (session: Session, scenario: s32, expected: MediaAudioCode) -> bool {
+    command := MediaAudioCommand.{.voice = 1}
+    if scenario == 0 { command.operation = .Capabilities }
+    if scenario == 1 || scenario == 5 {
+        command.operation = .Load
+        command.asset = "assets/audio/tone.wav"
+        command.music = true
+        command.gain = .4
+        if scenario == 5 { command.voice = 2 }
+    }
+    if scenario == 2 { command.operation = .Status }
+    if scenario == 4 {
+        command.operation = .Load
+        command.voice = 2
+        command.asset = "assets/audio/shared.wav"
+        command.gain = .3
+    }
+    if scenario == 3 {
+        command.operation = .Load
+        command.voice = 3
+        command.gain = .3
+        command.asset = "assets/other/tone.wav"
+        if MediaAudio(session, command).code != .Missing { return false }
+        command.asset = "assets/audio/../tone.wav"
+        if MediaAudio(session, command).code != .Denied { return false }
+        command.asset = "https://waozi.xyz/tone.wav"
+        if MediaAudio(session, command).code != .Denied { return false }
+        command.asset = "assets/audio/large.wav"
+        if MediaAudio(session, command).code != .Limit { return false }
+        command.asset = "assets/audio/missing.wav"
+        return MediaAudio(session, command).code == .Missing
+    }
+    #if !#defined(APPS_AUDIO_CONTEXT_FIXTURE) {
+        if scenario == 7 { return MediaState() == 42 }
+    }
+    answer := MediaAudio(session, command)
+    if answer.code != expected { return false }
+    if scenario == 0 {
+        return answer.capabilities == (ifx expected == .Ok then cast(u32)7 else cast(u32)0)
+    }
+    if expected != .Ok { return true }
+    if scenario == 1 {
+        answer = MediaAudio(session, MediaAudioCommand.{.operation = .Play, .voice = 1, .looping = true})
+        return answer.code == .Ok && answer.state == .Playing
+    }
+    return scenario != 2 || answer.state == .Playing
+}
