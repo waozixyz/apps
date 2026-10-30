@@ -35,9 +35,11 @@ def child(identifier, path, protocol, expected, asset='assets/child.zx'):
                 protocol=protocol, expected_id=expected, version='1', sha256=digest(path))
 
 
-def bundle(source, path, assets=None, library=None):
+def bundle(source, path, assets=None, library=None, hosted_ui=False):
     arguments = [ZIRAN, 'bundle', '--project', *LOCK_FLAGS, '--root', str(ROOT / 'fixtures'),
                  '--entry', source + ':Main', '-o', str(path)]
+    if hosted_ui:
+        arguments += ['--define', 'KRYON_HOSTED_UI']
     if assets:
         arguments += ['--asset-dir', 'assets=' + str(assets)]
     if library:
@@ -86,7 +88,7 @@ def main():
     with wave.open(str(node_assets / 'sound.wav'), 'wb') as sound:
         sound.setnchannels(1); sound.setsampwidth(2); sound.setframerate(8000)
         sound.writeframes(bytes(64))
-    bundle('node', node, node_assets.parent)
+    bundle('node', node, node_assets.parent, hosted_ui=True)
     entries = [child('fixture.counter', leaf, 'app/1', 'counter'),
                child('fixture.node', node, 'node/2', 'node', 'assets/node.zx')]
     payloads = {'assets/child.zx': leaf, 'assets/node.zx': node}

@@ -1,5 +1,7 @@
 #import "node_types"
 #import "kryon/text_input_props"
+#import "kryon/input_protocol"
+#import "kryon/frame_snapshot"
 
 host_api :: #system_library "host_api";
 ReadAppHost :: () -> AppMessage #foreign host_api;
@@ -33,6 +35,12 @@ Main :: () -> s32 {
         if AppSupportsHost("echo") != (frame.width == 1) { return -7 }
         echo := ifx frame.width == 1 then "{\"echo\":\"ping\"}" else "{\"status\":\"unavailable\"}"
         if AppServiceHost("echo", "ping") != echo { return -8 }
+        input := CaptureFrameInput(frame.session)
+        if frame.width == 1 {
+            if !input.available || !input.focused || input.sequence != cast(u64)1 ||
+            input.elapsed_ms != 239 || input.pointer.x != 9.0 || input.pointer.y != 12.0 ||
+            input.keys[KeyLeft] != cast(u8)(FrameKeyHeld | FrameKeyPressed) { return -10 }
+        } else if input.available { return -11 }
         // Typing reaches the focused field as it reaches app/1 apps.
         typed := AppFieldInputHost()
         expected := ifx frame.width == 1 then "hi" else ""

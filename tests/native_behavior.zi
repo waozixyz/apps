@@ -19,6 +19,8 @@
 #import "kryon/widget_host"
 #import "kryon/widget_kind"
 #import "kryon/tree_input"
+#import "kryon/input_protocol"
+#import "kryon/frame_snapshot"
 #import "kryon/widget_codec"
 #import "kryon/button_props"
 #import "kryon/scroll_widget"
@@ -75,6 +77,8 @@ host_version_calls: s32;
 open_decision: s32 = APP_OPEN_DECLARED;
 sound_enabled: bool = true;
 sound_calls: s32;
+host_frame_input: FrameInputSnapshot;
+session_codec: WidgetSessionCodec;
 host_open_calls: s32;
 host_open_chain: s64;
 host_open_leaf: [65]u8;
@@ -187,9 +191,11 @@ Draw :: (host: *AppHost, width: s32, height: s32, require_preview: bool = true,
     // them in separate tree scopes.
     unused TreeSubmitCurrent(ui_session, cast(u64)2, 0, bounds)
     menu_triggers = 0; invalid_trigger = 0
+    input_open := FrameInputBegin(ui_session, host_frame_input)
     WidgetHostBegin(ui_session, AllowImage, ResolveImage)
     ran := AppHostRun(host, APP_FRAME)
     WidgetHostEnd()
+    if input_open { FrameInputEnd(ui_session) }
     image: bool
     images: s32 = 0
     for index: cast(s32)0..PendingPaintCount(ui_session) - 1 {
@@ -1772,6 +1778,48 @@ DependenciesCheck :: () -> s32 {
     return 0
 }
 
+FrameInputBoundaryCheck :: (node: *NodeContext) -> s32 {
+    package_module := ""
+    for index: cast(u64)0..BundleCapabilities(node.app.bundle) - 1 {
+        if TextFromCString(BundleCapabilityFunctionName(node.app.bundle, index)) == "CaptureFrameInputHost" {
+            package_module = TextFromCString(BundleCapabilityModuleName(node.app.bundle, index))
+        }
+    }
+    if package_module == "" || !NodeAllows(cast(*void)node, package_module, "CaptureFrameInputHost") ||
+    !NodeAllows(cast(*void)node, "frame_snapshot", "CaptureFrameInputHost") ||
+    NodeAllows(cast(*void)node, "kryon_other", "CaptureFrameInputHost") ||
+    NodeAllows(cast(*void)node, "kryon_tree_input", "KeyboardTake") { return 80 }
+
+    arguments: [1]HostValue
+    result: HostValue
+    arguments[0] = WidgetEncodeSession(ui_session, *session_codec)
+    node.message.action = APP_FRAME
+    if NodeCall(cast(*void)node, HostTextData(package_module),
+        HostTextData("CaptureFrameInputHost"), *arguments[0], 1, *result) != 0 { return 81 }
+
+    foreign := SessionOpen()
+    sample: FrameInputSnapshot
+    sample.available = true
+    sample.focused = true
+    sample.sequence = cast(u64)1
+    sample.elapsed_ms = 239
+    sample.pointer = PointerFrame.{9.0, 12.0, true, true, false}
+    sample.keys[KeyLeft] = cast(u8)(FrameKeyHeld | FrameKeyPressed)
+    if !FrameInputBegin(ui_session, sample) { return 82 }
+    WidgetHostBegin(ui_session, AllowImage, ResolveImage)
+    arguments[0] = WidgetEncodeSession(foreign, *session_codec)
+    foreign_rejected := NodeCall(cast(*void)node, HostTextData("frame_snapshot"),
+        HostTextData("CaptureFrameInputHost"), *arguments[0], 1, *result) != 0
+    arguments[0] = WidgetEncodeSession(ui_session, *session_codec)
+    active_accepted := NodeCall(cast(*void)node, HostTextData(package_module),
+        HostTextData("CaptureFrameInputHost"), *arguments[0], 1, *result) == 1
+    WidgetHostEnd()
+    FrameInputEnd(ui_session)
+    unused SessionClose(foreign)
+    if foreign_rejected || !active_accepted { return 83 }
+    return 0
+}
+
 #program_export
 Check :: () -> s32 {
     shared_records_check := SharedRecordsCheck()
@@ -1931,13 +1979,22 @@ Check :: () -> s32 {
     runtime.legacy.frame.width = 1
     runtime.app.key = 42
     runtime.app.input = .{.text = "hi", .backspace = true}
+    host_frame_input.available = true
+    host_frame_input.focused = true
+    host_frame_input.sequence = cast(u64)1
+    host_frame_input.elapsed_ms = 239
+    host_frame_input.pointer = PointerFrame.{9.0, 12.0, true, true, false}
+    host_frame_input.keys[KeyLeft] = cast(u8)(FrameKeyHeld | FrameKeyPressed)
     if !Draw(*host, 1, 600, false) || node_stored != "node saved" ||
     runtime.legacy.message.name != "node" || runtime.legacy.message.account != "" { return 19 }
     if sound_calls != 1 { return 73 }
     sound_enabled = false
     runtime.legacy.frame.width = 2
     runtime.app.input = .{}
+    host_frame_input = FrameInputSnapshot.{}
     if !Draw(*host, 2, 600, false) || sound_calls != 1 { return 20 }
+    frame_input := FrameInputBoundaryCheck(*runtime.legacy)
+    if frame_input != 0 { return frame_input }
     active = host.tree.active
     runtime.legacy.message.screen = 42
     if AppHostBack(*host) != 1 || !AppHandleEqual(host.tree.active, active) { return 21 }

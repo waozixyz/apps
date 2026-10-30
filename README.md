@@ -69,6 +69,11 @@ authority, applies its ordinary storage policy and bounds replies to 64 KiB.
 This grants no writes, no undeclared records and no access through a mere
 dependency declaration. Code libraries still keep independent mutable state.
 
+A portable node/2 app may request `kryon/frame_snapshot` and call
+`CaptureFrameInput` during its frame. Apps forwards that exact hosted capability
+to Kryon's widget-host boundary, which returns only the snapshot published for
+the active frame session; inactive and foreign-session calls fail closed.
+
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
 Build the controller with the host's compiler and Kryon graph, review its
