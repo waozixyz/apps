@@ -27,8 +27,8 @@ def main():
     run('git', 'check-ignore', 'work/audio-host-adoption/tone.wav')
     WORK.mkdir(parents=True, exist_ok=True)
     native.WORK = WORK
-    controller = ROOT / 'build/ui/apps.zx'
-    run(sys.executable, ROOT / 'scripts/build-ui.py')
+    controller = WORK / 'ui/apps.zx'
+    run(sys.executable, ROOT / 'scripts/build-ui.py', '--output', controller.parent)
     os.environ['APPS_FIXTURE_HARNESS_SHA256'] = native.digest(controller)
     paths = {}
     for kind, identifier in [('NODE', 'fixture.audio'), ('CHILD', 'fixture.audio.child'),
@@ -45,7 +45,7 @@ def main():
                 output.truncate(8388609)
         path = WORK / (kind.lower() + '.zx')
         source = 'audio_context' if kind == 'CONTEXT' else 'audio_node'
-        args = [ZIRAN, 'bundle', '--project', '--offline', '--root', ROOT / 'fixtures',
+        args = [ZIRAN, 'bundle', '--project', '--locked', '--offline', '--root', ROOT / 'fixtures',
                 '--entry', source + ':Main', '--define', 'KRYON_HOSTED_UI',
                 '--asset-dir', 'assets=' + str(assets.parent), '-o', path]
         if kind == 'CONTEXT':
@@ -69,6 +69,13 @@ def main():
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran'], cwd=ROOT, text=True).strip())
     kryon = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'kryon'], cwd=ROOT, text=True).strip())
     raylib = Path(os.environ['RAYLIB_A'])
+    # Use Raylib's actual decoder/mixer with miniaudio's paced null backend.
+    # ALSA null consumes without pacing and cannot verify a playback clock.
+    audio_source = raylib.parent / 'source/raudio.c'
+    null_audio = WORK / 'null-audio.o'
+    run(os.environ.get('CC', 'cc'), '-O1', '-ffunction-sections', '-fdata-sections',
+        '-DMA_ENABLE_ONLY_SPECIFIC_BACKENDS', '-DMA_ENABLE_NULL',
+        '-I' + str(audio_source.parent), '-c', audio_source, '-o', null_audio)
     # Like consumer_test.py, extend the actual resolved package map only for
     # test entry modules outside the package's published module roots.
     mapping = WORK / 'module-map.tsv'
@@ -89,7 +96,7 @@ def main():
         includes = [arg for p in [output, *sorted(output.rglob('*'))] if p.is_dir() for arg in ('-iquote', str(p))]
         libs = []
         if actual:
-            libs = [str(raylib), *subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'libdrm', 'gbm', 'egl', 'glesv2'], text=True).split(), '-ldl']
+            libs = [str(null_audio), str(raylib), *subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'libdrm', 'gbm', 'egl', 'glesv2'], text=True).split(), '-ldl']
         executable = WORK / 'test'
         run(os.environ.get('CC', 'cc'), '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
             '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),

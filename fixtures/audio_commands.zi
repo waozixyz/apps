@@ -11,7 +11,18 @@ AudioFixture :: (session: Session, scenario: s32, expected: MediaAudioCode) -> b
         command.gain = .4
         if scenario == 5 { command.voice = 2 }
     }
-    if scenario == 2 { command.operation = .Status }
+    if scenario == 2 || scenario == 10 || scenario == 11 { command.operation = .Status }
+    if scenario == 8 { command.operation = .Pause }
+    if scenario == 9 { command.operation = .Resume }
+    if scenario == 12 {
+        command.operation = .CreateStream
+        command.voice = 4
+        command.format = .S16LE
+        command.sample_rate = 22050
+        command.channels = 1
+        command.frames_per_block = 2048
+        command.gain = .3
+    }
     if scenario == 4 {
         command.operation = .Load
         command.voice = 2
@@ -38,10 +49,40 @@ AudioFixture :: (session: Session, scenario: s32, expected: MediaAudioCode) -> b
     }
     answer := MediaAudio(session, command)
     if answer.code != expected { return false }
+    if expected == .Denied {
+        return answer.capabilities == cast(u32)0 && !answer.has_position && answer.position_seconds == 0.0 && !answer.writable
+    }
     if scenario == 0 {
-        return answer.capabilities == (ifx expected == .Ok then cast(u32)7 else cast(u32)0)
+        return (answer.capabilities & cast(u32)55) == (ifx expected == .Ok then cast(u32)55 else cast(u32)0)
     }
     if expected != .Ok { return true }
+    if scenario == 8 || scenario == 10 || scenario == 11 {
+        if answer.state != .Paused { return false }
+        if scenario == 8 {
+            answer = MediaAudio(session, MediaAudioCommand.{.operation = .Status, .voice = 1})
+        }
+        if answer.code != .Ok || !answer.has_position || answer.position_seconds < 0.0 { return false }
+        if scenario == 11 && answer.position_seconds != 1.25 { return false }
+        again := MediaAudio(session, MediaAudioCommand.{.operation = .Status, .voice = 1})
+        return again.code == .Ok && again.state == .Paused && again.has_position &&
+            again.position_seconds == answer.position_seconds
+    }
+    if scenario == 9 { return answer.state == .Playing }
+    if scenario == 12 {
+        command.operation = .Play
+        if MediaAudio(session, command).code != .Ok { return false }
+        command.operation = .Pause
+        paused := MediaAudio(session, command)
+        if paused.code != .Ok || paused.state != .Paused || paused.writable || paused.has_position { return false }
+        command.operation = .Status
+        paused = MediaAudio(session, command)
+        if paused.code != .Ok || paused.state != .Paused || paused.writable || paused.has_position { return false }
+        command.operation = .Resume
+        resumed := MediaAudio(session, command)
+        if resumed.code != .Ok || resumed.state != .Playing || resumed.has_position { return false }
+        command.operation = .Unload
+        return MediaAudio(session, command).code == .Ok
+    }
     if scenario == 1 {
         answer = MediaAudio(session, MediaAudioCommand.{.operation = .Play, .voice = 1, .looping = true})
         return answer.code == .Ok && answer.state == .Playing

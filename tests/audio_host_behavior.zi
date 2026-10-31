@@ -58,7 +58,7 @@ AudioWidgets :: (context: *void, node: *AppNode, module: *u8, function: *u8,
     return WidgetHostCall(context, module, function, arguments, count, result)
 }
 AudioDummy :: (voice: *MediaAudioVoice, command: MediaAudioCommand, bytes: string) -> MediaAudioResult {
-    if command.operation == .Capabilities { return .{.code = .Ok, .capabilities = cast(u32)7} }
+    if command.operation == .Capabilities { return .{.code = .Ok, .capabilities = cast(u32)55} }
     if command.operation == .Load {
         if bytes.count < 4 || bytes[:4] != "RIFF" { return .{.code = .Failed} }
         voice.resource = cast(*void)New(s32)
@@ -76,9 +76,12 @@ AudioDummy :: (voice: *MediaAudioVoice, command: MediaAudioCommand, bytes: strin
         audio_resources -= 1
     }
     if command.operation == .Play { voice.state = .Playing }
+    if command.operation == .Pause { voice.state = .Paused }
+    if command.operation == .Resume { voice.state = .Playing }
     if command.operation == .Stop { voice.state = .Stopped }
     if command.operation == .Gain { voice.gain = command.gain }
-    return .{.code = .Ok, .state = voice.state, .capabilities = cast(u32)7}
+    return .{.code = .Ok, .state = voice.state, .capabilities = cast(u32)55,
+        .has_position = voice.music, .position_seconds = 1.25}
 }
 AudioInstall :: () {
     #if #defined(APPS_AUDIO_NATIVE_TEST) {
@@ -184,6 +187,13 @@ AudioBoundary :: (runtime: *AppRuntime) -> s32 {
     foreign := SessionOpen()
     args[0] = WidgetEncodeSession(foreign, *session_codec)
     if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 4 }
+    for operation: 9..10 {
+        fields[0].value = HostScalar("MediaAudioOperation", cast(s64)operation)
+        if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 4 }
+    }
+    fields[0].value = HostScalar("MediaAudioOperation", 6)
+    if NodeCall(cast(*void)node, HostTextData(module), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 4 }
+    fields[0].value = HostScalar("MediaAudioOperation", 0)
     args[0] = WidgetEncodeSession(ui_session, *session_codec)
     if NodeCall(cast(*void)node, HostTextData("other_media_audio"), HostTextData("MediaAudioHost"), *args[0], 2, *result) != 0 { return 5 }
     args[1].kind = cast(s32)HostPointer
@@ -220,9 +230,18 @@ AudioCheck :: () -> s32 {
     first.platform.widgets = empty_platform.widgets
     if !AudioDraw(*first, 0, .Denied) { return 705 }
     first.platform.widgets = AudioWidgets
+    if !AudioDraw(*first, 8, .Denied) || !AudioDraw(*first, 9, .Denied) ||
+    !AudioDraw(*first, 2, .Denied) || !AudioDraw(*first, 12, .Denied) { return 738 }
     audio_permission = true
     if !AudioDraw(*first, 0, .Ok) || !AudioDraw(*first, 1, .Ok) ||
     !AudioDraw(*first, 2, .Ok) || !AudioDraw(*first, 3, .Ok) { return 706 }
+    if !AudioDraw(*first, 8, .Ok) || !AudioDraw(*first, 8, .Ok) || !AudioDraw(*first, 10, .Ok) ||
+    !AudioDraw(*first, 9, .Ok) || !AudioDraw(*first, 9, .Ok) { return 739 }
+    #if #defined(APPS_AUDIO_NATIVE_TEST) {
+        if !AudioDraw(*first, 12, .Ok) { return 740 }
+    } else {
+        if !AudioDraw(*first, 8, .Ok) || !AudioDraw(*first, 11, .Ok) || !AudioDraw(*first, 9, .Ok) { return 741 }
+    }
     runtime := AppHostActiveRuntime(*first)
     boundary := AudioBoundary(runtime)
     if boundary != 0 { return 710 + boundary }
@@ -238,6 +257,8 @@ AudioCheck :: () -> s32 {
     child := AppHostActiveRuntime(*nested)
     if AppContextRuntime(*runtime.app).audio.voices[0].resource == AppContextRuntime(*child.app).audio.voices[0].resource ||
     !AudioDraw(*first, 2, .Ok) { return 722 }
+    // Pausing the child cannot pause the first owner in the shared session.
+    if !AudioDraw(*nested, 8, .Ok) || !AudioDraw(*first, 2, .Ok) { return 742 }
     // Reset before an in-place resource-policy update, including old grants.
     AppHostAudioReset(*nested)
     child.node.entry.resource_count = 0
@@ -249,11 +270,12 @@ AudioCheck :: () -> s32 {
     if AppHostBack(*nested) != 1 || AppContextRuntime(*child.app).audio.voices[0].resource != null { return 725 }
     AppHostCollect(*nested)
     if !AppHostStop(*nested) || !AudioDraw(*first, 2, .Ok) { return 726 }
+    if !AudioDraw(*first, 8, .Ok) { return 743 }
     if HostedAppRestart(runtime.legacy.app, NodeAllows, NodeCall, cast(*void)(*runtime.legacy), AudioReject) {
-        // Failed restart must retain the playing instance/voices.
+        // Failed restart must retain the paused instance/voices.
         return 727
     }
-    if !AudioDraw(*first, 2, .Ok) { return 728 }
+    if !AudioDraw(*first, 10, .Ok) { return 728 }
     if !HostedAppRestart(runtime.legacy.app, NodeAllows, NodeCall, cast(*void)(*runtime.legacy), AudioAccept) ||
     AppContextRuntime(*runtime.app).audio.voices[0].resource != null || !AudioDraw(*first, 2, .Missing) { return 729 }
     // Simulate a yielding decoder whose verified host revokes the context.
@@ -276,10 +298,18 @@ AudioCheck :: () -> s32 {
     context: AppHost
     if !AudioOpen(*context, "CONTEXT", APPS_CONTEXT_PROTOCOL, "fixture.context", "audio") { return 734 }
     audio_permission = false
-    if !AudioDraw(*context, 0, .Denied) { return 735 }
+    if !AudioDraw(*context, 0, .Denied) || !AudioDraw(*context, 8, .Denied) ||
+    !AudioDraw(*context, 9, .Denied) || !AudioDraw(*context, 2, .Denied) ||
+    !AudioDraw(*context, 12, .Denied) { return 735 }
     audio_permission = true
-    if !AudioDraw(*context, 1, .Ok) || !AudioDraw(*context, 2, .Ok) || !AppHostStop(*context) { return 736 }
+    if !AudioDraw(*context, 1, .Ok) || !AudioDraw(*context, 2, .Ok) ||
+    !AudioDraw(*context, 8, .Ok) || !AudioDraw(*context, 10, .Ok) ||
+    !AudioDraw(*context, 9, .Ok) || !AudioDraw(*context, 8, .Ok) || !AppHostStop(*context) { return 736 }
     if audio_resources != 0 { return 737 }
+    MediaAudioUseProvider(AudioDummy)
+    if !AudioOpen(*context, "CONTEXT", APPS_CONTEXT_PROTOCOL, "fixture.context", "audio") ||
+    !AudioDraw(*context, 1, .Ok) || !AudioDraw(*context, 8, .Ok) ||
+    !AudioDraw(*context, 11, .Ok) || !AppHostStop(*context) || audio_resources != 0 { return 744 }
     unused SessionClose(ui_session)
     MediaAudioUseProvider(audio_no_provider)
     return 0

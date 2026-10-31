@@ -80,8 +80,9 @@ asset effects and looping music. Apps recognizes the actual
 through Kryon's existing widget dispatcher. Every operation requires the
 platform's existing `AppSoundHost` audio permission for that verified node;
 widget access or permission for legacy Media/video services grants no asset
-audio. Denied calls return `Denied` with no capability bits. Legacy Media
-services retain their existing dispatch and permission policy.
+audio. Denied calls return `Denied` with no capability bits or playback
+position. Legacy Media services retain their existing dispatch and permission
+policy.
 
 The native consumer installs its provider once on its owning thread with
 `MediaAudioUseRaylib()` from `kryon/media_audio_raylib`. Without a provider,
@@ -94,7 +95,13 @@ URLs; Kryon bounds each asset to 8 MiB and each owner to 16 independent voices.
 The packed borrow lasts until `AppHostCollect`; providers own decoded/copied
 bytes before later reuse. Nodes sharing an outer Session keep separate voices
 and readers. The permission gate applies to the full MediaAudio capability,
-including PCM operations supported by the installed provider.
+including per-voice `Pause`/`Resume`, `Status`, and bounded PCM operations
+supported by the installed provider. Capability bits 16/32/64 advertise asset
+pause/resume, asset-music position, and PCM pause/resume. `Status` returns
+`has_position: bool` and `position_seconds: float64`; only an available provider
+playhead sets `has_position`. Paused music freezes its position. PCM has no
+position or drained counter; paused streams retain their bounded copied blocks
+and report `writable = false`. Guests retain scheduling and synthesis policy.
 
 `WidgetHostEnd` only ends dispatch; music survives frames. Node retirement
 revokes audio immediately, before renderer/preparation storage is collected.
