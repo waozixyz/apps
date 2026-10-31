@@ -144,6 +144,11 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- Align the published dependency graph on Kryon `ee9d204548295e6c6900939ba1120efe44659e79`
+  and Ziran `3f6234e9a181cdad20fac4fad1d1afb1b8ccf054` (ZX27). Consumers
+  must resolve the same Kryon revision for shared Session, Rectangle and Color
+  values, and rebuild portable hosts and bundles together for ZX27.
+
 - Host document readiness and acknowledged flush through explicit per-node
   private AppFiles authority. `python3 tests/document_host_test.py /path/to/libziran.a`
   runs real app/1 and node/2 guests; add `--browser-runtime /path/to/wasm/libziran.a`

@@ -34,6 +34,11 @@ def main():
         if len(values) > 1 and values[1] == 'root':
             values[1] = package
         lines.append('\t'.join(values))
+        # The consumer imports Kryon independently, using Apps' resolved graph.
+        if len(values) > 2 and values[0] == 'D' and values[1] == package:
+            consumer_edge = values.copy()
+            consumer_edge[1] = 'root'
+            lines.append('\t'.join(consumer_edge))
     for name, filename in tomllib.loads((ROOT / 'ziran.toml').read_text())['exports'].items():
         module = Path(filename).stem
         lines.append(f'D\troot\tapps/{name}\t{package}\t{module}')
