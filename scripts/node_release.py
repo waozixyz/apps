@@ -27,8 +27,11 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 IDENTIFIER = re.compile(r"[a-z0-9][a-z0-9_.-]{0,62}\Z")
-# Apps the node offers: inbe.<name>, never one of the IDs Inbe bundles.
+# Apps the node offers: inbe.<name>, never one of the IDs Inbe bundles, or an
+# exact reverse-domain ID such as xyz.waozi.wurm that a publisher pin names
+# in its node_app_ids.
 NODE_APP_ID = re.compile(r"inbe\.[a-z][a-z0-9]{1,23}\Z")
+EXACT_NODE_APP_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*){2,4}\Z")
 BUNDLED_IDS = {"inbe", "inbe.habits", "inbe.practices", "inbe.lists", "inbe.diary", "inbe.lumi",
                "inbe.leaderboard"}
 VERSION = re.compile(r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\Z")
@@ -77,15 +80,32 @@ def retained_releases(directory, releases):
     return sorted(kept, key=lambda value: value["sequence"], reverse=True)
 
 
-def node_app_id(app_id):
-    return bool(NODE_APP_ID.fullmatch(app_id)) and app_id not in BUNDLED_IDS
+def exact_node_app_id(app_id):
+    """Whether app_id may be configured exactly as an app the node offers."""
+    return isinstance(app_id, str) and bool(IDENTIFIER.fullmatch(app_id)) and \
+        bool(EXACT_NODE_APP_ID.fullmatch(app_id)) and not app_id.startswith("inbe.") and \
+        app_id not in BUNDLED_IDS
+
+
+def node_app_id(app_id, publishers=()):
+    """An app the node offers: inbe.<name>, or an exact ID a publisher pin names."""
+    if NODE_APP_ID.fullmatch(app_id) and app_id not in BUNDLED_IDS:
+        return True
+    return exact_node_app_id(app_id) and \
+        any(app_id in pin.get("node_app_ids", []) for pin in publishers)
 
 
 def trusted_pin(publishers, key_id, app_id):
-    """The pin that may sign app_id: named, or an app the node offers under its prefix."""
+    """The pin that may sign app_id: named, under its prefix, or an exact node app ID it names."""
     return next((pin for pin in publishers if pin["key_id"] == key_id and
                  (app_id in pin["app_ids"] or
-                  (node_app_id(app_id) and "inbe." in pin.get("app_prefixes", [])))), None)
+                  (node_app_id(app_id) and "inbe." in pin.get("app_prefixes", [])) or
+                  (exact_node_app_id(app_id) and app_id in pin.get("node_app_ids", [])))), None)
+
+
+def node_app_name_matches(name, app_id):
+    """A ledger NAME publishes inbe.NAME or an exact ID whose last part is NAME."""
+    return app_id == "inbe." + name or (exact_node_app_id(app_id) and app_id.rsplit(".", 1)[1] == name)
 
 
 def signing_message(value):
@@ -130,7 +150,7 @@ def validate_release(value, app_id, publishers):
     present = set(value) - {"channel"} if isinstance(value, dict) else set()
     if not isinstance(value, dict) or present != fields or value["app_id"] != app_id or \
             value["runtime"] != "kryon-app-v1" or value.get("channel", "beta") != "beta" or \
-            ("channel" in value and not node_app_id(app_id)):
+            ("channel" in value and not node_app_id(app_id, publishers)):
         raise ValueError("invalid release identity or fields")
     if not isinstance(value["version"], str) or not VERSION.fullmatch(value["version"]):
         raise ValueError("invalid numeric release version")
@@ -205,7 +225,7 @@ def write_histories(store, publishers_path):
     for directory in sorted(store.iterdir()):
         app_id = directory.name
         if directory.is_symlink() or not directory.is_dir() or \
-                (app_id not in BUNDLED_IDS and not node_app_id(app_id)) or \
+                (app_id not in BUNDLED_IDS and not node_app_id(app_id, publishers)) or \
                 not (directory / "latest-v2.json").is_file():
             continue
         with (directory / ".publish.lock").open("a+b") as lock:
@@ -230,11 +250,15 @@ def upload(archive, target, remote_store):
                        stdin=stream, check=True)
 
 
-def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_directory):
-    """The signed release of NAME.zx in bundle_directory from its ledger entry."""
+def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_directory, publishers=()):
+    """The signed release of NAME.zx in bundle_directory from its ledger entry.
+
+    Its ID is inbe.NAME, or an exact ID ending in .NAME that publishers name.
+    """
     versions = json.loads(ledger_path.read_text())
     component = versions.get("node_apps", {}).get(name)
-    if component is None or not node_app_id(component["id"]) or component["id"] != "inbe." + name:
+    if component is None or not isinstance(component.get("id"), str) or \
+            not node_app_id(component["id"], publishers) or not node_app_name_matches(name, component["id"]):
         raise ValueError(f"{name} is not an app the node offers")
     if not VERSION.fullmatch(component["version"]) or not 0 < component["sequence"] <= 2**31 - 1:
         raise ValueError(f"invalid {name} version or sequence")
@@ -301,7 +325,7 @@ def stage_node_app(store, name, key_path, key_id, publishers_path, beta=False, *
         raise ValueError("publisher key must be Ed25519")
     publishers = json.loads(publishers_path.read_text())
     value, data = node_app_release(name, key, key_id, beta, ledger_path=ledger_path,
-                                   bundle_directory=bundle_directory)
+                                   bundle_directory=bundle_directory, publishers=publishers)
     validate_release(value, value["app_id"], publishers)
     games = node_app_games(value, key, bundle_directory, name)
     for lookup, _ in games:
@@ -349,6 +373,8 @@ def write_node_app(directory, value, encoded, data, publishers, games=()):
 
 def import_node_app(entries, store, publishers, app_id):
     """Node-side merge of one app the node offers, signed and without dependencies."""
+    if not node_app_id(app_id, publishers):
+        raise ValueError(f"{app_id} is not an app the node offers")
     encoded = entries.get(f"{app_id}/latest-v2.json")
     if encoded is None or len(encoded) > 65536:
         raise ValueError("missing or oversized release metadata")
@@ -397,14 +423,15 @@ def import_node_app(entries, store, publishers, app_id):
         write_node_app(directory, value, encoded, data, publishers, games)
 
 
-def publish_node_app(store, name, target, remote_store):
+def publish_node_app(store, name, target, remote_store, app_id=None):
+    """Uploads the staged release of NAME, stored under app_id (default inbe.NAME)."""
     if not re.fullmatch(r"[a-zA-Z0-9_.@-]+", target) or target.startswith("-"):
         raise ValueError("invalid SSH target")
     if not remote_store.startswith("/") or "\n" in remote_store:
         raise ValueError("Daochi package store must be an absolute path")
     with tempfile.TemporaryDirectory(prefix="inbe-upload-") as staging:
         archive = Path(staging) / "packages.tar"
-        directory = store / ("inbe." + name)
+        directory = store / (app_id or "inbe." + name)
         value = json.loads((directory / "latest-v2.json").read_bytes())
         payload = stored_payload(directory, value).name
         games = [lookup["artifacts"][0]["sha256"] + ".zx" for lookup in game_lookups(directory, value)]
@@ -417,9 +444,9 @@ def publish_node_app(store, name, target, remote_store):
         upload(archive, target, remote_store)
 
 
-def verify_node_app(store, name, origin, open_url=open_public_url):
-    """Require the public node to serve the exact signed release of NAME."""
-    app_id = "inbe." + name
+def verify_node_app(store, name, origin, open_url=open_public_url, *, app_id=None):
+    """Require the public node to serve the exact signed release of NAME, under app_id (default inbe.NAME)."""
+    app_id = app_id or "inbe." + name
     expected = json.loads((store / app_id / "latest-v2.json").read_bytes())
     route = origin.rstrip("/") + "/api/v2/packages/" + app_id
     payload = stored_payload(store / app_id, expected).name
@@ -492,10 +519,10 @@ def publish_node_apps(store, key_path, key_id, target, remote_store, origin, pub
         if served is not None and served["sequence"] >= component["sequence"]:
             print(f"{app_id} {served['version']} is already published")
             continue
-        stage_node_app(store, name, key_path, key_id, publishers_path,
-                       ledger_path=ledger_path, bundle_directory=bundle_directory)
-        publish_node_app(store, name, target, remote_store)
-        verify_node_app(store, name, origin, open_url)
+        value = stage_node_app(store, name, key_path, key_id, publishers_path,
+                               ledger_path=ledger_path, bundle_directory=bundle_directory)
+        publish_node_app(store, name, target, remote_store, value["app_id"])
+        verify_node_app(store, name, origin, open_url, app_id=value["app_id"])
 
 
 def add_node_app_arguments(parser):
@@ -525,13 +552,13 @@ def publish_from_arguments(args, parser, project):
     if args.node_app:
         if not args.key or not args.key_id or rollout is not None:
             parser.error("--node-app needs --key and --key-id, without --rollout")
-        stage_node_app(args.store, args.node_app, args.key, args.key_id, publishers, args.beta,
-                       ledger_path=ledger, bundle_directory=bundles)
+        value = stage_node_app(args.store, args.node_app, args.key, args.key_id, publishers, args.beta,
+                               ledger_path=ledger, bundle_directory=bundles)
         if args.ssh_target:
             if not args.remote_store or not args.verify_origin:
                 parser.error("publishing an app the node offers needs --remote-store and --verify-origin")
-            publish_node_app(args.store, args.node_app, args.ssh_target, args.remote_store)
-            verify_node_app(args.store, args.node_app, args.verify_origin)
+            publish_node_app(args.store, args.node_app, args.ssh_target, args.remote_store, value["app_id"])
+            verify_node_app(args.store, args.node_app, args.verify_origin, app_id=value["app_id"])
         print(f"{args.node_app} release " + ("published" if args.ssh_target else "staged"))
         return True
     return False

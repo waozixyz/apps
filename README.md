@@ -151,6 +151,12 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- The node-app publisher accepts an exact reverse-domain id such as
+  `xyz.waozi.wurm` when a publisher pin lists it in `node_app_ids`. The ledger
+  name must be the id's last part, and only the pin that lists the id may sign
+  it. Ids that no pin lists are refused, and `inbe.<name>` apps publish as
+  before. The node's receiver passes its pins to `node_app_id` to accept them.
+
 - A catalog child may name the node app that serves its bundle with an optional
   `package_id`, which uses the same rules as app ids and defaults to the
   collection's id. `AppEntryPackageRoute` appends the entry's
