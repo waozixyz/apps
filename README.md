@@ -151,6 +151,12 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- `apps/connection` asks one origin-bound permission for fetching content and
+  automatic app updates. Existing stored yes answers remain valid, and hosts
+  set `AppPlatform.content_allowed` only after that consent. Installed children
+  with a valid newer release then queue an update automatically; declined or
+  unanswered consent exposes and queues no update.
+
 - The node-app publisher accepts an exact reverse-domain id such as
   `xyz.waozi.wurm` when a publisher pin lists it in `node_app_ids`. The ledger
   name must be the id's last part, and only the pin that lists the id may sign

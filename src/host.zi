@@ -81,6 +81,8 @@ AppPlatform :: struct {
     download: AppPlatformDownload
     fetch: AppProviderFetch
     controller: AppPlatformController
+    // True only after the host's content consent allows this exact origin.
+    content_allowed: bool
     // The newest host interface this host runs. A node app or game whose
     // catalog declares a newer one is refused.
     host_api: s32
@@ -323,7 +325,12 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         if missing && download.bytes > 0 { state.bytes = download.bytes }
         BuilderPrint(*bytes, ",\"installed\":%,\"favorite\":%,\"launcher\":%,\"selected\":%,\"disabled\":%,\"bytes\":%",
             state.installed, state.favorite, state.launcher, state.selected, state.disabled, state.bytes)
-        AppHostVersions(*bytes, *state, host.platform.version_effect != null)
+        if !missing {
+            unused AppTreeQueueContentUpdate(*host.tree, host.tree.active, *item.entry,
+                *state, host.platform.content_allowed)
+        }
+        AppHostVersions(*bytes, *state, host.platform.version_effect != null,
+            host.platform.version_effect != null && host.platform.content_allowed)
         if missing {
             BuilderPrint(*bytes, ",\"on_device\":false,\"downloading\":%,\"progress\":%,\"download_failed\":%",
                 download.downloading, download.progress, download.failed)
@@ -1542,7 +1549,7 @@ AppHostStop :: (host: *AppHost) -> bool {
 }
 
 // These fields only come from the trusted native provider, never the manifest.
-AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool) {
+AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool, updates_allowed: bool) {
     if state.actions_known {
         BuilderPrint(bytes, ",\"actions\":[")
         first := true
@@ -1550,6 +1557,7 @@ AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool) {
         for operation: cast(s32)2..11 {
             if operation == APPS_BACK || operation == APPS_STATUS ||
             (state.actions & (cast(u64)1 << cast(u64)operation)) == cast(u64)0 ||
+            (operation == APPS_UPDATE && !updates_allowed) ||
             (AppsVersionOperation(operation) && !enabled) { continue }
             if !first { BuilderPrint(bytes, ",") }
             first = false
@@ -1559,7 +1567,7 @@ AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool) {
     }
     BuilderPrint(bytes, ",\"current_version\":")
     AppsWriteQuoted(bytes, TextUntilNul(state.current_version[:]))
-    available := enabled && state.update_available && AppVersionValid(TextUntilNul(state.available_version[:])) &&
+    available := enabled && updates_allowed && state.update_available && AppVersionValid(TextUntilNul(state.available_version[:])) &&
     AppDigestValid(TextUntilNul(state.available_sha256[:]))
     BuilderPrint(bytes, ",\"update_available\":%", available)
     if available {

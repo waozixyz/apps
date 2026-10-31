@@ -161,6 +161,19 @@ AppRejected :: (reason: string) -> AppsReply {
     return reply
 }
 
+AppTreeQueueContentUpdate :: (tree: *AppTree, caller: AppHandle, entry: *AppEntry,
+    state: *AppState, allowed: bool) -> bool {
+    if !allowed || entry == null || state == null || !state.installed || !state.update_available ||
+    !AppVersionValid(TextUntilNul(state.available_version[:])) ||
+    !AppDigestValid(TextUntilNul(state.available_sha256[:])) ||
+    (state.actions_known && (state.actions & (cast(u64)1 << cast(u64)APPS_UPDATE)) == cast(u64)0) {
+        return false
+    }
+    request := AppsRequest.{.operation = APPS_UPDATE, .id = entry.id,
+        .version = state.available_version, .sha256 = state.available_sha256}
+    return AppTreeQueue(tree, caller, request).status == APPS_QUEUED
+}
+
 AppTreeQueue :: (tree: *AppTree, caller: AppHandle, request: AppsRequest) -> AppsReply {
     if tree.draining { return AppRejected("effects are draining") }
     node := AppTreeNode(tree, caller)

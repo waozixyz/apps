@@ -1,4 +1,4 @@
-// Shared consent for reading a node's public app library and previews.
+// Shared consent for fetching public app content and automatic updates.
 // The host keeps transport, trusted publishers and cached app data.
 #import "std/text_buffer"
 #import "std/vec"
@@ -56,15 +56,12 @@ AppConnectionNotice :: (session: Session, bounds: Rectangle, locale: string,
     y := bounds.y + (bounds.height - height) / 2.0
     Box(session, BoxProps.{.key = key + 1, .bounds = Rectangle.{x, y, width, height},
         .fill = Color.{32, 34, 56, 255}, .border = Color.{65, 66, 96, 255}, .radius = 18.0})
-    Text(session, TextProps.{.key = key + 2, .text = AppsLabel(locale, "connect_node_title"),
+    Text(session, TextProps.{.key = key + 2, .text = AppsLabel(locale, "allow_content_title"),
         .font = 22, .wrap = TextWrap.TextWrapAuto,
         .bounds = Rectangle.{x + 20.0, y + 18.0, width - 40.0, 56.0}})
-    Text(session, TextProps.{.key = key + 3, .text = AppsLabel(locale, "connect_node_description"),
+    Text(session, TextProps.{.key = key + 3, .text = AppsLabel(locale, "allow_content_description"),
         .font = 16, .wrap = TextWrap.TextWrapAuto,
         .bounds = Rectangle.{x + 20.0, y + 82.0, width - 40.0, height - 166.0}})
-    Text(session, TextProps.{.key = key + 4, .text = origin, .font = 13,
-        .wrap = TextWrap.TextWrapAuto,
-        .bounds = Rectangle.{x + 20.0, y + height - 82.0, width - 40.0, 24.0}})
     button_width := (width - 52.0) / 2.0
     if Button(session, ButtonProps.{.key = key + 5, .id = 1,
         .label = AppsLabel(locale, "stay_offline"),
@@ -73,7 +70,7 @@ AppConnectionNotice :: (session: Session, bounds: Rectangle, locale: string,
         return APP_CONNECTION_OFFLINE
     }
     if Button(session, ButtonProps.{.key = key + 6, .id = 2,
-        .label = AppsLabel(locale, "connect_node"),
+        .label = AppsLabel(locale, "allow_content"),
         .bounds = Rectangle.{x + 32.0 + button_width, y + height - 52.0, button_width, 40.0},
         .tone = ButtonTone.ButtonToneAccent}) != 0 {
         return APP_CONNECTION_ALLOWED

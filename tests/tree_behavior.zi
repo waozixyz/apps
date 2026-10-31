@@ -1,9 +1,21 @@
 #import "std/vec"
 #import "std/c_string"
 #import "std/text_buffer"
+#import "std/byte_text_linux"
 #import, file "../src/protocol.zi";
 #import, file "../src/catalog.zi";
 #import, file "../src/tree.zi";
+#import, file "../src/connection.zi";
+#import "kryon/app_files"
+
+test_c :: #system_library "c";
+TestEnvironment :: (name: *u8) -> *u8 #foreign test_c "getenv";
+
+Environment :: (name: string) -> string {
+    key: [64]u8
+    if !CopyCString(name, key[:]) { return "" }
+    return TextFromCString(TestEnvironment(*key[0]))
+}
 
 DIGEST :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 ROOT_DIGEST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -27,6 +39,14 @@ open_seen: AppsRequest;
 open_copy: AppLocator;
 open_package_override: string;
 fetched_direct: bool;
+
+UpdateState :: (installed: bool) -> AppState {
+    state := AppState.{.installed = installed, .actions_known = true,
+        .actions = cast(u64)4092, .update_available = true}
+    unused CopyCString("2.0", state.available_version[:])
+    unused CopyCString(DIGEST, state.available_sha256[:])
+    return state
+}
 
 MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
     bytes: Vec(u8)
@@ -129,6 +149,51 @@ CheckPackageIds :: () -> s32 {
     TextUntilNul(opened.entry.package_id[:]) != "xyz.waozi.wurm" { return 82 }
     if !AppTreeClose(*tree) { return 83 }
     AppCatalogClear(*catalog)
+    return 0
+}
+
+ContentConsentCheck :: () -> s32 {
+    version_calls = 0
+    version_seen = AppsRequest.{}
+    origin := "https://content.test"
+    files: AppFiles
+    if !AppFilesOpen(*files, Environment("APPS_TREE_CONSENT")) { return 90 }
+    defer { AppFilesClose(*files) }
+
+    provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
+    tree: AppTree
+    root := Root()
+    if !AppTreeStart(*tree, root, "account-a", provider) { return 91 }
+    caller := tree.active
+    child := AppCatalogAt(*root.catalog, 0)
+    tree.provider.version_effect = VersionEffect
+
+    unanswered := UpdateState(true)
+    declined := UpdateState(true)
+    if AppTreeQueueContentUpdate(*tree, caller, child, *unanswered, false) ||
+    AppTreeQueueContentUpdate(*tree, caller, child, *declined, false) ||
+    version_calls != 0 || tree.pending.count != 0 { return 92 }
+
+    if !AppConnectionRemember(*files, origin, APP_CONNECTION_OFFLINE) ||
+    AppConnectionRead(*files, origin) != APP_CONNECTION_OFFLINE { return 93 }
+    if AppTreeQueueContentUpdate(*tree, caller, child, *declined,
+        AppConnectionRead(*files, origin) == APP_CONNECTION_ALLOWED) ||
+    version_calls != 0 || tree.pending.count != 0 { return 94 }
+
+    AppFilesClose(*files)
+    if !AppFilesOpen(*files, Environment("APPS_TREE_LEGACY_CONSENT")) { return 95 }
+    if AppConnectionRead(*files, origin) != APP_CONNECTION_ALLOWED { return 99 }
+    if !AppTreeQueueContentUpdate(*tree, caller, child, *unanswered,
+        AppConnectionRead(*files, origin) == APP_CONNECTION_ALLOWED) { return 96 }
+    if !AppTreeDrain(*tree) || version_calls != 1 ||
+    version_seen.operation != APPS_UPDATE || TextUntilNul(version_seen.id[:]) != "inbe.chess" ||
+    TextUntilNul(version_seen.version[:]) != "2.0" ||
+    TextUntilNul(version_seen.sha256[:]) != DIGEST { return 97 }
+
+    not_installed := UpdateState(false)
+    if AppTreeQueueContentUpdate(*tree, caller, child, *not_installed, true) ||
+    version_calls != 1 { return 98 }
+    if !AppTreeClose(*tree) { return 99 }
     return 0
 }
 
@@ -434,5 +499,7 @@ Check :: () -> s32 {
     unused AppTreeQueue(*tree, before, Request(APPS_OPEN, "arcade")); unused AppTreeDrain(*tree)
     if !AppHandleEqual(tree.active, before) || tree.nodes.count != 2 { return 28 }
     if !AppTreeClose(*tree) { return 29 }
-    return OpenEffectCheck(provider)
+    open_result := OpenEffectCheck(provider)
+    if open_result != 0 { return open_result }
+    return ContentConsentCheck()
 }
