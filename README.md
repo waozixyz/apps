@@ -151,6 +151,8 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- Preserve the surrounding game theme when nested controls finish drawing.
+
 - `apps/connection` provides an origin-bound public node connection choice and
   a shared consent notice. Reading or drawing the notice starts no requests.
   Hosts keep cached apps usable offline and may revoke transfers at any time.
