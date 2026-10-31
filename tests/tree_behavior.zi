@@ -111,8 +111,8 @@ CheckPackageIds :: () -> s32 {
     for index: cast(s32)0..127 { BuilderPrint(*long_id, "a") }
     BuilderPrint(*long_id, "\"")
     rejected: [8]string = .[",\"package_id\":\"\"", ",\"package_id\":\"..\"", ",\"package_id\":\".\"",
-        ",\"package_id\":\"Xyz.Waozi\"", ",\"package_id\":\"a/../b\"", ",\"package_id\":7",
-        ",\"package_id\":\"a\",\"package_id\":\"b\"", TextView(VecSlice(long_id, 0, long_id.count))]
+    ",\"package_id\":\"Xyz.Waozi\"", ",\"package_id\":\"a/../b\"", ",\"package_id\":7",
+    ",\"package_id\":\"a\",\"package_id\":\"b\"", TextView(VecSlice(long_id, 0, long_id.count))]
     for field: rejected {
         if PackageCatalog(*catalog, field) { VecFree(long_id); return 74 }
         if AppCatalogAt(*catalog, 0) != direct || TextUntilNul(direct.package_id[:]) != "xyz.waozi.wurm" { VecFree(long_id); return 75 }
@@ -185,6 +185,8 @@ ContentConsentCheck :: () -> s32 {
     if AppConnectionRead(*files, origin) != APP_CONNECTION_ALLOWED { return 99 }
     if !AppTreeQueueContentUpdate(*tree, caller, child, *unanswered,
         AppConnectionRead(*files, origin) == APP_CONNECTION_ALLOWED) { return 96 }
+    if AppTreeQueueContentUpdate(*tree, caller, child, *unanswered, true) ||
+    tree.pending.count != 1 { return 100 }
     if !AppTreeDrain(*tree) || version_calls != 1 ||
     version_seen.operation != APPS_UPDATE || TextUntilNul(version_seen.id[:]) != "inbe.chess" ||
     TextUntilNul(version_seen.version[:]) != "2.0" ||

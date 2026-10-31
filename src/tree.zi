@@ -169,6 +169,13 @@ AppTreeQueueContentUpdate :: (tree: *AppTree, caller: AppHandle, entry: *AppEntr
     (state.actions_known && (state.actions & (cast(u64)1 << cast(u64)APPS_UPDATE)) == cast(u64)0) {
         return false
     }
+    // Catalog reads repeat while an update downloads; queue each target once.
+    for index: cast(s64)0..tree.pending.count - 1 {
+        pending := tree.pending[index]
+        if !pending.complete && pending.request.operation == APPS_UPDATE &&
+        TextUntilNul(pending.request.id[:]) == TextUntilNul(entry.id[:]) &&
+        TextUntilNul(pending.request.sha256[:]) == TextUntilNul(state.available_sha256[:]) { return false }
+    }
     request := AppsRequest.{.operation = APPS_UPDATE, .id = entry.id,
         .version = state.available_version, .sha256 = state.available_sha256}
     return AppTreeQueue(tree, caller, request).status == APPS_QUEUED
