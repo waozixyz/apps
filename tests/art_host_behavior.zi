@@ -1,0 +1,126 @@
+// Real failed HTTP transfer -> Apps retry -> drawable pixels, without a display.
+#import, file "native_behavior.zi";
+#import "host"
+#import "tree"
+#import "protocol"
+#import "catalog"
+#import "preparation"
+#import "node_host"
+#import "std/file"
+#import "std/byte_text_linux"
+#import "std/bundle_host"
+#import "std/c_string"
+#import "kryon/app_context_host"
+#import "kryon/app_protocol"
+#import "kryon/hosted_app"
+#import "kryon/hosted_values"
+#import "kryon/file_download"
+#import "art_decode"
+transfer: FileDownload;
+requests: s32;
+libc :: #system_library "libc";
+PreparationTestBegin :: () #foreign libc;
+PreparationTestYield :: () #foreign libc;
+PreparationTestNow :: () -> float64 #foreign libc;
+art_raylib :: #system_library "raylib";
+ArtUnloadImage :: (image: RaylibGlyphImage) #foreign art_raylib "UnloadImage";
+rejected: s32;
+cached: string;
+ArtBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    if cached.count > 0 { return HostedAsset.{.found = true, .data = cached} }
+    if FileDownloadPoll(*transfer) != .Ready { return HostedAsset.{} }
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_ART_DESTINATION"))
+    if found { cached = bytes }
+    return HostedAsset.{.found = found, .data = bytes}
+}
+ArtDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, state: *AppDownload) -> bool {
+    status := FileDownloadPoll(*transfer)
+    state.downloading = status == .Downloading
+    state.failed = status == .Error
+    return true
+}
+ArtFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    requests += 1
+    if requests == 1 { return false }
+    if requests == 2 { reply.status = APPS_REJECTED; return true }
+    // Like the real provider, restart a finished transfer.
+    FileDownloadRelease(*transfer)
+    if !FileDownloadStart(*transfer, FixtureEnvironment("APPS_ART_URL"),
+        FixtureEnvironment("APPS_ART_DESTINATION")) { return false }
+    reply.status = APPS_QUEUED
+    return true
+}
+#program_export
+ArtCheck :: () -> s32 {
+    PreparationTestBegin()
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_BUNDLE"))
+    ui, ui_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_UI_BUNDLE"))
+    if !found || !ui_found { return 1 }
+    slim_controller = ui
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call,
+        .widgets = Widgets, .save = Save, .state = State, .controller = SlimController,
+        .bundle = ArtBundle, .download = ArtDownload, .fetch = ArtFetch}
+    host: AppHost
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.slim", "collection",
+        FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256"), "account-a", platform,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 2 }
+    root := AppTreeNode(*host.tree, host.tree.active)
+    deadline := PreparationTestNow() + 30.0
+    // A dispatch failure and an explicit rejected reply both retry, after a wait.
+    for index: 1..2 {
+        if AppHostAsset(root, "assets/preview.png").found || requests != index { return 3 }
+        for spin: 0..20 { unused AppHostAsset(root, "assets/preview.png") }
+        if requests != index { return 4 }
+        while requests == index && PreparationTestNow() < deadline {
+            unused AppHostAsset(root, "assets/preview.png")
+            PreparationTestYield()
+        }
+    }
+    // No duplicate transfer while the real provider is running.
+    for index: 0..20 { unused AppHostAsset(root, "assets/preview.png") }
+    if requests != 3 { return 5 }
+    while FileDownloadPoll(*transfer) != .Error && PreparationTestNow() < deadline { PreparationTestYield() }
+    if transfer.status != .Error { return 6 }
+    // A failed transfer is not restarted at once, and the next HTTP response is art.
+    unused AppHostAsset(root, "assets/preview.png")
+    if requests != 3 { return 18 }
+    preview: HostedAsset
+    while !preview.found && PreparationTestNow() < deadline {
+        preview = AppHostAsset(root, "assets/preview.png")
+        PreparationTestYield()
+    }
+    if !preview.found || requests != 4 { return 7 }
+    // Decode through Kryon's actual native CPU decoder, then inspect pixel data.
+    image := RaylibDecodePixels(preview.data, ".png")
+    if image.data == null || image.width != 1 || image.height != 1 || image.format != 4 { return 8 }
+    pixel := cast(*u8)image.data
+    correct := pixel[0] == 40 && pixel[1] == 160 && pixel[2] == 100
+    ArtUnloadImage(image)
+    if !correct { return 9 }
+    FileDownloadRelease(*transfer)
+    if !SlimStop(*host) { return 10 }
+    // Restart from cached bytes with no network capability at all.
+    platform = AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call,
+        .widgets = Widgets, .save = Save, .state = State, .controller = SlimController, .bundle = ArtBundle}
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.slim", "collection",
+        FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256"), "account-a", platform,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 11 }
+    root = AppTreeNode(*host.tree, host.tree.active)
+    if !AppHostAsset(root, "assets/preview.png").found || requests != 4 { return 12 }
+    if !SlimStop(*host) { return 13 }
+    // Wrong bytes and wrong size must never become a drawable asset.
+    cached = ui
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.slim", "collection",
+        FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256"), "account-a", platform,
+        FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 14 }
+    root = AppTreeNode(*host.tree, host.tree.active)
+    if AppHostAsset(root, "assets/preview.png").found { return 15 }
+    cached, found = ReadEntireFile(FixtureEnvironment("APPS_ART_DESTINATION"))
+    // Preserve bundle length while corrupting its digest.
+    changed := cast(*TextDescriptor)(*cached)
+    changed.data[cached.count - 1] = changed.data[cached.count - 1] ^ 1
+    if AppHostAsset(root, "assets/preview.png").found { return 16 }
+    if !SlimStop(*host) { return 17 }
+    return 0
+}

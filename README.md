@@ -162,6 +162,10 @@ verifies public package imports and launcher search/grouping.
   for disposable headless IDBFS persistence, hydration failure and revocation.
 - Pin published Kryon asset audio and host it through Apps' existing audio
   permission, verified resources and per-instance lifetime.
+- Retry separate collection art after a refused request or failed transfer, one
+  transfer at a time and waiting 1 s, doubling to 60 s, between attempts.
+  `python3 tests/art_host_test.py /path/to/libziran.a` serves a real HTTP failure,
+  then decodes the recovered art's pixels without a display.
 - `RAYLIB_A=/path/to/libraylib.a python3 tests/audio_host_test.py /path/to/libziran.a`
   exercises real hosted guests with dummy/no-provider and private null-device
   Raylib hosts. Run `tests/native_fixture.py`, `tests/consumer_test.py` and

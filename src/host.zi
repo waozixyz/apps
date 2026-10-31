@@ -6,6 +6,7 @@
 #import "std/c_string"
 #import "std/text_buffer"
 #import "std/json_scan"
+#import "std/timer_linux"
 #import "crypto/sha256"
 #import "kryon/hosted_app"
 #import "kryon/hosted_values"
@@ -147,6 +148,8 @@ AppRuntime :: struct {
     art: HostedApp
     art_open: bool
     art_requested: bool
+    art_retry_at: s64
+    art_retry_delay: s64
 }
 
 
@@ -693,9 +696,23 @@ AppHostArtEntry :: (node: *AppNode, entry: *AppEntry) -> bool {
     CopyCString(APPS_ART_BUNDLE, entry.bundle[:])
 }
 
+// A failed art request waits before the next one, so a device without a working
+// network or a node serving bad art is not asked again every frame.
+APPS_ART_RETRY_FIRST_MS :: 1000
+APPS_ART_RETRY_LAST_MS :: 60000
+
+AppHostArtRequestFailed :: (runtime: *AppRuntime) {
+    runtime.art_requested = false
+    delay := runtime.art_retry_delay * 2
+    if delay < APPS_ART_RETRY_FIRST_MS { delay = APPS_ART_RETRY_FIRST_MS }
+    if delay > APPS_ART_RETRY_LAST_MS { delay = APPS_ART_RETRY_LAST_MS }
+    runtime.art_retry_delay = delay
+    runtime.art_retry_at = MonotonicMilliseconds() + delay
+}
+
 // Art the collection lists but does not pack. Missing until the platform has
-// the art bundle: the first request asks it to download, and the library
-// draws the art once it arrives.
+// the art bundle: requests start one transfer and retry a rejected request or
+// a transfer the provider reports failed. The library draws verified art when ready.
 AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> HostedAsset {
     host := runtime.host
     if !runtime.art_open {
@@ -703,11 +720,20 @@ AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> Hoste
         if host == null || host.platform.bundle == null || !AppHostArtEntry(node, *entry) { return HostedAsset.{} }
         bytes := host.platform.bundle(host.platform.context, node, *entry)
         if !bytes.found {
-            if !runtime.art_requested && host.platform.fetch != null {
+            if runtime.art_requested && host.platform.download != null {
+                download: AppDownload
+                if host.platform.download(host.platform.context, node, *entry, *download) &&
+                download.failed && !download.downloading { AppHostArtRequestFailed(runtime) }
+            }
+            if !runtime.art_requested && host.platform.fetch != null &&
+            MonotonicMilliseconds() >= runtime.art_retry_at {
                 runtime.art_requested = true
                 reply: AppsReply
-                unused host.platform.fetch(host.platform.context, TextUntilNul(host.tree.account[:]),
-                    node, *entry, APPS_INSTALL, *reply)
+                if !host.platform.fetch(host.platform.context, TextUntilNul(host.tree.account[:]),
+                    node, *entry, APPS_INSTALL, *reply) ||
+                (reply.status != APPS_QUEUED && reply.status != APPS_APPLIED) {
+                    AppHostArtRequestFailed(runtime)
+                }
             }
             return HostedAsset.{}
         }
