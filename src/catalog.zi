@@ -24,6 +24,10 @@ AppEntry :: struct {
     icon: [512]u8
     icon_shape: [16384]u8
     expected_id: [128]u8
+    // The node app whose package route serves this bundle. AppCatalogRead
+    // defaults it to the collection's id; a game that publishes itself names
+    // its own app id.
+    package_id: [128]u8
     version: [64]u8
     sha256: [65]u8
     protocol: s32
@@ -99,8 +103,18 @@ AppCatalogClear :: (catalog: *AppCatalog) {
     catalog.* = AppCatalog.{}
 }
 
+// Append the node route of an entry's exact bundle to a host's origin. False,
+// with nothing appended, for an entry without a valid package or digest.
+AppEntryPackageRoute :: (entry: *AppEntry, route: *Vec(u8)) -> bool {
+    package_id := TextUntilNul(entry.package_id[:])
+    digest := TextUntilNul(entry.sha256[:])
+    if !AppIdValid(package_id) || !AppDigestValid(digest) { return false }
+    BuilderPrint(route, "/api/v2/packages/%/%.zx", package_id, digest)
+    return true
+}
+
 AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
-    keys: [16]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources", "shared_code", "shared_records"]
+    keys: [17]string = .["id", "title", "bundle", "protocol", "expected_id", "version", "sha256", "preview", "icon", "icon_shape", "cover", "bytes", "dependencies", "resources", "shared_code", "shared_records", "package_id"]
     if !AppsObjectValid(text, at, keys[:]) { return false }
     parsed: AppEntry
     protocol: [32]u8
@@ -113,6 +127,9 @@ AppReadEntry :: (text: string, at: s32, entry: *AppEntry) -> bool {
     !AppsReadText(text, at, "protocol", protocol[:]) { return false }
     parsed.protocol = AppEntryProtocol(TextUntilNul(protocol[:]))
     if parsed.protocol == 0 { return false }
+    if FieldAt(text, at, "package_id") >= 0 &&
+    (!AppsReadText(text, at, "package_id", parsed.package_id[:]) ||
+        !AppIdValid(TextUntilNul(parsed.package_id[:]))) { return false }
     if FieldAt(text, at, "bytes") >= 0 {
         size := ReadNumber(text, FieldAt(text, at, "bytes"))
         if !size.valid || size.value < 1.0 || size.value > 67108864.0 { return false }
@@ -189,6 +206,7 @@ AppCatalogRead :: (text: string, expected_id: string, catalog: *AppCatalog) -> b
             AppCatalogClear(*parsed)
             return false
         }
+        if entry.package_id[0] == 0 { entry.package_id = parsed.id }
         if AppCatalogFind(*parsed, TextUntilNul(entry.id[:])) >= 0 ||
         TextUntilNul(entry.id[:]) == expected_id || !AppCatalogAppend(*parsed, entry) {
             AppEntryResourcesClear(*entry)

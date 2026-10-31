@@ -692,6 +692,7 @@ AppHostArtEntry :: (node: *AppNode, entry: *AppEntry) -> bool {
     entry.bytes = node.catalog.art_bytes
     entry.sha256 = node.catalog.art_sha256
     return CopyCString(TextUntilNul(node.catalog.id[:]), entry.id[:]) &&
+    CopyCString(TextUntilNul(node.catalog.id[:]), entry.package_id[:]) &&
     CopyCString(TextUntilNul(node.catalog.title[:]), entry.title[:]) &&
     CopyCString(APPS_ART_BUNDLE, entry.bundle[:])
 }

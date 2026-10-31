@@ -151,6 +151,12 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- A catalog child may name the node app that serves its bundle with an optional
+  `package_id`, which uses the same rules as app ids and defaults to the
+  collection's id. `AppEntryPackageRoute` appends the entry's
+  `/api/v2/packages/<package_id>/<sha256>.zx` route. Hosts without this support
+  refuse a catalog that sets it.
+
 - Preserve the surrounding game theme when nested controls finish drawing.
 
 - `apps/connection` provides an origin-bound public node connection choice and

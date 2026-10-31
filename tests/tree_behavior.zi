@@ -25,6 +25,8 @@ open_saves: s32;
 open_reentered: bool;
 open_seen: AppsRequest;
 open_copy: AppLocator;
+open_package_override: string;
+fetched_direct: bool;
 
 MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "app/1") -> bool {
     bytes: Vec(u8)
@@ -37,6 +39,97 @@ MakeCatalog :: (node: *AppNode, id: string, child: string, protocol: string = "a
     VecFree(bytes)
     node.collection = true
     return result
+}
+
+// One child downloads from its own node app; the other keeps the collection's.
+PackageCatalog :: (catalog: *AppCatalog, package_field: string) -> bool {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "{\"schema\":1,\"id\":\"inbe.arcade\",\"title\":\"Arcade\",\"harness\":\"assets/apps/apps.zx\",\"children\":[{\"id\":\"wurm\",\"title\":\"Wurm\",\"bundle\":\"assets/wurm.zx\",\"protocol\":\"node/2\",\"expected_id\":\"wurm\",\"version\":\"1\",\"sha256\":\"%\"%},{\"id\":\"chess\",\"title\":\"Chess\",\"bundle\":\"assets/chess.zx\",\"protocol\":\"node/2\",\"expected_id\":\"chess\",\"version\":\"1\",\"sha256\":\"%\"}]}", DIGEST, package_field, ROOT_DIGEST)
+    result := AppCatalogRead(TextView(VecSlice(bytes, 0, bytes.count)), "inbe.arcade", catalog)
+    VecFree(bytes)
+    return result
+}
+
+RouteMatches :: (entry: *AppEntry, expected_package: string, digest: string) -> bool {
+    route: Vec(u8)
+    expected: Vec(u8)
+    BuilderPrint(*route, "https://node.test")
+    BuilderPrint(*expected, "https://node.test/api/v2/packages/%/%.zx", expected_package, digest)
+    result := AppEntryPackageRoute(entry, *route) &&
+    TextView(VecSlice(route, 0, route.count)) == TextView(VecSlice(expected, 0, expected.count))
+    VecFree(route)
+    VecFree(expected)
+    return result
+}
+
+PackageOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
+    if !Open(context, parent, entry, candidate) { return false }
+    if open_package_override != "" { unused CopyCString(open_package_override, candidate.entry.package_id[:]) }
+    return true
+}
+
+PackageFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    if operation != APPS_INSTALL { return false }
+    fetched_direct = RouteMatches(entry, "xyz.waozi.wurm", DIGEST)
+    reply.status = APPS_QUEUED
+    return true
+}
+
+CheckPackageIds :: () -> s32 {
+    catalog: AppCatalog
+    if !PackageCatalog(*catalog, ",\"package_id\":\"xyz.waozi.wurm\"") { return 70 }
+    direct := AppCatalogAt(*catalog, 0)
+    inherited := AppCatalogAt(*catalog, 1)
+    if TextUntilNul(direct.package_id[:]) != "xyz.waozi.wurm" ||
+    TextUntilNul(inherited.package_id[:]) != "inbe.arcade" { return 71 }
+    if !RouteMatches(direct, "xyz.waozi.wurm", DIGEST) { return 72 }
+    if !RouteMatches(inherited, "inbe.arcade", ROOT_DIGEST) { return 73 }
+    // A rejected id never replaces the visible collection.
+    long_id: Vec(u8)
+    BuilderPrint(*long_id, ",\"package_id\":\"")
+    for index: cast(s32)0..127 { BuilderPrint(*long_id, "a") }
+    BuilderPrint(*long_id, "\"")
+    rejected: [8]string = .[",\"package_id\":\"\"", ",\"package_id\":\"..\"", ",\"package_id\":\".\"",
+        ",\"package_id\":\"Xyz.Waozi\"", ",\"package_id\":\"a/../b\"", ",\"package_id\":7",
+        ",\"package_id\":\"a\",\"package_id\":\"b\"", TextView(VecSlice(long_id, 0, long_id.count))]
+    for field: rejected {
+        if PackageCatalog(*catalog, field) { VecFree(long_id); return 74 }
+        if AppCatalogAt(*catalog, 0) != direct || TextUntilNul(direct.package_id[:]) != "xyz.waozi.wurm" { VecFree(long_id); return 75 }
+    }
+    VecFree(long_id)
+    // A digest-less or package-less entry has no route, and appends nothing.
+    bare: AppEntry
+    route: Vec(u8)
+    if AppEntryPackageRoute(*bare, *route) || route.count != 0 { VecFree(route); return 76 }
+    unused CopyCString("xyz.waozi.wurm", bare.package_id[:])
+    if AppEntryPackageRoute(*bare, *route) || route.count != 0 { VecFree(route); return 77 }
+    VecFree(route)
+    // The tree hands the declared id to the download and the opened child, and
+    // refuses a provider that changes where the verified bundle comes from.
+    node := New(AppNode)
+    unused CopyCString("example.test", node.identity.authority[:])
+    unused CopyCString("inbe.arcade", node.identity.id[:])
+    node.runtime = cast(*void)1
+    node.collection = true
+    if !PackageCatalog(*node.catalog, ",\"package_id\":\"xyz.waozi.wurm\"") { return 78 }
+    tree: AppTree
+    provider := AppProvider.{.open = PackageOpen, .save = Save, .close = Close, .effect = Effect, .fetch = PackageFetch}
+    if !AppTreeStart(*tree, node, "account-a", provider) { return 79 }
+    root := tree.active
+    unused AppTreeQueue(*tree, root, Request(APPS_INSTALL, "wurm")); unused AppTreeDrain(*tree)
+    if !fetched_direct { return 80 }
+    open_package_override = "other.package"
+    unused AppTreeQueue(*tree, root, Request(APPS_OPEN, "wurm")); unused AppTreeDrain(*tree)
+    if !AppHandleEqual(tree.active, root) { return 81 }
+    open_package_override = ""
+    unused AppTreeQueue(*tree, root, Request(APPS_OPEN, "wurm")); unused AppTreeDrain(*tree)
+    opened := AppTreeNode(*tree, tree.active)
+    if AppHandleEqual(tree.active, root) || opened == null ||
+    TextUntilNul(opened.entry.package_id[:]) != "xyz.waozi.wurm" { return 82 }
+    if !AppTreeClose(*tree) { return 83 }
+    AppCatalogClear(*catalog)
+    return 0
 }
 
 Open :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *AppNode) -> bool {
@@ -232,6 +325,8 @@ Check :: () -> s32 {
         if accepted != (amount == "4096") { return 64 }
     }
     if covered.bytes != 4096 { return 65 }
+    package_result := CheckPackageIds()
+    if package_result != 0 { return package_result }
     provider := AppProvider.{.open = Open, .save = Save, .close = Close, .effect = Effect}
     tree: AppTree
     root := Root()

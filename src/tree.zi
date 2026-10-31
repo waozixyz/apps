@@ -273,6 +273,7 @@ AppTreeOpenChild :: (tree: *AppTree, parent: AppHandle, entry: *AppEntry) -> App
     TextUntilNul(candidate.identity.id[:]) != TextUntilNul(entry.id[:]) ||
     TextUntilNul(candidate.entry.sha256[:]) != TextUntilNul(entry.sha256[:]) ||
     TextUntilNul(candidate.entry.expected_id[:]) != TextUntilNul(entry.expected_id[:]) ||
+    TextUntilNul(candidate.entry.package_id[:]) != TextUntilNul(entry.package_id[:]) ||
     candidate.entry.protocol != entry.protocol || AppTreeCycle(tree, parent, *candidate.identity) {
         AppTreeDiscard(tree, candidate)
         return invalid
