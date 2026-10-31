@@ -181,10 +181,10 @@ verifies public package imports and launcher search/grouping.
   before the saved snapshot changes. Hosts stop the former root before
   collecting its bytes, retain per-app saves, and keep their reviewed controller.
 
-- Align the published dependency graph on Kryon `ee9d204548295e6c6900939ba1120efe44659e79`
-  and Ziran `3f6234e9a181cdad20fac4fad1d1afb1b8ccf054` (ZX27). Consumers
-  must resolve the same Kryon revision for shared Session, Rectangle and Color
-  values, and rebuild portable hosts and bundles together for ZX27.
+- Align the published dependency graph on Kryon `ee9d204548295e6c6900939ba1120efe44659e79`.
+  Consumers must resolve the same Kryon revision for shared Session, Rectangle
+  and Color values. Ziran `972dc244c4ae67e87b6089869dff5abc9d36c1f8` writes the
+  Apps controller as ZX 26, so hosts built before ZX 27 still open it.
 
 - Host document readiness and acknowledged flush through explicit per-node
   private AppFiles authority. `python3 tests/document_host_test.py /path/to/libziran.a`
