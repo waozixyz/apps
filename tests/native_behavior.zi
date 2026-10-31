@@ -1638,8 +1638,14 @@ SlimCollectionCheck :: () -> s32 {
     // Bytes that are not the catalog's art never open.
     slim_art = ui
     if AppHostAsset(root, "assets/preview.png").found { unused SlimStop(*host); return 1206 }
+    // A corrected copy is accepted once the retry wait ends.
     slim_art = art
-    preview := AppHostAsset(root, "assets/preview.png")
+    preview: HostedAsset
+    art_end := PreparationTestNow() + 10.0
+    while !preview.found && PreparationTestNow() < art_end {
+        preview = AppHostAsset(root, "assets/preview.png")
+        PreparationTestYield()
+    }
     if !preview.found || preview.data.count < 8 || preview.data[1:4] != "PNG" ||
     AppHostAssetPending(root, "assets/missing.png") { unused SlimStop(*host); return 1207 }
     if !SlimStop(*host) { return 1208 }

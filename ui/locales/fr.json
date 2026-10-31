@@ -48,5 +48,15 @@
   "hide": "Masquer",
   "close": "Fermer",
   "download_waiting": "En attente de téléchargement",
-  "download_dependency": "requis"
+  "download_dependency": "requis",
+  "connect_node_title": "Se connecter au nœud ?",
+  "connect_node_description": "Charger la bibliothèque d’applications et les aperçus de ce nœud. Les applications sont téléchargées uniquement à votre demande.",
+  "connect_node": "Se connecter",
+  "stay_offline": "Rester hors ligne",
+  "node_connection": "Connexion au nœud",
+  "loading_library": "Chargement de la bibliothèque…",
+  "library_unavailable": "Impossible d’actualiser la bibliothèque.",
+  "saved_library": "Votre bibliothèque enregistrée est affichée.",
+  "offline_library": "Vous êtes hors ligne. Les applications téléchargées restent disponibles.",
+  "refresh_library": "Actualiser la bibliothèque"
 }

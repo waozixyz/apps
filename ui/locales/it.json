@@ -48,5 +48,15 @@
   "hide": "Nascondi",
   "close": "Chiudi",
   "download_waiting": "In attesa del download",
-  "download_dependency": "necessario"
+  "download_dependency": "necessario",
+  "connect_node_title": "Connettersi al nodo?",
+  "connect_node_description": "Carica la raccolta di app e le anteprime di questo nodo. Le app vengono scaricate solo quando lo scegli.",
+  "connect_node": "Connetti",
+  "stay_offline": "Resta offline",
+  "node_connection": "Connessione al nodo",
+  "loading_library": "Caricamento della raccolta…",
+  "library_unavailable": "Impossibile aggiornare la raccolta.",
+  "saved_library": "Viene mostrata la raccolta salvata.",
+  "offline_library": "Sei offline. Le app scaricate restano disponibili.",
+  "refresh_library": "Aggiorna raccolta"
 }

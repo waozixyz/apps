@@ -1,0 +1,168 @@
+// Signed loopback integration; no display, application UI, account or phone.
+#import "remote_catalog"
+#import "connection"
+#import "catalog"
+#import "protocol"
+#import "kryon/app_files"
+#import "kryon/hosted_app"
+#import "std/file"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/byte_text_linux"
+#import "std/bundle_host"
+
+test_c :: #system_library "c";
+TestEnvironment :: (name: *u8) -> *u8 #foreign test_c "getenv";
+TestNow :: () -> float64 #foreign test_c;
+TestYield :: () #foreign test_c;
+TestVerifyNative :: (signature: *u8, public_key: *u8, message: *u8, length: usize) -> bool #foreign test_c "TestVerify";
+TestVerify :: (signature: *u8, public_key: *u8, message: *u8, length: usize) -> bool {
+    return TestVerifyNative(signature, public_key, message, length)
+}
+
+Environment :: (name: string) -> string {
+    key: [64]u8
+    if !CopyCString(name, key[:]) { return "" }
+    return TextFromCString(TestEnvironment(*key[0]))
+}
+
+// The generated fixture bundles have no host capabilities. Refuse all calls.
+AllowNothing :: (context: *void, module: string, function: string) -> bool { return false }
+CallNothing :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 { return 0 }
+
+RunBundle :: (bytes: string, expected: s64) -> bool {
+    app: HostedApp
+    defer { HostedAppClose(*app) }
+    answer: s64
+    return HostedAppOpen(*app, bytes) && HostedAppStart(*app, AllowNothing, CallNothing, null) &&
+        HostedAppRun(*app, *answer) && answer == expected
+}
+
+// Actually instantiate and run the cached root and a packed child. A digest or
+// manifest assertion alone would miss a broken portable runtime/library pair.
+LaunchCached :: (remote: *AppRemoteCatalog, expected_hash: string, children: s64) -> bool {
+    if !remote.ready || TextUntilNul(remote.release.artifacts[0].sha256[:]) != expected_hash ||
+    !RunBundle(remote.bytes, 73) { return false }
+    app: HostedApp
+    defer { HostedAppClose(*app) }
+    catalog: AppCatalog
+    defer { AppCatalogClear(*catalog) }
+    if !HostedAppOpen(*app, remote.bytes) { return false }
+    asset := HostedAppAsset(*app, APPS_CATALOG_ASSET)
+    child := HostedAppAsset(*app, "assets/leaf.zx")
+    return asset.found && AppCatalogRead(asset.data, "inbe.arcade", *catalog) &&
+        catalog.count == children && child.found && RunBundle(child.data, 91)
+}
+
+Wait :: (remote: *AppRemoteCatalog) -> bool {
+    deadline := TestNow() + 10.0
+    while remote.stage != 0 && TestNow() < deadline {
+        AppRemoteCatalogPump(remote)
+        TestYield()
+    }
+    return remote.stage == 0
+}
+
+WaitMarker :: (name: string, remote: *AppRemoteCatalog, pump: bool) -> bool {
+    deadline := TestNow() + 10.0
+    while !PathExists(Environment(name)) && TestNow() < deadline {
+        if pump { AppRemoteCatalogPump(remote) }
+        TestYield()
+    }
+    return PathExists(Environment(name))
+}
+
+Consent :: (files: *AppFiles, origin: string) -> bool {
+    other := "https://other.inbe.app"
+    if AppConnectionRead(null, origin) != APP_CONNECTION_UNDECIDED ||
+    AppConnectionRead(files, "") != APP_CONNECTION_UNDECIDED ||
+    AppConnectionRemember(files, "", APP_CONNECTION_ALLOWED) ||
+    AppConnectionRemember(files, origin, APP_CONNECTION_UNDECIDED) { return false }
+    if !AppConnectionRemember(files, origin, APP_CONNECTION_ALLOWED) ||
+    AppConnectionRead(files, origin) != APP_CONNECTION_ALLOWED ||
+    AppConnectionRead(files, other) != APP_CONNECTION_UNDECIDED { return false }
+    if !AppConnectionRemember(files, origin, APP_CONNECTION_OFFLINE) ||
+    AppConnectionRead(files, origin) != APP_CONNECTION_OFFLINE ||
+    AppConnectionRead(files, other) != APP_CONNECTION_UNDECIDED { return false }
+    if !AppFileWrite(files, "node-connection", "on\nhttps://other.inbe.app\n") ||
+    AppConnectionRead(files, other) != APP_CONNECTION_UNDECIDED { return false }
+    return AppFileWrite(files, "node-connection", "bad") &&
+        AppConnectionRead(files, origin) == APP_CONNECTION_UNDECIDED
+}
+
+#program_export
+RemoteCheck :: () -> s32 {
+    source := AppRemoteSource.{.oldest_host_api = 9, .host_api = 41, .module_api = 1}
+    unused CopyCString(Environment("APPS_REMOTE_ORIGIN"), source.origin[:])
+    unused CopyCString("inbe.arcade", source.app_id[:])
+    unused CopyCString("fixture-2026", source.key_id[:])
+    unused CopyCString(Environment("APPS_REMOTE_KEY"), source.public_key[:])
+    if Environment("APPS_REMOTE_FLOOR") == "20" { source.minimum_sequence = 20 }
+    if !AppRemoteSourceValid(*source) { return 1 }
+    files: AppFiles
+    if !AppFilesOpen(*files, Environment("APPS_REMOTE_CACHE")) { return 2 }
+    defer { AppFilesClose(*files) }
+    if !Consent(*files, TextUntilNul(source.origin[:])) { return 3 }
+    remote: AppRemoteCatalog
+    defer { AppRemoteCatalogClose(*remote) }
+    if !AppRemoteCatalogOpen(*remote, source, *files, TestVerify) { return 4 }
+    mode := Environment("APPS_REMOTE_MODE")
+    before_bytes := remote.bytes
+    before_metadata := AppRemoteCopy(remote.metadata)
+    defer { AppFileFree(before_metadata) }
+    before_sequence := remote.release.sequence
+    if (Environment("APPS_REMOTE_BASE_READY") == "yes") != remote.ready { return 5 }
+    if remote.allowed || AppRemoteCatalogRefresh(*remote) || remote.stage != 0 { return 6 }
+    for spin: 0..20 { AppRemoteCatalogPump(*remote); TestYield() }
+    if mode == "no-consent" { return 0 }
+    if mode == "offline" {
+        if !LaunchCached(*remote, Environment("APPS_REMOTE_HASH"), 2) { return 7 }
+        return 0
+    }
+    AppRemoteCatalogAllow(*remote, true)
+    if !AppRemoteCatalogRefresh(*remote) || AppRemoteCatalogRefresh(*remote) { return 8 }
+    if mode == "revoke" {
+        if !WaitMarker("APPS_REMOTE_RECEIVED", *remote, true) { return 9 }
+        AppRemoteCatalogAllow(*remote, false)
+        if remote.stage != 0 || remote.allocation != null || remote.pending_metadata != "" ||
+        AppRemoteCatalogRefresh(*remote) { return 10 }
+        if !WriteEntireFile(Environment("APPS_REMOTE_RELEASE"), "release") ||
+        !WaitMarker("APPS_REMOTE_SENT", *remote, false) { return 11 }
+        for spin: 0..100 { AppRemoteCatalogPump(*remote); TestYield() }
+    } else if !Wait(*remote) { return 12 }
+    if mode == "reject" || mode == "revoke" {
+        if (mode == "reject" && !remote.failed) || remote.changed || remote.bytes != before_bytes ||
+        remote.metadata != before_metadata || remote.release.sequence != before_sequence ||
+        !LaunchCached(*remote, Environment("APPS_REMOTE_HASH"), 2) { return 13 }
+        disk := AppFileRead(*files, "current.json")
+        defer { AppFileFree(disk) }
+        if disk != before_metadata { return 14 }
+        return 0
+    }
+    if mode == "empty-reject" {
+        if !remote.failed || remote.ready || remote.bytes != "" || remote.metadata != "" { return 15 }
+        return 0
+    }
+    if remote.failed || !remote.ready || !LaunchCached(*remote, Environment("APPS_REMOTE_HASH"),
+        ifx Environment("APPS_REMOTE_CHILDREN") == "1" then 1 else 2) { return 16 }
+    if mode == "same" {
+        if remote.changed || remote.bytes != before_bytes || remote.previous_bytes != "" ||
+        remote.release.sequence <= before_sequence { return 17 }
+    } else {
+        if !remote.changed { return 18 }
+        if before_bytes != "" {
+            if remote.previous_bytes != before_bytes || remote.previous_metadata != before_metadata ||
+            AppRemoteCatalogRefresh(*remote) || !RunBundle(before_bytes, 73) { return 19 }
+            if mode == "restore" {
+                if !AppRemoteCatalogRestore(*remote) || remote.bytes != before_bytes ||
+                remote.metadata != before_metadata || remote.release.sequence != before_sequence { return 20 }
+                return 0
+            }
+        }
+    }
+    AppRemoteCatalogCollect(*remote)
+    if remote.changed || remote.previous_bytes != "" { return 21 }
+    AppRemoteCatalogAllow(*remote, false)
+    return 0
+}

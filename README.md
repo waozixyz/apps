@@ -151,6 +151,16 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- `apps/connection` provides an origin-bound public node connection choice and
+  a shared consent notice. Reading or drawing the notice starts no requests.
+  Hosts keep cached apps usable offline and may revoke transfers at any time.
+- `apps/remote_catalog` loads a signed collection independently of its native
+  host. The host supplies the reviewed publisher key, app identity, API policy
+  and minimum release sequence. Fetching requires an explicit allow call;
+  signatures, compatibility, byte limits, digest and catalog shape are checked
+  before the saved snapshot changes. Hosts stop the former root before
+  collecting its bytes, retain per-app saves, and keep their reviewed controller.
+
 - Align the published dependency graph on Kryon `ee9d204548295e6c6900939ba1120efe44659e79`
   and Ziran `3f6234e9a181cdad20fac4fad1d1afb1b8ccf054` (ZX27). Consumers
   must resolve the same Kryon revision for shared Session, Rectangle and Color
@@ -162,8 +172,8 @@ verifies public package imports and launcher search/grouping.
   for disposable headless IDBFS persistence, hydration failure and revocation.
 - Pin published Kryon asset audio and host it through Apps' existing audio
   permission, verified resources and per-instance lifetime.
-- Retry separate collection art after a refused request or failed transfer, one
-  transfer at a time and waiting 1 s, doubling to 60 s, between attempts.
+- Retry separate collection art after a refused request, failed transfer or bad
+  copy, one transfer at a time and waiting 1 s, doubling to 60 s, between attempts.
   `python3 tests/art_host_test.py /path/to/libziran.a` serves a real HTTP failure,
   then decodes the recovered art's pixels without a display.
 - `RAYLIB_A=/path/to/libraylib.a python3 tests/audio_host_test.py /path/to/libziran.a`

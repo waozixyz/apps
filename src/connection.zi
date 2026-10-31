@@ -1,0 +1,82 @@
+// Shared consent for reading a node's public app library and previews.
+// The host keeps transport, trusted publishers and cached app data.
+#import "std/text_buffer"
+#import "std/vec"
+#import "kryon/app_files"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/box_widget"
+#import "kryon/box_props"
+#import "kryon/text_widget"
+#import "kryon/text_props"
+#import "kryon/button_widget"
+#import "kryon/button_props"
+#import "kryon/control_props"
+#import "kryon/drawing_props"
+#import "kryon/widget_palette"
+#import "appearance"
+#import, file "../ui/words.zi";
+
+APP_CONNECTION_UNDECIDED :: 0
+APP_CONNECTION_ALLOWED :: 1
+APP_CONNECTION_OFFLINE :: 2
+
+// An answer belongs to this exact node. Changing a node never carries an
+// earlier permission to a different origin.
+AppConnectionRead :: (files: *AppFiles, origin: string) -> s32 {
+    if files == null || origin == "" { return APP_CONNECTION_UNDECIDED }
+    value := AppFileRead(files, "node-connection")
+    defer { AppFileFree(value) }
+    if value.count < 4 { return APP_CONNECTION_UNDECIDED }
+    if value[:3] == "on\n" && value[3:] == origin { return APP_CONNECTION_ALLOWED }
+    if value[:4] == "off\n" && value[4:] == origin { return APP_CONNECTION_OFFLINE }
+    return APP_CONNECTION_UNDECIDED
+}
+
+AppConnectionRemember :: (files: *AppFiles, origin: string, choice: s32) -> bool {
+    if files == null || origin == "" ||
+    (choice != APP_CONNECTION_ALLOWED && choice != APP_CONNECTION_OFFLINE) { return false }
+    value: Vec(u8)
+    BuilderPrint(*value, "%\n%", ifx choice == APP_CONNECTION_ALLOWED then "on" else "off", origin)
+    text := BuilderFinish(value)
+    defer { AppFileFree(text) }
+    return AppFileWrite(files, "node-connection", text)
+}
+
+// The caller suspends its underlying screen while asking. Rendering this
+// notice itself performs no network request and grants no app permissions.
+AppConnectionNotice :: (session: Session, bounds: Rectangle, locale: string,
+    origin: string, key: u64) -> s32 {
+    unused WidgetPaletteUse(session, AppCoversPalette())
+    defer { unused WidgetPaletteRestore(session) }
+    Box(session, BoxProps.{.key = key, .bounds = bounds, .fill = Color.{17, 18, 35, 255}})
+    width := ifx bounds.width - 32.0 < 480.0 then bounds.width - 32.0 else 480.0
+    height := ifx bounds.height - 24.0 < 292.0 then bounds.height - 24.0 else 292.0
+    x := bounds.x + (bounds.width - width) / 2.0
+    y := bounds.y + (bounds.height - height) / 2.0
+    Box(session, BoxProps.{.key = key + 1, .bounds = Rectangle.{x, y, width, height},
+        .fill = Color.{32, 34, 56, 255}, .border = Color.{65, 66, 96, 255}, .radius = 18.0})
+    Text(session, TextProps.{.key = key + 2, .text = AppsLabel(locale, "connect_node_title"),
+        .font = 22, .wrap = TextWrap.TextWrapAuto,
+        .bounds = Rectangle.{x + 20.0, y + 18.0, width - 40.0, 56.0}})
+    Text(session, TextProps.{.key = key + 3, .text = AppsLabel(locale, "connect_node_description"),
+        .font = 16, .wrap = TextWrap.TextWrapAuto,
+        .bounds = Rectangle.{x + 20.0, y + 82.0, width - 40.0, height - 166.0}})
+    Text(session, TextProps.{.key = key + 4, .text = origin, .font = 13,
+        .wrap = TextWrap.TextWrapAuto,
+        .bounds = Rectangle.{x + 20.0, y + height - 82.0, width - 40.0, 24.0}})
+    button_width := (width - 52.0) / 2.0
+    if Button(session, ButtonProps.{.key = key + 5, .id = 1,
+        .label = AppsLabel(locale, "stay_offline"),
+        .bounds = Rectangle.{x + 20.0, y + height - 52.0, button_width, 40.0},
+        .tone = ButtonTone.ButtonToneNeutral, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
+        return APP_CONNECTION_OFFLINE
+    }
+    if Button(session, ButtonProps.{.key = key + 6, .id = 2,
+        .label = AppsLabel(locale, "connect_node"),
+        .bounds = Rectangle.{x + 32.0 + button_width, y + height - 52.0, button_width, 40.0},
+        .tone = ButtonTone.ButtonToneAccent}) != 0 {
+        return APP_CONNECTION_ALLOWED
+    }
+    return APP_CONNECTION_UNDECIDED
+}

@@ -14,6 +14,9 @@ tree = "src/tree.zi"
 host = "src/host.zi"
 preparation = "src/preparation.zi"
 controller = "src/controller.zi"
+connection = "src/connection.zi"
+words = "ui/words.zi"
+remote_catalog = "src/remote_catalog.zi"
 launcher = "src/launcher.zi"
 node_types = "src/node_types.zi"
 node_app = "src/node_app.zi"
@@ -26,3 +29,7 @@ ref = "6113d3a7d3776e775ac490ceb7a806be734840f5"
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
 ref = "master"
+
+[dependencies.daochi_client]
+git = "https://github.com/ziranlang/daochi-client.git"
+ref = "970d5e44b1702158cb16469892da6ff50f142427"

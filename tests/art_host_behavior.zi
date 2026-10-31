@@ -18,6 +18,7 @@
 #import "art_decode"
 transfer: FileDownload;
 requests: s32;
+bundle_calls: s32;
 libc :: #system_library "libc";
 PreparationTestBegin :: () #foreign libc;
 PreparationTestYield :: () #foreign libc;
@@ -27,6 +28,7 @@ ArtUnloadImage :: (image: RaylibGlyphImage) #foreign art_raylib "UnloadImage";
 rejected: s32;
 cached: string;
 ArtBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    bundle_calls += 1
     if cached.count > 0 { return HostedAsset.{.found = true, .data = cached} }
     if FileDownloadPoll(*transfer) != .Ready { return HostedAsset.{} }
     bytes, found := ReadEntireFile(FixtureEnvironment("APPS_ART_DESTINATION"))
@@ -109,18 +111,36 @@ ArtCheck :: () -> s32 {
     root = AppTreeNode(*host.tree, host.tree.active)
     if !AppHostAsset(root, "assets/preview.png").found || requests != 4 { return 12 }
     if !SlimStop(*host) { return 13 }
-    // Wrong bytes and wrong size must never become a drawable asset.
+    // Wrong size never becomes a drawable asset, and is not rechecked every access.
     cached = ui
     if !AppHostStart(*host, bytes, "fixture.test", "fixture.slim", "collection",
         FixtureEnvironment("APPS_FIXTURE_SLIM_ROOT_SHA256"), "account-a", platform,
         FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")) { return 14 }
     root = AppTreeNode(*host.tree, host.tree.active)
     if AppHostAsset(root, "assets/preview.png").found { return 15 }
+    checks := bundle_calls
+    for index: 0..20 {
+        if AppHostAsset(root, "assets/preview.png").found { return 16 }
+    }
+    if bundle_calls != checks { return 19 }
+    // A same-length copy with the wrong digest is refused after the wait.
     cached, found = ReadEntireFile(FixtureEnvironment("APPS_ART_DESTINATION"))
-    // Preserve bundle length while corrupting its digest.
     changed := cast(*TextDescriptor)(*cached)
     changed.data[cached.count - 1] = changed.data[cached.count - 1] ^ 1
-    if AppHostAsset(root, "assets/preview.png").found { return 16 }
+    deadline = PreparationTestNow() + 10.0
+    while bundle_calls == checks && PreparationTestNow() < deadline {
+        if AppHostAsset(root, "assets/preview.png").found { return 20 }
+        PreparationTestYield()
+    }
+    if bundle_calls == checks { return 21 }
+    // The verified copy recovers without restarting the collection.
+    changed.data[cached.count - 1] = changed.data[cached.count - 1] ^ 1
+    recovered: HostedAsset
+    while !recovered.found && PreparationTestNow() < deadline {
+        recovered = AppHostAsset(root, "assets/preview.png")
+        PreparationTestYield()
+    }
+    if !recovered.found { return 22 }
     if !SlimStop(*host) { return 17 }
     return 0
 }

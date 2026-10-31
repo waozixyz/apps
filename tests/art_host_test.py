@@ -117,7 +117,7 @@ def main():
         server.shutdown()
         server.server_close()
         thread.join()
-    print('Apps art: rejected dispatch/reply, paced retry, real HTTP 503 -> retry -> decoded RGB pixels, hash/size rejection and cached offline art passed')
+    print('Apps art: rejected dispatch/reply, paced retry, real HTTP 503 -> retry -> decoded RGB pixels, hash/size rejection with paced recovery and cached offline art passed')
 
 
 if __name__ == '__main__':

@@ -696,8 +696,9 @@ AppHostArtEntry :: (node: *AppNode, entry: *AppEntry) -> bool {
     CopyCString(APPS_ART_BUNDLE, entry.bundle[:])
 }
 
-// A failed art request waits before the next one, so a device without a working
-// network or a node serving bad art is not asked again every frame.
+// A failed art request or a bad copy waits before the next attempt, so a device
+// without a working network or a provider holding bad art is not asked and
+// hashed again every frame.
 APPS_ART_RETRY_FIRST_MS :: 1000
 APPS_ART_RETRY_LAST_MS :: 60000
 
@@ -716,6 +717,7 @@ AppHostArtRequestFailed :: (runtime: *AppRuntime) {
 AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> HostedAsset {
     host := runtime.host
     if !runtime.art_open {
+        if MonotonicMilliseconds() < runtime.art_retry_at { return HostedAsset.{} }
         entry: AppEntry
         if host == null || host.platform.bundle == null || !AppHostArtEntry(node, *entry) { return HostedAsset.{} }
         bytes := host.platform.bundle(host.platform.context, node, *entry)
@@ -723,10 +725,12 @@ AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> Hoste
             if runtime.art_requested && host.platform.download != null {
                 download: AppDownload
                 if host.platform.download(host.platform.context, node, *entry, *download) &&
-                download.failed && !download.downloading { AppHostArtRequestFailed(runtime) }
+                download.failed && !download.downloading {
+                    AppHostArtRequestFailed(runtime)
+                    return HostedAsset.{}
+                }
             }
-            if !runtime.art_requested && host.platform.fetch != null &&
-            MonotonicMilliseconds() >= runtime.art_retry_at {
+            if !runtime.art_requested && host.platform.fetch != null {
                 runtime.art_requested = true
                 reply: AppsReply
                 if !host.platform.fetch(host.platform.context, TextUntilNul(host.tree.account[:]),
@@ -739,6 +743,7 @@ AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> Hoste
         }
         if bytes.data.count != entry.bytes || !AppHostBytesMatch(bytes.data, TextUntilNul(entry.sha256[:])) ||
         !HostedAppOpen(*runtime.art, bytes.data) {
+            AppHostArtRequestFailed(runtime)
             return HostedAsset.{}
         }
         runtime.art_open = true

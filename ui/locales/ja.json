@@ -48,5 +48,15 @@
   "hide": "隠す",
   "close": "閉じる",
   "download_waiting": "ダウンロード待ち",
-  "download_dependency": "必須"
+  "download_dependency": "必須",
+  "connect_node_title": "ノードに接続しますか？",
+  "connect_node_description": "このノードからアプリ一覧とプレビューを読み込みます。アプリは選択したときだけダウンロードされます。",
+  "connect_node": "接続",
+  "stay_offline": "オフラインのまま",
+  "node_connection": "ノードへの接続",
+  "loading_library": "ライブラリを読み込み中…",
+  "library_unavailable": "ライブラリを更新できませんでした。",
+  "saved_library": "保存済みのライブラリを表示しています。",
+  "offline_library": "オフラインです。ダウンロード済みのアプリは引き続き利用できます。",
+  "refresh_library": "ライブラリを更新"
 }

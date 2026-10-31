@@ -1,0 +1,378 @@
+// A verified node collection, refreshed independently of the native host.
+// Transport has no account credentials. The caller supplies its reviewed
+// publisher binding, compatibility policy, private cache and explicit consent.
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/file"
+#import "std/json_scan"
+#import "std/net_http"
+#import "std/text_buffer"
+#import "std/vec"
+#import "kryon/app_files"
+#import "kryon/hosted_app"
+#import "kryon/http_transfer"
+#import "catalog"
+#import "protocol"
+Release :: #import "daochi_client/release";
+
+APP_REMOTE_METADATA_LIMIT :: 65536
+APP_REMOTE_CATALOG_LIMIT :: 262144
+
+AppRemoteSource :: struct {
+    origin: [512]u8
+    app_id: [64]u8
+    key_id: [64]u8
+    public_key: [65]u8
+    oldest_host_api: s32
+    host_api: s32
+    module_api: s32
+    minimum_sequence: s64
+}
+
+AppRemoteCatalog :: struct {
+    source: AppRemoteSource
+    files: *AppFiles
+    verify: Release.DaochiReleaseVerify
+    allowed: bool
+    failed: bool
+    changed: bool
+    ready: bool
+    // 0 idle, 1 descriptor, 2 immutable collection artifact.
+    stage: s32
+    transfer: HttpTransfer
+    response: [APP_REMOTE_METADATA_LIMIT + 1]u8
+    allocation: *u8
+    pending_metadata: string
+    pending_release: Release.DaochiRelease
+    metadata: string
+    bytes: string
+    release: Release.DaochiRelease
+    // Retained until the consumer stops using its previous root collection.
+    previous_metadata: string
+    previous_bytes: string
+    previous_release: Release.DaochiRelease
+}
+
+remote_memory :: #system_library "c";
+AppRemoteAllocate :: (size: usize) -> *u8 #foreign remote_memory "malloc";
+AppRemoteFree :: (bytes: *u8) #foreign remote_memory "free";
+
+AppRemoteCopy :: (value: string) -> string {
+    bytes: Vec(u8)
+    BuilderPrint(*bytes, "%", value)
+    return BuilderFinish(bytes)
+}
+
+AppRemoteOriginValid :: (origin: string) -> bool {
+    begin: s64 = 8
+    if origin.count > 17 && origin[:17] == "http://127.0.0.1:" { begin = 7 }
+    else if origin.count <= 8 || origin[:8] != "https://" { return false }
+    if origin.count <= begin || origin.count >= 512 { return false }
+    for index: begin..origin.count - 1 {
+        byte := origin[index]
+        if byte <= #char " " || byte >= 127 || byte == #char "/" || byte == #char "\\" ||
+        byte == #char "?" || byte == #char "#" || byte == #char "@" { return false }
+    }
+    return true
+}
+
+AppRemoteSourceValid :: (source: *AppRemoteSource) -> bool {
+    return source != null && AppRemoteOriginValid(TextUntilNul(source.origin[:])) &&
+        Release.DaochiIdentifierValid(TextUntilNul(source.app_id[:])) &&
+        Release.DaochiIdentifierValid(TextUntilNul(source.key_id[:])) &&
+        Release.DaochiHashValid(TextUntilNul(source.public_key[:])) &&
+        source.oldest_host_api > 0 && source.oldest_host_api <= source.host_api &&
+        source.host_api <= 65535 && source.module_api > 0 && source.module_api <= 65535 &&
+        source.minimum_sequence >= 0 && source.minimum_sequence <= 2147483647
+}
+
+AppRemoteSourceRead :: (json: string, at: s32, source: *AppRemoteSource) -> bool {
+    if source == null || json.count > APP_REMOTE_METADATA_LIMIT { return false }
+    keys: [5]string = .["origin", "app_id", "key_id", "public_key", "minimum_sequence"]
+    if !AppsObjectValid(json, at, keys[:]) { return false }
+    if FieldAt(json, at, "minimum_sequence") >= 0 {
+        number := ReadNumber(json, FieldAt(json, at, "minimum_sequence"))
+        if !number.valid || number.value < 0.0 || number.value > 2147483647.0 { return false }
+        source.minimum_sequence = cast(s64)number.value
+        if cast(float64)source.minimum_sequence != number.value { return false }
+    }
+    return AppsReadText(json, at, "origin", source.origin[:]) &&
+        AppsReadText(json, at, "app_id", source.app_id[:]) &&
+        AppsReadText(json, at, "key_id", source.key_id[:]) &&
+        AppsReadText(json, at, "public_key", source.public_key[:]) && AppRemoteSourceValid(source)
+}
+
+AppRemoteParse :: (remote: *AppRemoteCatalog, metadata: string) -> Release.DaochiRelease {
+    signed := Release.DaochiParseRelease(metadata, TextUntilNul(remote.source.public_key[:]),
+        67108864, remote.verify)
+    if !signed.valid || TextUntilNul(signed.app_id[:]) != TextUntilNul(remote.source.app_id[:]) ||
+    TextUntilNul(signed.key_id[:]) != TextUntilNul(remote.source.key_id[:]) ||
+    TextUntilNul(signed.runtime[:]) != "kryon-app-v1" ||
+    signed.host_api < remote.source.oldest_host_api || signed.host_api > remote.source.host_api ||
+    signed.module_api != remote.source.module_api || signed.data_schema != 0 ||
+    signed.dependency_count != 0 || signed.sequence < remote.source.minimum_sequence ||
+    signed.artifacts[0].size > APP_REMOTE_CATALOG_LIMIT {
+        return Release.DaochiRelease.{}
+    }
+    return signed
+}
+
+AppRemoteRead :: (files: *AppFiles, name: string, maximum: s64) -> string {
+    path := AppFilePath(files, name, false)
+    defer { AppFileFree(path) }
+    if path == "" { return "" }
+    file := OpenRead(path)
+    if !file.valid { return "" }
+    size := FileSize(file)
+    unused CloseFile(file)
+    if size <= 0 || size > maximum { return "" }
+    return AppFileRead(files, name)
+}
+
+AppRemotePayloadName :: (release: *Release.DaochiRelease) -> string {
+    name: Vec(u8)
+    BuilderPrint(*name, "%.zx", TextUntilNul(release.artifacts[0].sha256[:]))
+    return BuilderFinish(name)
+}
+
+AppRemoteCollectionValid :: (remote: *AppRemoteCatalog, bytes: string,
+    release: *Release.DaochiRelease) -> bool {
+    if !release.valid || bytes.count != release.artifacts[0].size ||
+    !Release.DaochiSha256Matches(bytes, TextUntilNul(release.artifacts[0].sha256[:])) { return false }
+    opened: HostedApp
+    if !HostedAppOpen(*opened, bytes) { return false }
+    defer { HostedAppClose(*opened) }
+    catalog: AppCatalog
+    defer { AppCatalogClear(*catalog) }
+    asset := HostedAppAsset(*opened, APPS_CATALOG_ASSET)
+    return asset.found && AppCatalogRead(asset.data, TextUntilNul(remote.source.app_id[:]), *catalog)
+}
+
+// No network request is made here. Invalid cache bytes remain unexecuted.
+// The AppFiles namespace belongs to this one configured collection.
+AppRemoteCatalogOpen :: (remote: *AppRemoteCatalog, source: AppRemoteSource,
+    files: *AppFiles, verify: Release.DaochiReleaseVerify) -> bool {
+    if remote == null || remote.files != null || files == null || verify == null ||
+    !AppRemoteSourceValid(*source) { return false }
+    remote.source = source
+    remote.files = files
+    remote.verify = verify
+    metadata := AppRemoteRead(files, "current.json", APP_REMOTE_METADATA_LIMIT)
+    release := AppRemoteParse(remote, metadata)
+    if release.valid {
+        name := AppRemotePayloadName(*release)
+        bytes := AppRemoteRead(files, name, APP_REMOTE_CATALOG_LIMIT)
+        AppFileFree(name)
+        if AppRemoteCollectionValid(remote, bytes, *release) {
+            remote.metadata = metadata
+            remote.bytes = bytes
+            remote.release = release
+            remote.ready = true
+            return true
+        }
+        AppFileFree(bytes)
+    }
+    AppFileFree(metadata)
+    return true
+}
+
+AppRemoteCancelTransfer :: (remote: *AppRemoteCatalog) {
+    HttpTransferCancel(*remote.transfer)
+    if remote.allocation != null { AppRemoteFree(remote.allocation); remote.allocation = null }
+    AppFileFree(remote.pending_metadata)
+    remote.pending_metadata = ""
+    remote.pending_release = Release.DaochiRelease.{}
+    remote.stage = 0
+}
+
+AppRemoteCatalogAllow :: (remote: *AppRemoteCatalog, allowed: bool) {
+    if remote == null { return }
+    remote.allowed = allowed
+    if !allowed { AppRemoteCancelTransfer(remote) }
+}
+
+AppRemoteRequest :: (remote: *AppRemoteCatalog, suffix: string, output: []u8,
+    accept: string) -> bool {
+    if !remote.allowed { return false }
+    url: Vec(u8)
+    BuilderPrint(*url, "%/api/v2/packages/%/%", TextUntilNul(remote.source.origin[:]),
+        TextUntilNul(remote.source.app_id[:]), suffix)
+    address := BuilderFinish(url)
+    defer { AppFileFree(address) }
+    headers: [1]HttpHeader = .[HttpHeader.{"User-Agent", "Kryon-Apps/1.0"}]
+    header_count: s64 = 1
+    // Browsers supply User-Agent and disable caching in their transport. Keep
+    // the public read free of custom headers that would require preflight.
+    #if #defined(PLATFORM_WEB) {
+        header_count = 0
+    }
+    request := HttpRequest.{.method = "GET", .url = address, .accept = accept,
+        .headers = headers[0:header_count]}
+    return HttpTransferStart(*remote.transfer, request, output, 20000)
+}
+
+AppRemoteCatalogRefresh :: (remote: *AppRemoteCatalog) -> bool {
+    if remote == null || remote.files == null || !remote.allowed || remote.stage != 0 ||
+    remote.previous_bytes != "" { return false }
+    query: Vec(u8)
+    BuilderPrint(*query, "latest?host_api=%&module_api=%&bucket=99&format=zx",
+        remote.source.host_api, remote.source.module_api)
+    suffix := BuilderFinish(query)
+    defer { AppFileFree(suffix) }
+    remote.failed = false
+    if !AppRemoteRequest(remote, suffix, remote.response[:], "application/json") {
+        remote.failed = true
+        return false
+    }
+    remote.stage = 1
+    return true
+}
+
+AppRemoteFail :: (remote: *AppRemoteCatalog) {
+    AppRemoteCancelTransfer(remote)
+    remote.failed = true
+}
+
+AppRemoteAccept :: (remote: *AppRemoteCatalog, release: Release.DaochiRelease,
+    metadata: string, bytes: string) -> bool {
+    name := AppRemotePayloadName(*release)
+    defer { AppFileFree(name) }
+    if !AppFileWrite(remote.files, name, bytes) { return false }
+    if remote.ready && !AppFileWrite(remote.files, "previous.json", remote.metadata) { return false }
+    if !AppFileWrite(remote.files, "current.json", metadata) { return false }
+    remote.previous_metadata = remote.metadata
+    remote.previous_bytes = remote.bytes
+    remote.previous_release = remote.release
+    remote.metadata = metadata
+    remote.bytes = bytes
+    remote.release = release
+    remote.ready = true
+    remote.changed = true
+    remote.failed = false
+    return true
+}
+
+AppRemoteCatalogPump :: (remote: *AppRemoteCatalog) {
+    if remote == null || remote.stage == 0 { return }
+    if !remote.allowed { AppRemoteCancelTransfer(remote); return }
+    status: s32
+    length: s64
+    result := HttpTransferPollLength(*remote.transfer, *status, *length)
+    if result < 0 { return }
+    if result == 0 || status != 200 || length < 1 { AppRemoteFail(remote); return }
+    HttpTransferCancel(*remote.transfer)
+    if remote.stage == 1 {
+        if length > APP_REMOTE_METADATA_LIMIT { AppRemoteFail(remote); return }
+        metadata := AppRemoteCopy(TextFromBytes(remote.response[:length]))
+        signed := AppRemoteParse(remote, metadata)
+        if !signed.valid || (remote.ready && (signed.sequence < remote.release.sequence ||
+            (signed.sequence == remote.release.sequence &&
+             TextUntilNul(signed.artifacts[0].sha256[:]) != TextUntilNul(remote.release.artifacts[0].sha256[:])))) {
+            AppFileFree(metadata)
+            AppRemoteFail(remote)
+            return
+        }
+        if remote.ready && TextUntilNul(signed.artifacts[0].sha256[:]) == TextUntilNul(remote.release.artifacts[0].sha256[:]) {
+            // Reusing verified bytes still requires the signed length to agree.
+            if signed.artifacts[0].size != remote.bytes.count ||
+            !AppFileWrite(remote.files, "current.json", metadata) {
+                AppFileFree(metadata)
+                AppRemoteFail(remote)
+                return
+            }
+            AppFileFree(remote.metadata)
+            remote.metadata = metadata
+            remote.release = signed
+            remote.stage = 0
+            return
+        }
+        remote.pending_metadata = metadata
+        remote.pending_release = signed
+        remote.allocation = AppRemoteAllocate(cast(usize)(signed.artifacts[0].size + 1))
+        if remote.allocation == null { AppRemoteFail(remote); return }
+        suffix := AppRemotePayloadName(*signed)
+        started := AppRemoteRequest(remote, suffix,
+            BytesFromPointer(remote.allocation, cast(u64)(signed.artifacts[0].size + 1)), "application/octet-stream")
+        AppFileFree(suffix)
+        if !started { AppRemoteFail(remote); return }
+        remote.stage = 2
+        return
+    }
+    signed := remote.pending_release
+    bytes := AppRemoteCopy(TextFromBytes(BytesFromPointer(remote.allocation, cast(u64)length)))
+    if !AppRemoteCollectionValid(remote, bytes, *signed) ||
+    !AppRemoteAccept(remote, signed, remote.pending_metadata, bytes) {
+        AppFileFree(bytes)
+        AppRemoteFail(remote)
+        return
+    }
+    remote.pending_metadata = ""
+    AppRemoteCancelTransfer(remote)
+}
+
+// Only after the consumer has stopped using its former root collection.
+AppRemoteCatalogCollect :: (remote: *AppRemoteCatalog) {
+    AppFileFree(remote.previous_metadata)
+    AppFileFree(remote.previous_bytes)
+    remote.previous_metadata = ""
+    remote.previous_bytes = ""
+    remote.previous_release = Release.DaochiRelease.{}
+    remote.changed = false
+    AppRemotePruneCache(remote)
+}
+
+// This namespace holds collection snapshots, never downloaded child apps.
+// Keep the current signed snapshot and its signed offline fallback. Only
+// managed hash filenames are removed, after the consumer releases old roots.
+AppRemotePruneCache :: (remote: *AppRemoteCatalog) {
+    if !remote.ready || remote.files == null || !AppFilesAvailable(remote.files) { return }
+    current := AppRemoteRead(remote.files, "current.json", APP_REMOTE_METADATA_LIMIT)
+    defer { AppFileFree(current) }
+    // A failed restore/write must never orphan the descriptor still on disk.
+    if current != remote.metadata { return }
+    previous := AppRemoteRead(remote.files, "previous.json", APP_REMOTE_METADATA_LIMIT)
+    defer { AppFileFree(previous) }
+    fallback := AppRemoteParse(remote, previous)
+    current_hash := TextUntilNul(remote.release.artifacts[0].sha256[:])
+    previous_hash := TextUntilNul(fallback.artifacts[0].sha256[:])
+    directory := OpenDirectory(remote.files.root)
+    if !directory.valid { return }
+    defer { unused CloseDirectory(*directory) }
+    while true {
+        entry := NextDirectoryEntry(*directory)
+        if !entry.valid { break }
+        name := TextUntilNul(entry.name[:])
+        if (entry.kind != .Regular && entry.kind != .Unknown) || name.count != 67 ||
+        name[64:] != ".zx" || !Release.DaochiHashValid(name[:64]) ||
+        name[:64] == current_hash || (fallback.valid && name[:64] == previous_hash) { continue }
+        // AppFiles validates every component and refuses symbolic links.
+        path := AppFilePath(remote.files, name, false)
+        if path != "" { unused RemoveFile(path) }
+        AppFileFree(path)
+    }
+}
+
+AppRemoteCatalogRestore :: (remote: *AppRemoteCatalog) -> bool {
+    if remote == null || remote.previous_bytes == "" { return false }
+    restored := AppFileWrite(remote.files, "current.json", remote.previous_metadata)
+    AppFileFree(remote.metadata)
+    AppFileFree(remote.bytes)
+    remote.metadata = remote.previous_metadata
+    remote.bytes = remote.previous_bytes
+    remote.release = remote.previous_release
+    remote.previous_metadata = ""
+    remote.previous_bytes = ""
+    remote.previous_release = Release.DaochiRelease.{}
+    remote.changed = false
+    remote.failed = true
+    return restored
+}
+
+AppRemoteCatalogClose :: (remote: *AppRemoteCatalog) {
+    if remote == null { return }
+    AppRemoteCancelTransfer(remote)
+    AppRemoteCatalogCollect(remote)
+    AppFileFree(remote.metadata)
+    AppFileFree(remote.bytes)
+    remote.* = AppRemoteCatalog.{}
+}

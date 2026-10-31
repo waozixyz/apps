@@ -11,26 +11,49 @@
       "url": "https://github.com/raysan5/raylib.git"
     },
     {
+      "commit": "970d5e44b1702158cb16469892da6ff50f142427",
+      "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
+      "id": "p6af0b5bd9fd0cd31",
+      "name": "DaochiClient",
+      "ref": "970d5e44b1702158cb16469892da6ff50f142427",
+      "url": "https://github.com/ziranlang/daochi-client.git"
+    },
+    {
+      "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
+      "dependencies": {"liboqs": "pf9af593c157b8edf"},
+      "id": "p7098ac9cd92f7e5f",
+      "name": "Oqs",
+      "ref": "master",
+      "url": "https://github.com/ziranlang/oqs.git"
+    },
+    {
+      "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
+      "dependencies": {},
+      "id": "pc23fbf455e97614d",
+      "name": "crypto",
+      "ref": "master",
+      "url": "https://github.com/ziranlang/crypto.git"
+    },
+    {
       "commit": "6113d3a7d3776e775ac490ceb7a806be734840f5",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "dependency_refs": {"raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e"},
       "id": "pe3312a7f156bf99d",
       "name": "kryon",
       "ref": "6113d3a7d3776e775ac490ceb7a806be734840f5",
       "url": "https://github.com/kryonlabs/kryon.git"
     },
     {
-      "commit": "08bbad051379813d0fd1c3bb7bb6814f3491da75",
+      "commit": "e77d81dab791c13bf1c4e5d9a7160c403be9bbe0",
       "dependencies": {},
-      "id": "pf039d7a776333200",
-      "name": "crypto",
-      "ref": "master",
-      "url": "https://github.com/ziranlang/crypto.git"
+      "id": "pf9af593c157b8edf",
+      "name": "liboqs",
+      "ref": "main",
+      "source": true,
+      "url": "https://github.com/open-quantum-safe/liboqs.git"
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pf039d7a776333200", "kryon": "pe3312a7f156bf99d"},
-    "dependency_refs": {"crypto": "master", "kryon": "6113d3a7d3776e775ac490ceb7a806be734840f5"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pe3312a7f156bf99d"},
     "name": "Apps"
   },
   "toolchain": {

@@ -51,6 +51,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Zavřít" }
         if key == "download_waiting" { return "Čeká na stažení" }
         if key == "download_dependency" { return "vyžadováno" }
+        if key == "connect_node_title" { return "Připojit k uzlu?" }
+        if key == "connect_node_description" { return "Načíst knihovnu aplikací a náhledy z tohoto uzlu. Aplikace se stáhnou jen na vaši žádost." }
+        if key == "connect_node" { return "Připojit" }
+        if key == "stay_offline" { return "Zůstat offline" }
+        if key == "node_connection" { return "Připojení k uzlu" }
+        if key == "loading_library" { return "Načítání knihovny…" }
+        if key == "library_unavailable" { return "Knihovnu se nepodařilo obnovit." }
+        if key == "saved_library" { return "Zobrazuje se uložená knihovna." }
+        if key == "offline_library" { return "Jste offline. Stažené aplikace jsou stále dostupné." }
+        if key == "refresh_library" { return "Obnovit knihovnu" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -103,6 +113,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Schließen" }
         if key == "download_waiting" { return "Wartet auf Download" }
         if key == "download_dependency" { return "erforderlich" }
+        if key == "connect_node_title" { return "Mit dem Knoten verbinden?" }
+        if key == "connect_node_description" { return "App-Bibliothek und Vorschaubilder dieses Knotens laden. Apps werden nur auf deinen Wunsch heruntergeladen." }
+        if key == "connect_node" { return "Verbinden" }
+        if key == "stay_offline" { return "Offline bleiben" }
+        if key == "node_connection" { return "Knotenverbindung" }
+        if key == "loading_library" { return "Bibliothek wird geladen…" }
+        if key == "library_unavailable" { return "Die Bibliothek konnte nicht aktualisiert werden." }
+        if key == "saved_library" { return "Deine gespeicherte Bibliothek wird angezeigt." }
+        if key == "offline_library" { return "Du bist offline. Heruntergeladene Apps bleiben verfügbar." }
+        if key == "refresh_library" { return "Bibliothek aktualisieren" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -155,6 +175,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Cerrar" }
         if key == "download_waiting" { return "Esperando para descargar" }
         if key == "download_dependency" { return "necesario" }
+        if key == "connect_node_title" { return "¿Conectar con el nodo?" }
+        if key == "connect_node_description" { return "Cargar la biblioteca de aplicaciones y las vistas previas de este nodo. Las aplicaciones se descargan solo cuando tú lo eliges." }
+        if key == "connect_node" { return "Conectar" }
+        if key == "stay_offline" { return "Seguir sin conexión" }
+        if key == "node_connection" { return "Conexión con el nodo" }
+        if key == "loading_library" { return "Cargando la biblioteca…" }
+        if key == "library_unavailable" { return "No se pudo actualizar la biblioteca." }
+        if key == "saved_library" { return "Se muestra tu biblioteca guardada." }
+        if key == "offline_library" { return "No tienes conexión. Las aplicaciones descargadas siguen disponibles." }
+        if key == "refresh_library" { return "Actualizar biblioteca" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -207,6 +237,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Fermer" }
         if key == "download_waiting" { return "En attente de téléchargement" }
         if key == "download_dependency" { return "requis" }
+        if key == "connect_node_title" { return "Se connecter au nœud ?" }
+        if key == "connect_node_description" { return "Charger la bibliothèque d’applications et les aperçus de ce nœud. Les applications sont téléchargées uniquement à votre demande." }
+        if key == "connect_node" { return "Se connecter" }
+        if key == "stay_offline" { return "Rester hors ligne" }
+        if key == "node_connection" { return "Connexion au nœud" }
+        if key == "loading_library" { return "Chargement de la bibliothèque…" }
+        if key == "library_unavailable" { return "Impossible d’actualiser la bibliothèque." }
+        if key == "saved_library" { return "Votre bibliothèque enregistrée est affichée." }
+        if key == "offline_library" { return "Vous êtes hors ligne. Les applications téléchargées restent disponibles." }
+        if key == "refresh_library" { return "Actualiser la bibliothèque" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -259,6 +299,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Tutup" }
         if key == "download_waiting" { return "Menunggu diunduh" }
         if key == "download_dependency" { return "diperlukan" }
+        if key == "connect_node_title" { return "Hubungkan ke node?" }
+        if key == "connect_node_description" { return "Muat pustaka aplikasi dan pratinjau dari node ini. Aplikasi hanya diunduh saat Anda memilihnya." }
+        if key == "connect_node" { return "Hubungkan" }
+        if key == "stay_offline" { return "Tetap luring" }
+        if key == "node_connection" { return "Koneksi node" }
+        if key == "loading_library" { return "Memuat pustaka…" }
+        if key == "library_unavailable" { return "Pustaka tidak dapat diperbarui." }
+        if key == "saved_library" { return "Menampilkan pustaka tersimpan Anda." }
+        if key == "offline_library" { return "Anda sedang luring. Aplikasi yang diunduh tetap tersedia." }
+        if key == "refresh_library" { return "Perbarui pustaka" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -311,6 +361,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Chiudi" }
         if key == "download_waiting" { return "In attesa del download" }
         if key == "download_dependency" { return "necessario" }
+        if key == "connect_node_title" { return "Connettersi al nodo?" }
+        if key == "connect_node_description" { return "Carica la raccolta di app e le anteprime di questo nodo. Le app vengono scaricate solo quando lo scegli." }
+        if key == "connect_node" { return "Connetti" }
+        if key == "stay_offline" { return "Resta offline" }
+        if key == "node_connection" { return "Connessione al nodo" }
+        if key == "loading_library" { return "Caricamento della raccolta…" }
+        if key == "library_unavailable" { return "Impossibile aggiornare la raccolta." }
+        if key == "saved_library" { return "Viene mostrata la raccolta salvata." }
+        if key == "offline_library" { return "Sei offline. Le app scaricate restano disponibili." }
+        if key == "refresh_library" { return "Aggiorna raccolta" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -363,6 +423,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "閉じる" }
         if key == "download_waiting" { return "ダウンロード待ち" }
         if key == "download_dependency" { return "必須" }
+        if key == "connect_node_title" { return "ノードに接続しますか？" }
+        if key == "connect_node_description" { return "このノードからアプリ一覧とプレビューを読み込みます。アプリは選択したときだけダウンロードされます。" }
+        if key == "connect_node" { return "接続" }
+        if key == "stay_offline" { return "オフラインのまま" }
+        if key == "node_connection" { return "ノードへの接続" }
+        if key == "loading_library" { return "ライブラリを読み込み中…" }
+        if key == "library_unavailable" { return "ライブラリを更新できませんでした。" }
+        if key == "saved_library" { return "保存済みのライブラリを表示しています。" }
+        if key == "offline_library" { return "オフラインです。ダウンロード済みのアプリは引き続き利用できます。" }
+        if key == "refresh_library" { return "ライブラリを更新" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -415,6 +485,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "닫기" }
         if key == "download_waiting" { return "다운로드 대기 중" }
         if key == "download_dependency" { return "필수" }
+        if key == "connect_node_title" { return "노드에 연결할까요?" }
+        if key == "connect_node_description" { return "이 노드에서 앱 목록과 미리보기를 불러옵니다. 앱은 직접 선택한 경우에만 다운로드됩니다." }
+        if key == "connect_node" { return "연결" }
+        if key == "stay_offline" { return "오프라인 유지" }
+        if key == "node_connection" { return "노드 연결" }
+        if key == "loading_library" { return "라이브러리 불러오는 중…" }
+        if key == "library_unavailable" { return "라이브러리를 새로 고치지 못했습니다." }
+        if key == "saved_library" { return "저장된 라이브러리를 표시합니다." }
+        if key == "offline_library" { return "오프라인 상태입니다. 다운로드한 앱은 계속 사용할 수 있습니다." }
+        if key == "refresh_library" { return "라이브러리 새로 고침" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -467,6 +547,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Fechar" }
         if key == "download_waiting" { return "Aguardando download" }
         if key == "download_dependency" { return "necessário" }
+        if key == "connect_node_title" { return "Conectar ao nó?" }
+        if key == "connect_node_description" { return "Carregar a biblioteca de aplicativos e as prévias deste nó. Os aplicativos só são baixados quando você escolhe." }
+        if key == "connect_node" { return "Conectar" }
+        if key == "stay_offline" { return "Continuar offline" }
+        if key == "node_connection" { return "Conexão com o nó" }
+        if key == "loading_library" { return "Carregando a biblioteca…" }
+        if key == "library_unavailable" { return "Não foi possível atualizar a biblioteca." }
+        if key == "saved_library" { return "Mostrando sua biblioteca salva." }
+        if key == "offline_library" { return "Você está offline. Os aplicativos baixados continuam disponíveis." }
+        if key == "refresh_library" { return "Atualizar biblioteca" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -519,6 +609,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "Закрыть" }
         if key == "download_waiting" { return "Ожидает загрузки" }
         if key == "download_dependency" { return "требуется" }
+        if key == "connect_node_title" { return "Подключиться к узлу?" }
+        if key == "connect_node_description" { return "Загрузить библиотеку приложений и изображения предпросмотра с этого узла. Приложения загружаются только по вашему выбору." }
+        if key == "connect_node" { return "Подключиться" }
+        if key == "stay_offline" { return "Остаться офлайн" }
+        if key == "node_connection" { return "Подключение к узлу" }
+        if key == "loading_library" { return "Загрузка библиотеки…" }
+        if key == "library_unavailable" { return "Не удалось обновить библиотеку." }
+        if key == "saved_library" { return "Показана сохранённая библиотека." }
+        if key == "offline_library" { return "Вы офлайн. Загруженные приложения по-прежнему доступны." }
+        if key == "refresh_library" { return "Обновить библиотеку" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -571,6 +671,16 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "close" { return "关闭" }
         if key == "download_waiting" { return "等待下载" }
         if key == "download_dependency" { return "必需" }
+        if key == "connect_node_title" { return "要连接节点吗？" }
+        if key == "connect_node_description" { return "从此节点加载应用库和预览图。仅在你选择时下载应用。" }
+        if key == "connect_node" { return "连接" }
+        if key == "stay_offline" { return "保持离线" }
+        if key == "node_connection" { return "节点连接" }
+        if key == "loading_library" { return "正在加载应用库…" }
+        if key == "library_unavailable" { return "无法刷新应用库。" }
+        if key == "saved_library" { return "正在显示已保存的应用库。" }
+        if key == "offline_library" { return "你处于离线状态，已下载的应用仍可使用。" }
+        if key == "refresh_library" { return "刷新应用库" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -622,5 +732,15 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "close" { return "Close" }
     if key == "download_waiting" { return "Waiting to download" }
     if key == "download_dependency" { return "required" }
+    if key == "connect_node_title" { return "Connect to the node?" }
+    if key == "connect_node_description" { return "Load this node’s app library and previews. Apps download only when you choose." }
+    if key == "connect_node" { return "Connect" }
+    if key == "stay_offline" { return "Stay offline" }
+    if key == "node_connection" { return "Node connection" }
+    if key == "loading_library" { return "Loading the library…" }
+    if key == "library_unavailable" { return "Couldn’t refresh the library." }
+    if key == "saved_library" { return "Showing your saved library." }
+    if key == "offline_library" { return "You’re offline. Downloaded apps are still available." }
+    if key == "refresh_library" { return "Refresh library" }
     return key
 }

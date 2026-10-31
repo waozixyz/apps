@@ -48,5 +48,15 @@
   "hide": "Hide",
   "close": "Close",
   "download_waiting": "Waiting to download",
-  "download_dependency": "required"
+  "download_dependency": "required",
+  "connect_node_title": "Connect to the node?",
+  "connect_node_description": "Load this node’s app library and previews. Apps download only when you choose.",
+  "connect_node": "Connect",
+  "stay_offline": "Stay offline",
+  "node_connection": "Node connection",
+  "loading_library": "Loading the library…",
+  "library_unavailable": "Couldn’t refresh the library.",
+  "saved_library": "Showing your saved library.",
+  "offline_library": "You’re offline. Downloaded apps are still available.",
+  "refresh_library": "Refresh library"
 }

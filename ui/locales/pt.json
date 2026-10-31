@@ -48,5 +48,15 @@
   "hide": "Ocultar",
   "close": "Fechar",
   "download_waiting": "Aguardando download",
-  "download_dependency": "necessário"
+  "download_dependency": "necessário",
+  "connect_node_title": "Conectar ao nó?",
+  "connect_node_description": "Carregar a biblioteca de aplicativos e as prévias deste nó. Os aplicativos só são baixados quando você escolhe.",
+  "connect_node": "Conectar",
+  "stay_offline": "Continuar offline",
+  "node_connection": "Conexão com o nó",
+  "loading_library": "Carregando a biblioteca…",
+  "library_unavailable": "Não foi possível atualizar a biblioteca.",
+  "saved_library": "Mostrando sua biblioteca salva.",
+  "offline_library": "Você está offline. Os aplicativos baixados continuam disponíveis.",
+  "refresh_library": "Atualizar biblioteca"
 }

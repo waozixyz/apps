@@ -48,5 +48,15 @@
   "hide": "隐藏",
   "close": "关闭",
   "download_waiting": "等待下载",
-  "download_dependency": "必需"
+  "download_dependency": "必需",
+  "connect_node_title": "要连接节点吗？",
+  "connect_node_description": "从此节点加载应用库和预览图。仅在你选择时下载应用。",
+  "connect_node": "连接",
+  "stay_offline": "保持离线",
+  "node_connection": "节点连接",
+  "loading_library": "正在加载应用库…",
+  "library_unavailable": "无法刷新应用库。",
+  "saved_library": "正在显示已保存的应用库。",
+  "offline_library": "你处于离线状态，已下载的应用仍可使用。",
+  "refresh_library": "刷新应用库"
 }

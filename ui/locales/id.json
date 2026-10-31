@@ -48,5 +48,15 @@
   "hide": "Sembunyikan",
   "close": "Tutup",
   "download_waiting": "Menunggu diunduh",
-  "download_dependency": "diperlukan"
+  "download_dependency": "diperlukan",
+  "connect_node_title": "Hubungkan ke node?",
+  "connect_node_description": "Muat pustaka aplikasi dan pratinjau dari node ini. Aplikasi hanya diunduh saat Anda memilihnya.",
+  "connect_node": "Hubungkan",
+  "stay_offline": "Tetap luring",
+  "node_connection": "Koneksi node",
+  "loading_library": "Memuat pustaka…",
+  "library_unavailable": "Pustaka tidak dapat diperbarui.",
+  "saved_library": "Menampilkan pustaka tersimpan Anda.",
+  "offline_library": "Anda sedang luring. Aplikasi yang diunduh tetap tersedia.",
+  "refresh_library": "Perbarui pustaka"
 }

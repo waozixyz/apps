@@ -48,5 +48,15 @@
   "hide": "Ausblenden",
   "close": "Schließen",
   "download_waiting": "Wartet auf Download",
-  "download_dependency": "erforderlich"
+  "download_dependency": "erforderlich",
+  "connect_node_title": "Mit dem Knoten verbinden?",
+  "connect_node_description": "App-Bibliothek und Vorschaubilder dieses Knotens laden. Apps werden nur auf deinen Wunsch heruntergeladen.",
+  "connect_node": "Verbinden",
+  "stay_offline": "Offline bleiben",
+  "node_connection": "Knotenverbindung",
+  "loading_library": "Bibliothek wird geladen…",
+  "library_unavailable": "Die Bibliothek konnte nicht aktualisiert werden.",
+  "saved_library": "Deine gespeicherte Bibliothek wird angezeigt.",
+  "offline_library": "Du bist offline. Heruntergeladene Apps bleiben verfügbar.",
+  "refresh_library": "Bibliothek aktualisieren"
 }

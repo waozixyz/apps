@@ -48,5 +48,15 @@
   "hide": "Skrýt",
   "close": "Zavřít",
   "download_waiting": "Čeká na stažení",
-  "download_dependency": "vyžadováno"
+  "download_dependency": "vyžadováno",
+  "connect_node_title": "Připojit k uzlu?",
+  "connect_node_description": "Načíst knihovnu aplikací a náhledy z tohoto uzlu. Aplikace se stáhnou jen na vaši žádost.",
+  "connect_node": "Připojit",
+  "stay_offline": "Zůstat offline",
+  "node_connection": "Připojení k uzlu",
+  "loading_library": "Načítání knihovny…",
+  "library_unavailable": "Knihovnu se nepodařilo obnovit.",
+  "saved_library": "Zobrazuje se uložená knihovna.",
+  "offline_library": "Jste offline. Stažené aplikace jsou stále dostupné.",
+  "refresh_library": "Obnovit knihovnu"
 }
