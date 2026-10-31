@@ -8,6 +8,7 @@
 #import "std/vec"
 #import "kryon/hosted_app"
 #import "kryon/hosted_values"
+#import "kryon/bundle_names"
 #import "kryon/app_context_host"
 #import "kryon/app_files"
 #import "kryon/widget_host"
@@ -224,6 +225,15 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
     if WidgetHostSupports(TextFromCString(module), name) {
         if node.message.action != APP_FRAME || node.widgets == null { return 0 }
         return node.widgets(node.context, module, function, arguments, count, result)
+    }
+    if ModuleName(TextFromCString(module), "app_context") &&
+    (name == "DocumentStorageReadyHost" || name == "DocumentFlushHost") {
+        if count != 0 { return 0 }
+        if node.services != null && node.allows != null && node.allows(node.context, name) {
+            return node.services(node.context, module, function, arguments, count, result)
+        }
+        result.* = HostScalar("bool", 0)
+        return 1
     }
     if node.services != null && node.allows != null && node.allows(node.context, name) {
         return node.services(node.context, module, function, arguments, count, result)

@@ -93,7 +93,8 @@ assets alone grant no audio reads. Paths cannot name host files or network
 URLs; Kryon bounds each asset to 8 MiB and each owner to 16 independent voices.
 The packed borrow lasts until `AppHostCollect`; providers own decoded/copied
 bytes before later reuse. Nodes sharing an outer Session keep separate voices
-and readers. No PCM interface is exposed.
+and readers. The permission gate applies to the full MediaAudio capability,
+including PCM operations supported by the installed provider.
 
 `WidgetHostEnd` only ends dispatch; music survives frames. Node retirement
 revokes audio immediately, before renderer/preparation storage is collected.
@@ -105,6 +106,31 @@ account, resource policy, or audio authority in place, it must first call
 alive. That hook resets all live instances/controllers and revokes a decoder
 already in flight; Apps cannot infer changes hidden inside platform context.
 Each run also revokes voices when `AppSoundHost` permission is withdrawn.
+
+Portable node/2 and app/1 guests may request the zero-argument bool capabilities
+`app_context:DocumentStorageReadyHost` and `app_context:DocumentFlushHost`.
+The platform must explicitly allow each named capability and provide
+`AppPlatform.documents(context, node) -> *AppFiles`, returning only that verified
+node's existing authorized private namespace (or null). Apps never derives a
+path, chooses an account, initializes browser storage, or grants a permission.
+Calls from an inactive instance and denied calls return false; malformed or
+foreign-module calls are rejected. No guest argument can select another node.
+
+Readiness uses Kryon's `AppFilesReady`; a successful write alone does not
+acknowledge browser persistence. Flush uses `AppFilesFlush`, waits for any
+previous snapshot and then a fresh acknowledged snapshot, with Kryon's
+15-second browser deadline. Later writes remain pending. Browser storage must
+already be hydrated on the shared `/kryon-apps` mount; staging paths outside
+that mount cannot claim durability. Native writes sync bytes and parent
+directories. A failed flush neither reloads memory nor retries implicitly.
+
+The provider owns the AppFiles and must keep it alive on the owning thread
+until the yielding call returns. Call `AppFilesClose` before changing its
+namespace, account, or authority; never overwrite live root/lock fields. Apps
+rechecks namespace generation, account epoch, active instance, permission and
+provider after acknowledgement. A revoked transaction returns false even if
+its backing transaction later completes. The running VM cannot be reentered,
+and collection retains a busy retired runtime until its call returns.
 
 Inbe and Werkzeug use this same exported launcher and portable controller.
 App-specific title/account bars and navigation docks remain with their hosts.
@@ -118,6 +144,10 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- Host document readiness and acknowledged flush through explicit per-node
+  private AppFiles authority. `python3 tests/document_host_test.py /path/to/libziran.a`
+  runs real app/1 and node/2 guests; add `--browser-runtime /path/to/wasm/libziran.a`
+  for disposable headless IDBFS persistence, hydration failure and revocation.
 - Pin published Kryon asset audio and host it through Apps' existing audio
   permission, verified resources and per-instance lifetime.
 - `RAYLIB_A=/path/to/libraylib.a python3 tests/audio_host_test.py /path/to/libziran.a`

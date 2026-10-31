@@ -39,6 +39,9 @@ AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) ->
 AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function: *u8,
     arguments: *HostValue, count: s32, result: *HostValue) -> s32;
 AppPlatformSave :: #type (context: *void, node: *AppNode) -> bool;
+// Borrow only this verified node's authorized private document namespace.
+// The provider retains storage through yielding calls and closes it before rebind.
+AppPlatformDocuments :: #type (context: *void, node: *AppNode) -> *AppFiles;
 AppPlatformState :: #type (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool;
 // A child its collection declares but does not pack, such as a game that is
 // downloaded on its own. Found once the platform has its bytes, which the
@@ -67,6 +70,7 @@ AppPlatform :: struct {
     call: AppPlatformCall
     widgets: AppPlatformCall
     save: AppPlatformSave
+    documents: AppPlatformDocuments
     effect: AppProviderEffect
     version_effect: AppProviderVersionEffect
     presentation: AppPresentation
@@ -190,7 +194,42 @@ AppHostAllows :: (context: *void, function: string) -> bool {
     if function == "apps.records" { return runtime.node.entry.dependency_count > 0 && runtime.host.platform.call != null }
     if function == APPS_SERVICE { return runtime.controller && runtime.node.collection }
     platform := runtime.host.platform
+    if AppHostDocumentFunction(function) && platform.documents == null { return false }
     return platform.allows != null && platform.allows(platform.context, runtime.node, function)
+}
+
+AppHostDocumentFunction :: (name: string) -> bool {
+    return name == "DocumentStorageReadyHost" || name == "DocumentFlushHost"
+}
+
+AppHostDocumentActive :: (runtime: *AppRuntime) -> bool {
+    if runtime == null || runtime.retired || !runtime.busy || runtime.node == null { return false }
+    owner := cast(*AppRuntime)runtime.node.runtime
+    return owner != null && (owner == runtime || owner.frontend == runtime) &&
+        AppTreeNode(*runtime.host.tree, runtime.host.tree.active) == runtime.node
+}
+
+AppHostDocumentCall :: (runtime: *AppRuntime, module: *u8, function: *u8,
+    count: s32, result: *HostValue) -> s32 {
+    name := TextFromCString(function)
+    if !AppHostDocumentFunction(name) || !ModuleName(TextFromCString(module), "app_context") || count != 0 { return 0 }
+    result.* = HostScalar("bool", 0)
+    if !AppHostDocumentActive(runtime) || !AppHostAllows(cast(*void)runtime, name) { return 1 }
+    platform := runtime.host.platform
+    files := platform.documents(platform.context, runtime.node)
+    if files == null { return 1 }
+    generation := files.generation
+    epoch := runtime.host.tree.account_epoch
+    acknowledged := ifx name == "DocumentFlushHost" then AppFilesFlush(files) else AppFilesReady(files)
+    // Flush can yield. Recheck authority without reentering the guest or
+    // trusting a namespace that was closed/reopened during the transaction.
+    if acknowledged && epoch == runtime.host.tree.account_epoch &&
+    AppHostDocumentActive(runtime) && AppHostAllows(cast(*void)runtime, name) &&
+    runtime.host.platform.documents == platform.documents && runtime.host.platform.context == platform.context &&
+    platform.documents(platform.context, runtime.node) == files && generation == files.generation {
+        result.* = HostScalar("bool", 1)
+    }
+    return 1
 }
 
 AppHostText :: (text: string) -> HostValue {
@@ -325,6 +364,7 @@ AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValu
     runtime := cast(*AppRuntime)context
     if runtime.retired { return 0 }
     name := TextFromCString(function)
+    if AppHostDocumentFunction(name) { return AppHostDocumentCall(runtime, module, function, count, result) }
     if name == "AppServiceHost" && count == 2 &&
     HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
     HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == "apps.records" {
@@ -426,6 +466,10 @@ AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostV
 AppHostContextCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
     count: s32, result: *HostValue) -> s32 {
     app := cast(*AppContext)context
+    if AppHostDocumentFunction(TextFromCString(function)) {
+        if app.mode == APP_IDENTIFY || !app.identified || !app.described { return 0 }
+        return AppHostDocumentCall(cast(*AppRuntime)app.context, module, function, count, result)
+    }
     if ModuleName(TextFromCString(module), "media_audio") && TextFromCString(function) == "MediaAudioHost" {
         if app.mode != APP_FRAME || !app.identified || !app.described { return 0 }
         return AppHostWidgets(app.context, module, function, arguments, count, result)
@@ -1267,7 +1311,12 @@ AppHostSave :: (context: *void, node: *AppNode) -> bool {
     // node/2 writes during the frame; its published ABI has no save action.
     saved := true
     if runtime.protocol != APPS_NODE_PROTOCOL {
-        if runtime.frontend != null && !AppContextRun(*runtime.frontend.app, APP_SAVE) { runtime.busy = false; return false }
+        if runtime.frontend != null {
+            runtime.frontend.busy = true
+            frontend_saved := AppContextRun(*runtime.frontend.app, APP_SAVE)
+            runtime.frontend.busy = false
+            if !frontend_saved { runtime.busy = false; return false }
+        }
         saved = AppContextRun(*runtime.app, APP_SAVE)
     }
     runtime.busy = false
@@ -1301,7 +1350,8 @@ AppHostCollect :: (host: *AppHost) {
     retained: *AppRuntime
     while runtime != null {
         next := runtime.next_retired
-        if host.preparation != null && host.preparation_owner == runtime {
+        if runtime.busy || (runtime.frontend != null && runtime.frontend.busy) ||
+        (host.preparation != null && host.preparation_owner == runtime) {
             runtime.next_retired = retained
             retained = runtime
             runtime = next

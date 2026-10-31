@@ -1,0 +1,34 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+#if #defined(APPS_DOCUMENT_NODE) {
+    Node :: #import "node_types";
+    #import "node_types"
+    host_api :: #system_library "host_api";
+    ReadAppHost :: () -> AppMessage #foreign host_api;
+    WriteAppHost :: (message: AppMessage) #foreign host_api;
+    ReadAppUiHost :: () -> AppUiFrame #foreign host_api;
+}
+DocumentExercise :: (revoke: bool) -> bool {
+    ready := DocumentStorageReady()
+    if ready && !DocumentWrite("guest/progress", "acknowledged") { return false }
+    return DocumentFlush() == (ready && !revoke)
+}
+#program_export
+Main :: () -> s32 {
+    #if #defined(APPS_DOCUMENT_NODE) {
+        message := ReadAppHost()
+        if message.action == Node.MODULE_IDENTIFY { return Node.MODULE_NODE_APP }
+        if message.action == Node.APP_FRAME { unused ReadAppUiHost() }
+        message.succeeded = DocumentExercise(message.screen == 1)
+        WriteAppHost(message)
+        return 0
+    } else {
+        if AppMode() == APP_IDENTIFY {
+            AppIdentity("document")
+            AppDescribe("Document fixture", "")
+            return APP_PROTOCOL
+        }
+        if AppMode() == APP_COMMAND { return ifx DocumentExercise(AppCommand() == "revoke") then 0 else -1 }
+        return 0
+    }
+}

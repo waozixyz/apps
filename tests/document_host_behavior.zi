@@ -1,0 +1,133 @@
+// Real Apps dispatch and portable VM, with the existing headless raster stubs.
+#import, file "native_behavior.zi";
+#import "host"
+#import "tree"
+#import "protocol"
+#import "std/file"
+#import "std/bundle_host"
+#import "std/c_string"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "kryon/app_context_host"
+#import "kryon/app_files"
+#import "kryon/app_protocol"
+#import "kryon/hosted_values"
+#import "kryon/bundle_names"
+#if #defined(PLATFORM_WEB) {
+    #import "kryon/bundle_storage_web"
+    #import "std/web"
+}
+doc_files: AppFiles;
+doc_permission: bool = true;
+doc_foreign: bool;
+doc_rebind: bool;
+doc_calls: s32;
+doc_host: *AppHost;
+DocAllows :: (context: *void, node: *AppNode, name: string) -> bool {
+    return doc_permission && (AppHostDocumentFunction(name) || name == "DocumentWriteHost")
+}
+DocFiles :: (context: *void, node: *AppNode) -> *AppFiles {
+    doc_calls += 1
+    if doc_foreign || TextUntilNul(node.identity.id[:]) != "fixture.document" { return null }
+    if doc_rebind && doc_calls == 2 { AppFilesClose(*doc_files) }
+    return *doc_files
+}
+DocCall :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if TextFromCString(function) != "DocumentWriteHost" || count != 2 ||
+    !DocAllows(context, node, "DocumentWriteHost") { return 0 }
+    result.* = HostScalar("bool", ifx AppFileWrite(*doc_files, AppArgumentText(arguments[0]), AppArgumentText(arguments[1])) then 1 else 0)
+    return 1
+}
+#if #defined(PLATFORM_WEB) {
+    DocRevoke :: (context: s32, a: s32, b: s32, c: s32) {
+        // A suspended VM cannot be reentered while its flush is in flight.
+        if AppHostRun(doc_host, APP_COMMAND) { doc_foreign = true }
+        AppFilesClose(*doc_files)
+        unused AppFilesOpen(*doc_files, "/kryon-apps/document-other")
+    }
+}
+#program_export
+DocumentCheck :: () -> s32 {
+    root := ""
+    #if #defined(PLATFORM_WEB) {
+        root = "/kryon-apps/document-host"
+        if AppFilesReady(*doc_files) || AppFilesFlush(*doc_files) || !BundleStorageOpen() { return 1 }
+        if WebAsNumber(WebGet(WebGlobal, WebName("storageTestMode"))) == 2.0 {
+            while !BundleStorageReady() && !BundleStorageFailed() { WebSleep(5) }
+            return ifx BundleStorageFailed() && !AppFilesOpen(*doc_files, root) then 0 else 2
+        }
+        if AppFilesOpen(*doc_files, root) { return 3 }
+        while !BundleStorageReady() && !BundleStorageFailed() { WebSleep(5) }
+        if BundleStorageFailed() { return 4 }
+        if WebAsNumber(WebGet(WebGlobal, WebName("storageTestMode"))) == 1.0 {
+            if !AppFilesOpen(*doc_files, root) || AppFileRead(*doc_files, "guest/progress") != "acknowledged" { return 5 }
+            AppFilesClose(*doc_files)
+            return 0
+        }
+    } else {
+        root_bytes, found := ReadEntireFile("work/document-host/root.txt")
+        if !found { return 6 }
+        root = root_bytes
+    }
+    for protocol: cast(s32)1..2 {
+        path := ifx protocol == 1 then "work/document-host/context.zx" else "work/document-host/node.zx"
+        hash := ifx protocol == 1 then "work/document-host/context.sha256" else "work/document-host/node.sha256"
+        bytes, ok := ReadEntireFile(path)
+        digest, hash_ok := ReadEntireFile(hash)
+        if !ok || !hash_ok { return 6 }
+        host: AppHost
+        doc_host = *host
+        platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = DocAllows, .call = DocCall, .documents = DocFiles}
+        if !AppHostStart(*host, bytes, "fixture.document", "fixture.document", "document", digest, "account-a", platform, "", "en", protocol) { return 70 + protocol }
+        AppFileFree(bytes); AppFileFree(digest)
+        runtime := AppHostActiveRuntime(*host)
+        mode: s32 = ifx protocol == 1 then APP_COMMAND else APP_BACK
+        // A closed namespace reports false through the actual guest.
+        if !AppHostRun(*host, mode) { return 8 }
+        if !AppFilesOpen(*doc_files, root) { return 91 }
+        if !AppHostRun(*host, mode) { return 92 }
+        if AppFileRead(*doc_files, "guest/progress") != "acknowledged" { return 93 }
+        result: HostValue
+        module := HostTextData("app_context")
+        function := HostTextData("DocumentFlushHost")
+        // Inactive/foreign-node/denied calls cannot reach the provider.
+        if AppHostDocumentCall(runtime, module, function, 0, *result) != 1 || result.integer != 0 { return 10 }
+        runtime.busy = true
+        doc_permission = false; doc_calls = 0
+        unused AppHostDocumentCall(runtime, module, function, 0, *result)
+        if result.integer != 0 || doc_calls != 0 { return 11 }
+        runtime.busy = false
+        if !AppHostRun(*host, mode) || doc_calls != 0 { return 17 }
+        runtime.busy = true
+        doc_permission = true; doc_foreign = true
+        unused AppHostDocumentCall(runtime, module, function, 0, *result)
+        if result.integer != 0 { return 12 }
+        runtime.busy = false
+        if !AppHostRun(*host, mode) { return 18 }
+        runtime.busy = true
+        doc_foreign = false
+        foreign: AppRuntime
+        foreign.host = *host; foreign.node = runtime.node; foreign.busy = true
+        unused AppHostDocumentCall(*foreign, module, function, 0, *result)
+        if result.integer != 0 { return 19 }
+        if AppHostDocumentCall(runtime, HostTextData("foreign"), function, 0, *result) != 0 ||
+        AppHostDocumentCall(runtime, module, function, 1, *result) != 0 { return 13 }
+        // Same pointer, changed namespace generation must invalidate success.
+        doc_rebind = true; doc_calls = 0
+        unused AppHostDocumentCall(runtime, module, function, 0, *result)
+        if result.integer != 0 { return 14 }
+        doc_rebind = false; runtime.busy = false
+        if !AppFilesOpen(*doc_files, root) { return 15 }
+        #if #defined(PLATFORM_WEB) {
+            runtime.app.command = "revoke"
+            runtime.legacy.message.screen = 1
+            unused WebCall2(WebGlobal, WebName("setTimeout"), WebObject(WebFunction(DocRevoke, 0)), WebNumber(5))
+            if !AppHostRun(*host, mode) || doc_foreign { return 16 }
+        }
+        AppFilesClose(*doc_files)
+        AppHostStop(*host)
+        AppHostCollect(*host)
+    }
+    return 0
+}
