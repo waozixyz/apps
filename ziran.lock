@@ -2,9 +2,17 @@
   "format": 1,
   "packages": [
     {
+      "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
+      "dependencies": {},
+      "id": "p5a77c9c35110e925",
+      "name": "raylib",
+      "ref": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
+      "source": true,
+      "url": "https://github.com/raysan5/raylib.git"
+    },
+    {
       "commit": "970d5e44b1702158cb16469892da6ff50f142427",
       "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
-      "dependency_refs": {"crypto": "master", "oqs": "master"},
       "id": "p6af0b5bd9fd0cd31",
       "name": "DaochiClient",
       "ref": "970d5e44b1702158cb16469892da6ff50f142427",
@@ -12,21 +20,11 @@
     },
     {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
-      "dependencies": {"liboqs": "p983c695d118b6109"},
-      "dependency_refs": {"liboqs": "main"},
+      "dependencies": {"liboqs": "pf9af593c157b8edf"},
       "id": "p7098ac9cd92f7e5f",
       "name": "Oqs",
       "ref": "master",
       "url": "https://github.com/ziranlang/oqs.git"
-    },
-    {
-      "commit": "e77d81dab791c13bf1c4e5d9a7160c403be9bbe0",
-      "dependencies": {},
-      "id": "p983c695d118b6109",
-      "name": "liboqs",
-      "ref": "main",
-      "source": true,
-      "url": "https://github.com/open-quantum-safe/liboqs.git"
     },
     {
       "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
@@ -37,27 +35,25 @@
       "url": "https://github.com/ziranlang/crypto.git"
     },
     {
-      "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
-      "dependencies": {},
-      "id": "pcc7aa76725f2fb2f",
-      "name": "raylib",
-      "ref": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
-      "source": true,
-      "url": "https://github.com/raysan5/raylib.git"
+      "commit": "e373b8a7f8821256b86de12dd5ee05a32d373e87",
+      "dependencies": {"raylib": "p5a77c9c35110e925"},
+      "id": "pcd450c600194cee7",
+      "name": "kryon",
+      "ref": "e373b8a7f8821256b86de12dd5ee05a32d373e87",
+      "url": "https://github.com/kryonlabs/kryon.git"
     },
     {
-      "commit": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb",
-      "dependencies": {"raylib": "pcc7aa76725f2fb2f"},
-      "dependency_refs": {"raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e"},
-      "id": "pecedebc1d2ba36da",
-      "name": "kryon",
-      "ref": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb",
-      "url": "https://github.com/kryonlabs/kryon.git"
+      "commit": "e77d81dab791c13bf1c4e5d9a7160c403be9bbe0",
+      "dependencies": {},
+      "id": "pf9af593c157b8edf",
+      "name": "liboqs",
+      "ref": "main",
+      "source": true,
+      "url": "https://github.com/open-quantum-safe/liboqs.git"
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pecedebc1d2ba36da"},
-    "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pcd450c600194cee7"},
     "name": "Apps"
   },
   "toolchain": {
