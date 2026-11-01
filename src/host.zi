@@ -278,7 +278,8 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
         ifx presentation.hide_sizes then "true" else "false",
         presentation.tile_class, presentation.action_class, presentation.muted_class, presentation.image_class, presentation.download_request)
     AppHostWriteQuoted(*bytes, TextUntilNul(presentation.download_id[:]))
-    BuilderPrint(*bytes, "}")
+    BuilderPrint(*bytes, ",\"cover_logo_width\":%,\"cover_logo_top\":%}",
+        presentation.cover_logo_width, presentation.cover_logo_top)
     BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
     item := node.catalog.children
     while item != null {

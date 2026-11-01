@@ -121,6 +121,8 @@ tile_class: s32;
 action_class: s32;
 muted_class: s32;
 image_class: s32;
+cover_logo_width: float32;
+cover_logo_top: float32;
 // The host's revision of the catalog parsed into these cards, or 0. Parsing
 // the whole catalog every frame cost a phone most of each frame.
 catalog_revision: s64;
@@ -229,6 +231,8 @@ AppsReadCatalog :: () -> bool {
     action_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "action_class"))
     muted_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "muted_class"))
     image_class = cast(s32)AppsNumber(text, FieldAt(text, presentation, "image_class"))
+    cover_logo_width = cast(float32)AppsNumber(text, FieldAt(text, presentation, "cover_logo_width"))
+    cover_logo_top = cast(float32)AppsNumber(text, FieldAt(text, presentation, "cover_logo_top"))
     children := FieldAt(text, 0, "children")
     count := ArrayCount(text, children)
     if count < 0 || count > 4096 { return false }
@@ -898,6 +902,7 @@ AppsFrame :: () -> bool {
         }
         cover_time += 1.0 / 60.0
         entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
+                .logo_max_width = cover_logo_width, .logo_top = cover_logo_top,
                 .label = TextUntilNul(title[:]), .now = cover_time, .key_pressed = ifx dialog != 0 then 0 else AppKey(), .scale = scale, .dark = AppDark(),
                 .previous_label = AppsLabel(language, "previous"), .next_label = AppsLabel(language, "next")},
             cover_items[:cards.count], *cover_state)

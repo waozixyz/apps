@@ -1,0 +1,30 @@
+// Native catalog propagation without a bundle, network, display or account.
+#import, file "../src/host.zi";
+#import, file "../src/tree.zi";
+#import "kryon/app_context_host"
+#import "kryon/app_files"
+#import "std/json_scan"
+#import "std/c_string"
+
+#program_export
+main :: () -> s32 {
+    host: AppHost
+    node: AppNode
+    runtime := AppRuntime.{.host = *host, .node = *node}
+    unused CopyCString("games", node.identity.id[:])
+    unused CopyCString("Games", node.catalog.title[:])
+    default_reply := AppArgumentText(AppHostCatalog(*runtime))
+    presentation := FieldAt(default_reply, 0, "presentation")
+    if ReadNumber(default_reply, FieldAt(default_reply, presentation, "cover_logo_width")).value != 0.0 ||
+        ReadNumber(default_reply, FieldAt(default_reply, presentation, "cover_logo_top")).value != 0.0 { return 1 }
+    host.platform.presentation.cover_logo_width = 180.0
+    host.platform.presentation.cover_logo_top = 116.0
+    reply := AppArgumentText(AppHostCatalog(*runtime))
+    presentation = FieldAt(reply, 0, "presentation")
+    if ReadNumber(reply, FieldAt(reply, presentation, "cover_logo_width")).value != 180.0 ||
+        ReadNumber(reply, FieldAt(reply, presentation, "cover_logo_top")).value != 116.0 { return 2 }
+    if runtime.catalog_revision != 2 { return 3 }
+    AppFileFree(runtime.catalog)
+    AppFileFree(host.reply)
+    return 0
+}

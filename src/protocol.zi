@@ -85,6 +85,9 @@ AppPresentation :: struct {
     muted_class: s32
     // Host Image styles for the large cover artwork.
     image_class: s32
+    // Optional carousel branding limits, in logical pixels; zero keeps defaults.
+    cover_logo_width: float32
+    cover_logo_top: float32
     // A native shortcut asks the same download dialog as a cover click.
     download_id: [128]u8
     download_request: s64

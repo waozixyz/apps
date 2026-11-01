@@ -24,6 +24,10 @@ the same option as `AppPresentation.hide_sizes`. The default keeps sizes
 visible for apps not yet on the device. Installed apps never show a download
 size; download progress remains visible in either presentation.
 
+`AppPresentation.cover_logo_width` caps carousel logos in logical pixels;
+`cover_logo_top` positions them below a host toolbar. Zero keeps the standard
+carousel layout. The controller accepts the same presentation fields.
+
 `AppPresentation.cover_grid` selects large, clickable title-screen artwork,
 logos, and visible app titles in a responsive grid. There are no separate
 launch buttons.

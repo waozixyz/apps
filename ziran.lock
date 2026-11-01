@@ -46,18 +46,18 @@
       "url": "https://github.com/raysan5/raylib.git"
     },
     {
-      "commit": "01ed0032110ca462b4c6c0e1fae038027d1ac7b3",
+      "commit": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb",
       "dependencies": {"raylib": "pcc7aa76725f2fb2f"},
       "dependency_refs": {"raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e"},
-      "id": "pe774848d822496c9",
+      "id": "pecedebc1d2ba36da",
       "name": "kryon",
-      "ref": "01ed0032110ca462b4c6c0e1fae038027d1ac7b3",
+      "ref": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb",
       "url": "https://github.com/kryonlabs/kryon.git"
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pe774848d822496c9"},
-    "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "01ed0032110ca462b4c6c0e1fae038027d1ac7b3"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "pecedebc1d2ba36da"},
+    "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "f7a9ec2e1f9034779219d6f199ef87b89d29f8eb"},
     "name": "Apps"
   },
   "toolchain": {
