@@ -1901,7 +1901,9 @@ Check :: () -> s32 {
         ReadNumber(catalog_text, FieldAt(catalog_text, presentation, "cover_logo_top")).value != 116.0 { return 201 }
     children := FieldAt(catalog_text, 0, "children")
     first := Space(catalog_text, children + 1)
-    if !MatchLiteral(catalog_text, Space(catalog_text, FieldAt(catalog_text, first, "update_available")), "true") ||
+    // This host has not opted into content fetching, so the catalog hides
+    // automatic updates while preserving the provider's package inventory.
+    if !MatchLiteral(catalog_text, Space(catalog_text, FieldAt(catalog_text, first, "update_available")), "false") ||
     ReadNumber(catalog_text, FieldAt(catalog_text, first, "bytes")).value != 12345.0 { return 66 }
     // A controller holding the current catalog is not sent it again.
     revision := cast(s64)ReadNumber(catalog_text, FieldAt(catalog_text, 0, "revision")).value
