@@ -1,0 +1,163 @@
+#import, file "native_behavior.zi";
+#import "host"
+#import "node_host"
+#import "protocol"
+#import "tree"
+#import "std/file"
+#import "std/bundle_host"
+#import "std/c_string"
+#import "std/byte_text_linux"
+#import "std/text_buffer"
+#import "kryon/app_protocol"
+#import "kryon/app_files"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/tree"
+#import "kryon/Frame"
+#import "kryon/widget_host"
+#import "kryon/media_audio_host"
+#import "kryon/hosted_values"
+#import "kryon/notification_schedule_host"
+Provider :: #import "kryon/notification_schedule";
+Node :: #import "node_types";
+using FrameStatus;
+notification_permission: bool = true;
+notification_foreground: bool;
+notification_selected: *AppNode;
+NotificationAllows :: (context: *void, node: *AppNode, name: string) -> bool {
+    return notification_permission && name == KRYON_NOTIFICATION_SCHEDULE
+}
+NotificationFocused :: (context: *void, node: *AppNode) -> bool {
+    return notification_foreground && notification_selected == node
+}
+NotificationOpen :: (host: *AppHost, game: string, protocol: s32, wrong: bool = false,
+    host_api: s32 = APPS_NOTIFICATION_HOST_API) -> bool {
+    path: Vec(u8); hash: Vec(u8)
+    BuilderPrint(*path, "work/notification-host/%-%.zx", game, protocol)
+    BuilderPrint(*hash, "work/notification-host/%-%.sha256", game, protocol)
+    key := BuilderFinish(path); hash_key := BuilderFinish(hash)
+    bytes, found := ReadEntireFile(key); digest, hash_found := ReadEntireFile(hash_key)
+    AppFileFree(key); AppFileFree(hash_key)
+    if !found || !hash_found { return false }
+    defer { AppFileFree(bytes); AppFileFree(digest) }
+    id := ifx game == "wurm" then "xyz.waozi.wurm" else "arcade.shovey"
+    if wrong { id = "other.game" }
+    platform := AppPlatform.{.host_api = host_api, .allows = NotificationAllows, .focused = NotificationFocused}
+    return AppHostStart(host, bytes, "fixture.notification", id, "notification", digest,
+        "account-a", platform, "", "en", protocol)
+}
+NotificationDraw :: (host: *AppHost, scenario: s32) -> bool {
+    runtime := AppHostActiveRuntime(host)
+    runtime.app.session = ui_session
+    runtime.app.bounds = Rectangle.{0.0, 0.0, cast(float32)(100 + scenario), 100.0}
+    runtime.legacy.frame.session = ui_session
+    runtime.legacy.frame.width = 100 + scenario
+    runtime.legacy.frame.height = 100
+    runtime.legacy.message.screen = scenario
+    BeginFrame(ui_session, cast(u64)1, runtime.app.bounds)
+    WidgetHostBegin(ui_session, MediaAudioAssetValid)
+    ran := AppHostRun(host, APP_FRAME)
+    WidgetHostEnd()
+    ended := EndFrame(ui_session) == cast(FrameStatus)FrameOk
+    return ran && ended
+}
+NotificationDenials :: (host: *AppHost) -> bool {
+    runtime := AppHostActiveRuntime(host)
+    module := HostTextData("notification_schedule")
+    name := HostTextData("DailyNotificationsSupportedHost")
+    answer: HostValue
+    // An out-of-run call, forged runtime, wrong protocol identity, stale node,
+    // controller, and non-frame call must not reach even the support provider.
+    if AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer) != 1 || answer.integer != 0 { return false }
+    if !AppTreeBegin(*host.tree, host.tree.active) { return false }
+    runtime.busy = true
+    runtime.app.mode = APP_FRAME
+    runtime.legacy.message.action = Node.APP_FRAME
+    foreign: AppRuntime
+    foreign.host = host; foreign.node = runtime.node; foreign.busy = true
+    if AppHostNotifications(cast(*void)(*foreign), module, name, null, 0, *answer) != 1 || answer.integer != 0 { return false }
+    runtime.controller = true
+    unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+    if answer.integer != 0 { return false }
+    runtime.controller = false; runtime.retired = true
+    unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+    if answer.integer != 0 { return false }
+    runtime.retired = false
+    runtime.host.platform.host_api = APPS_NOTIFICATION_HOST_API - 1
+    unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+    runtime.host.platform.host_api = APPS_NOTIFICATION_HOST_API
+    if answer.integer != 0 { return false }
+    if runtime.protocol == APPS_NODE_PROTOCOL {
+        saved := runtime.legacy.id
+        unused CopyCString("arcade.spoofed", runtime.legacy.id[:])
+        unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+        runtime.legacy.id = saved
+    } else {
+        saved := runtime.app.expected_id
+        runtime.app.expected_id = "spoofed"
+        unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+        runtime.app.expected_id = saved
+    }
+    if answer.integer != 0 { return false }
+    runtime.app.mode = APP_BACK; runtime.legacy.message.action = Node.APP_BACK
+    unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+    if answer.integer != 0 { return false }
+    runtime.app.mode = APP_FRAME; runtime.legacy.message.action = Node.APP_FRAME
+    active := host.tree.active; host.tree.active = AppHandle.{}
+    unused AppHostNotifications(cast(*void)runtime, module, name, null, 0, *answer)
+    host.tree.active = active
+    if answer.integer != 0 { return false }
+    if AppHostNotifications(cast(*void)runtime, HostTextData("foreign"), name, null, 0, *answer) != 0 { return false }
+    if NodeAllows(cast(*void)(*runtime.legacy), "notification", "NotificationRequestHost") { return false }
+    runtime.busy = false
+    return AppTreeEnd(*host.tree, host.tree.active)
+}
+#program_export
+NotificationCheck :: () -> s32 {
+    ui_session = SessionOpen()
+    if !SessionValid(ui_session) { return 1 }
+    for protocol: cast(s32)1..2 {
+        for game: cast(s32)0..1 {
+            key := ifx game == 0 then "wurm" else "shovey"
+            host: AppHost
+            notification_permission = true
+            if !NotificationOpen(*host, key, protocol) { return 10 + protocol }
+            runtime := AppHostActiveRuntime(*host)
+            Provider.expected_tag = ifx game == 0 then "hosted:xyz.waozi.wurm:wurm.daily_chest" else "hosted:arcade.shovey:shovey.daily-chest"
+            if !NotificationDenials(*host) { return 20 + protocol }
+            notification_selected = runtime.node
+            notification_foreground = false
+            if !NotificationDraw(*host, 0) { return 30 + protocol }
+            before := Provider.opened
+            if !NotificationDraw(*host, 3) || Provider.opened != before { return 40 + protocol }
+            other_game: AppNode
+            notification_foreground = true; notification_selected = *other_game
+            if !NotificationDraw(*host, 3) || Provider.opened != before { return 50 + protocol }
+            notification_selected = runtime.node
+            no_focus: AppPlatform
+            host.platform.focused = no_focus.focused
+            if !NotificationDraw(*host, 3) || Provider.opened != before { return 60 + protocol }
+            host.platform.focused = NotificationFocused
+            if !NotificationDraw(*host, 2) || Provider.opened != before + 1 { return 70 + protocol }
+            notification_permission = false
+            if !NotificationDraw(*host, 1) || !NotificationDraw(*host, 3) || !NotificationDraw(*host, 4) { return 80 + protocol }
+            // Cancellation remains available after revocation, only in our scope.
+            Provider.expected_tag = ifx game == 0 then "hosted:xyz.waozi.wurm:hosted:arcade.shovey:shovey.daily-chest" else "hosted:arcade.shovey:hosted:arcade.shovey:shovey.daily-chest"
+            if !NotificationDraw(*host, 5) { return 90 + protocol }
+            AppHostStop(*host); AppHostCollect(*host)
+            if protocol == APPS_NODE_PROTOCOL {
+                if NotificationOpen(*host, key, protocol, true) { return 100 }
+                AppHostStop(*host); AppHostCollect(*host)
+                if NotificationOpen(*host, key, protocol, false, APPS_NOTIFICATION_HOST_API - 1) { return 103 }
+                AppHostStop(*host); AppHostCollect(*host)
+            }
+        }
+    }
+    spoofed: AppHost
+    if NotificationOpen(*spoofed, "wrong", APPS_CONTEXT_PROTOCOL) { return 102 }
+    AppHostStop(*spoofed); AppHostCollect(*spoofed)
+    unused SessionClose(ui_session)
+    if Provider.failures != 0 || Provider.daily != 4 || Provider.dated != 4 || Provider.queued != 4 ||
+        Provider.cancelled != 8 || Provider.opened != 4 { return 101 }
+    return 0
+}

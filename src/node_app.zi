@@ -1,6 +1,8 @@
 // The node/2 handshake every hosted app answers. An app's entry supplies only
 // its frame and its Back; this module identifies it to the host, accepts the
 // route and returns each answer.
+// Build portable game entries with --define KRYON_HOSTED_UI before importing
+// kryon/notification_schedule; the native host owns permission and app scope.
 #import "node_types"
 
 host_api :: #system_library "host_api";

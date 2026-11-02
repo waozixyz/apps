@@ -1,0 +1,59 @@
+// Real portable calls; the native fixture records only the scheduler provider.
+#import "kryon/notification"
+#import "kryon/notification_schedule"
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+#if #defined(APPS_NOTIFICATION_NODE) {
+    #import "node_types"
+    #import "node_app"
+    Node :: #import "node_types";
+    host_api :: #system_library "host_api";
+    ReadAppUiHost :: () -> AppUiFrame #foreign host_api;
+}
+
+NotificationExercise :: (scenario: s32) -> bool {
+    tag := "wurm.daily_chest"
+    #if #defined(APPS_NOTIFICATION_SHOVEY) {
+        tag = "shovey.daily-chest"
+    }
+    props := NotificationProps.{.title = "Chest", .body = "Ready", .tag = tag, .id = 1,
+        .suppress_when_focused = false}
+    if scenario == 0 || scenario == 1 {
+        enabled := scenario == 0
+        dates: [2]s32 = .[20280229, 20300101]
+        return DailyNotificationsSupported() == enabled &&
+            ScheduleDailyNotification(props, 19, 0, true, 1793700000000, 127, 20261102) == enabled &&
+            ScheduleNotificationAt(props, 2028, 2, 29, 19) == enabled &&
+            ScheduleNotificationDates(props, dates[:], 19) == enabled
+    }
+    if scenario == 2 || scenario == 3 { return NotificationAppOpened(tag, 1) == (scenario == 2) }
+    if scenario == 4 { return CancelDailyNotification(tag, 1) }
+    // A guest-controlled tag cannot escape its own host-owned prefix.
+    if scenario == 5 { return CancelDailyNotification("hosted:arcade.shovey:shovey.daily-chest", 1) }
+    return false
+}
+
+#if #defined(APPS_NOTIFICATION_NODE) {
+    NotificationFrame :: (message: AppMessage) -> bool {
+        unused ReadAppUiHost()
+        return NotificationExercise(message.screen)
+    }
+}
+#program_export
+Main :: () -> s32 {
+    #if #defined(APPS_NOTIFICATION_NODE) {
+        return RunNodeApp(NotificationFrame)
+    } else {
+        if AppMode() == APP_IDENTIFY {
+            id := "notification"
+            #if #defined(APPS_NOTIFICATION_WRONG_ID) {
+                id = "spoofed"
+            }
+            AppIdentity(id)
+            AppDescribe("Notification fixture", "")
+            return APP_PROTOCOL
+        }
+        if AppMode() == APP_FRAME { return ifx NotificationExercise(cast(s32)AppBounds().width - 100) then 0 else -1 }
+        return 0
+    }
+}

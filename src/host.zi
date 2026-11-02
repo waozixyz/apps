@@ -21,6 +21,7 @@
 #import "kryon/bundle_names"
 #import "kryon/media_audio_host"
 #import "kryon/media_audio"
+#import "kryon/notification_schedule_host"
 Rules :: #import "protocol";
 Node :: #import "node_types";
 #import, file "node_host.zi";
@@ -43,6 +44,9 @@ AppPlatformSave :: #type (context: *void, node: *AppNode) -> bool;
 // Borrow only this verified node's authorized private document namespace.
 // The provider retains storage through yielding calls and closes it before rebind.
 AppPlatformDocuments :: #type (context: *void, node: *AppNode) -> *AppFiles;
+// Actual native foreground and selected game, never guest-supplied focus.
+// Without this callback hosted reminders cannot mark a game as opened.
+AppPlatformFocused :: #type (context: *void, node: *AppNode) -> bool;
 AppPlatformState :: #type (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool;
 // A child its collection declares but does not pack, such as a game that is
 // downloaded on its own. Found once the platform has its bytes, which the
@@ -72,6 +76,7 @@ AppPlatform :: struct {
     widgets: AppPlatformCall
     save: AppPlatformSave
     documents: AppPlatformDocuments
+    focused: AppPlatformFocused
     effect: AppProviderEffect
     version_effect: AppProviderVersionEffect
     presentation: AppPresentation
@@ -477,6 +482,9 @@ AppHostWidgets :: (context: *void, module: *u8, function: *u8, arguments: *HostV
 AppHostContextCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
     count: s32, result: *HostValue) -> s32 {
     app := cast(*AppContext)context
+    if NotificationScheduleHostSupports(TextFromCString(module), TextFromCString(function)) {
+        return AppHostNotifications(app.context, module, function, arguments, count, result)
+    }
     if AppHostDocumentFunction(TextFromCString(function)) {
         if app.mode == APP_IDENTIFY || !app.identified || !app.described { return 0 }
         return AppHostDocumentCall(cast(*AppRuntime)app.context, module, function, count, result)
@@ -486,6 +494,40 @@ AppHostContextCall :: (context: *void, module: *u8, function: *u8, arguments: *H
         return AppHostWidgets(app.context, module, function, arguments, count, result)
     }
     return AppContextCall(context, module, function, arguments, count, result)
+}
+
+// Use the catalog/descriptor-verified identity, not the guest's short module
+// name or a HostValue. Controllers and background/non-frame runs own no rule.
+AppHostNotifications :: (context: *void, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    if result == null { return 0 }
+    name := TextFromCString(function)
+    if !NotificationScheduleHostSupports(TextFromCString(module), name) { return 0 }
+    result.* = HostScalar("bool", 0)
+    runtime := cast(*AppRuntime)context
+    if runtime == null || runtime.host == null || runtime.node == null ||
+        runtime.retired || runtime.controller || !runtime.busy ||
+        runtime.host.platform.host_api < APPS_NOTIFICATION_HOST_API ||
+        runtime.node.runtime != context ||
+        AppTreeNode(*runtime.host.tree, runtime.host.tree.running) != runtime.node ||
+        AppTreeNode(*runtime.host.tree, runtime.host.tree.active) != runtime.node { return 1 }
+    id_bytes := runtime.node.identity.id
+    expected_bytes := runtime.node.entry.expected_id
+    id := TextUntilNul(id_bytes[:])
+    expected := TextUntilNul(expected_bytes[:])
+    if runtime.protocol == APPS_NODE_PROTOCOL {
+        node := *runtime.legacy
+        if !node.identified || node.identifying || node.message.action != Node.APP_FRAME ||
+            TextUntilNul(node.id[:]) != id || TextUntilNul(node.name[:]) != expected { return 1 }
+    } else {
+        app := *runtime.app
+        if !app.identified || !app.described || app.mode != APP_FRAME ||
+            app.expected_id != expected || TextUntilNul(app.id[:]) != expected { return 1 }
+    }
+    enabled := AppHostAllows(context, KRYON_NOTIFICATION_SCHEDULE)
+    platform := runtime.host.platform
+    focused := platform.focused != null && platform.focused(platform.context, runtime.node)
+    return NotificationScheduleHostCall(id, enabled, name, arguments, count, result, focused)
 }
 
 AppHostAudioActive :: (runtime: *AppRuntime) -> bool {
@@ -588,6 +630,7 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
         runtime.legacy.allows = AppHostAllows
         runtime.legacy.services = AppHostCall
         runtime.legacy.widgets = AppHostWidgets
+        runtime.legacy.notifications = AppHostNotifications
         runtime.legacy.host_api = runtime.host.platform.host_api
         if preparation != null {
             ready = NodeStart(*runtime.legacy, TextUntilNul(node.identity.id[:]), expected_id)

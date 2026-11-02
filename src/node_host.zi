@@ -11,6 +11,7 @@
 #import "kryon/bundle_names"
 #import "kryon/app_context_host"
 #import "kryon/app_files"
+#import "kryon/notification_schedule_host"
 #import "kryon/widget_host"
 #import "kryon/widget_codec"
 #import "kryon/text_input_props"
@@ -35,8 +36,10 @@ NodeContext :: struct {
     allows: AppServiceAllows
     services: HostCall
     widgets: HostCall
+    notifications: HostCall
     translations: string
     identifying: bool
+    identified: bool
     received: bool
     succeeded: bool
     key: s32
@@ -50,7 +53,7 @@ NodeAllows :: (context: *void, module: string, name: string) -> bool {
     return name == "ReadAppHost" || name == "WriteAppHost" || name == "ReadAppUiHost" ||
     name == "AppLocaleHost" || name == "AppKeyHost" || name == "AppSoundHost" ||
     name == "AppSupportsHost" || name == "AppServiceHost" || name == "AppFieldInputHost" ||
-    WidgetHostSupports(module, name) ||
+    WidgetHostSupports(module, name) || NotificationScheduleHostSupports(module, name) ||
     (node.allows != null && node.allows(node.context, name))
 }
 
@@ -158,6 +161,11 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
     }
     // Identification cannot read records, draw, or cause platform effects.
     if node.identifying { return 0 }
+    if NotificationScheduleHostSupports(TextFromCString(module), name) {
+        result.* = HostScalar("bool", 0)
+        if !node.identified || node.message.action != APP_FRAME || node.notifications == null { return 1 }
+        return node.notifications(node.context, module, function, arguments, count, result)
+    }
     if name == "WriteAppHost" && count == 1 && WidgetValidAppMessage(arguments[0]) {
         message := WidgetDecodeAppMessage(arguments[0], *node.message_codec)
         if message.abi != MODULE_ABI || node.received { return 0 }
@@ -304,6 +312,7 @@ NodeOpen :: (node: *NodeContext, bytes: string, id: string, expected_id: string)
 
 // Bind and identify a program already opened by the portable verifier.
 NodeStart :: (node: *NodeContext, id: string, expected_id: string) -> bool {
+    node.identified = false
     if node.app == null || node.app.bundle == null || !CopyCString(id, node.id[:]) ||
     !CopyCString(expected_id, node.name[:]) || !NodeAssetsValid(node, id, expected_id) ||
     !HostedAppStart(node.app, NodeAllows, NodeCall, cast(*void)node) {
@@ -313,6 +322,7 @@ NodeStart :: (node: *NodeContext, id: string, expected_id: string) -> bool {
     answer: s64
     identified := HostedAppRun(node.app, *answer) && answer == MODULE_NODE_APP
     node.identifying = false
+    node.identified = identified
     return identified
 }
 

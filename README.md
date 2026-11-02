@@ -83,6 +83,27 @@ A portable node/2 app may request `kryon/frame_snapshot` and call
 to Kryon's widget-host boundary, which returns only the snapshot published for
 the active frame session; inactive and foreign-session calls fail closed.
 
+Portable node/2 and app/1 games built with `KRYON_HOSTED_UI` may import
+`kryon/notification_schedule`. Apps forwards its bounded reminder calls through
+Kryon's shared scheduler only from the identified, active game frame. The native
+namespace is `hosted:<verified AppNode.identity.id>:<local tag>`; guest arguments
+cannot choose another game's identity. Collection controllers have no reminder
+authority. The host explicitly grants `kryon.notification.schedule` through
+`AppPlatform.allows`; revocation still permits that game's own cancellation.
+Reminder packages require host interface 42 (`APPS_NOTIFICATION_HOST_API` in
+`apps/protocol`) in their catalog and signed release metadata. Native consumers
+advertise at least 42 only after adopting this dispatch and their grant/focus
+callbacks. Earlier hosts reject those packages during compatibility validation;
+new hosts bind denied reminder capabilities and return false at call time.
+
+Set `AppPlatform.focused(context, node)` from actual native foreground and
+selected-game state. Apps also verifies that node is active and running. Without
+the callback, or while a different page/game is selected, opened calls return
+false and cannot suppress a game's daily reminder. Guests cannot use this
+capability to request Android notification permission; the outer app owns its
+permission UI. `build-queue -- python3 tests/notification_host_test.py /path/to/libziran.a`
+exercises real source/saved portable guests with a recording native provider.
+
 Portable node/2 and app/1 apps can use `kryon/Media`'s `MediaAudio` for packed
 asset effects and looping music. Apps recognizes the actual
 `media_audio.MediaAudioHost` capability, including its package-qualified name,
@@ -161,6 +182,9 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- Forward portable games' offline reminders under each verified game's identity,
+  and mark a game opened only while that game is selected and in the foreground.
+  Reminder packages require a host with interface 42.
 - Align the shared controller with Profile apps using the fixed Android renderer packages.
 - `apps/connection` asks one origin-bound permission for fetching content and
   automatic app updates. Existing stored yes answers remain valid, and hosts

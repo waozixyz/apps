@@ -33,6 +33,10 @@ APPS_CONTEXT_PROTOCOL :: 1
 APPS_NODE_PROTOCOL :: 2
 APPS_COLLECTION_PROTOCOL :: 3
 
+// First native host interface with verified hosted reminder dispatch and
+// selected-game focus. Reminder bundles declare at least this host_api.
+APPS_NOTIFICATION_HOST_API :: 42
+
 // authority comes from the verified installation provider, not a guest's JSON.
 // The identity tuple is (account supplied separately, authority, id). Payload
 // revision/digest and navigation ancestry never change the saved-data owner.
