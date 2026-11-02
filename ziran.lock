@@ -2,14 +2,6 @@
   "format": 1,
   "packages": [
     {
-      "commit": "f7ff3e546657a0f90de16802fc9fc4a700412481",
-      "dependencies": {"libwebp": "p651a2c7a393977c0", "raylib": "p5a77c9c35110e925"},
-      "id": "p2a656232910109dd",
-      "name": "kryon",
-      "ref": "f7ff3e546657a0f90de16802fc9fc4a700412481",
-      "url": "https://github.com/kryonlabs/kryon.git"
-    },
-    {
       "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
       "dependencies": {},
       "id": "p5a77c9c35110e925",
@@ -44,6 +36,14 @@
       "url": "https://github.com/ziranlang/oqs.git"
     },
     {
+      "commit": "ead3eb7aa63535447a1116ecae7bb4d712d72034",
+      "dependencies": {"libwebp": "p651a2c7a393977c0", "raylib": "p5a77c9c35110e925"},
+      "id": "p79167729f20b4a95",
+      "name": "kryon",
+      "ref": "ead3eb7aa63535447a1116ecae7bb4d712d72034",
+      "url": "https://github.com/kryonlabs/kryon.git"
+    },
+    {
       "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
       "dependencies": {},
       "id": "pc23fbf455e97614d",
@@ -62,11 +62,11 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p2a656232910109dd"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p79167729f20b4a95"},
     "name": "Apps"
   },
   "toolchain": {
-    "commit": "972dc244c4ae67e87b6089869dff5abc9d36c1f8",
+    "commit": "93af347a2a7af4a5a6a88906dbf7808189438b9b",
     "ref": "972dc244c4ae67e87b6089869dff5abc9d36c1f8",
     "url": "https://github.com/ziranlang/ziran.git"
   }
