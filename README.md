@@ -38,6 +38,11 @@ Collections may declare `"presentation": {"mode": "covers"}` in their signed
 catalog so every supported host presents the same dark cover library.
 Each child's optional `bytes` value supplies its exact initial download size.
 
+A carousel cover with `action: "buy"` shows a localized Buy button and sends
+`install` directly to the host. The host owns the price confirmation, purchase
+and entitlement checks. This action grants no access to a bundle and requires
+the card's explicit install capability.
+
 A card for an app not on the device shows a download symbol. It opens a
 dialog with the package size and what the app may reach, and the dialog's
 Download is the person's consent; it then follows the download to Open, or
@@ -150,7 +155,8 @@ digest, and pin those exact bytes in the host. A mismatched controller must
 fail validation; never substitute another screen silently.
 
 `scripts/build-ui.py` builds the standalone package controller. The native
-fixture exercises real card/menu/dialog behavior; the external-consumer test
+fixture exercises real card/menu/dialog behavior (`--controller-only` runs
+that controller suite independently); the external-consumer test
 verifies public package imports and launcher search/grouping.
 
 ## Unreleased

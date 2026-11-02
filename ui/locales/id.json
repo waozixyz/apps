@@ -57,5 +57,6 @@
   "library_unavailable": "Pustaka tidak dapat diperbarui.",
   "saved_library": "Menampilkan pustaka tersimpan Anda.",
   "offline_library": "Anda sedang luring. Aplikasi yang diunduh tetap tersedia.",
-  "refresh_library": "Perbarui pustaka"
+  "refresh_library": "Perbarui pustaka",
+  "buy": "Beli"
 }

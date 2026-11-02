@@ -57,5 +57,6 @@
   "library_unavailable": "无法刷新应用库。",
   "saved_library": "正在显示已保存的应用库。",
   "offline_library": "你处于离线状态，已下载的应用仍可使用。",
-  "refresh_library": "刷新应用库"
+  "refresh_library": "刷新应用库",
+  "buy": "购买"
 }

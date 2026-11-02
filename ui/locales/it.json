@@ -57,5 +57,6 @@
   "library_unavailable": "Impossibile aggiornare la raccolta.",
   "saved_library": "Viene mostrata la raccolta salvata.",
   "offline_library": "Sei offline. Le app scaricate restano disponibili.",
-  "refresh_library": "Aggiorna raccolta"
+  "refresh_library": "Aggiorna raccolta",
+  "buy": "Acquista"
 }

@@ -57,5 +57,6 @@
   "library_unavailable": "라이브러리를 새로 고치지 못했습니다.",
   "saved_library": "저장된 라이브러리를 표시합니다.",
   "offline_library": "오프라인 상태입니다. 다운로드한 앱은 계속 사용할 수 있습니다.",
-  "refresh_library": "라이브러리 새로 고침"
+  "refresh_library": "라이브러리 새로 고침",
+  "buy": "구매"
 }

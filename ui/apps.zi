@@ -898,7 +898,8 @@ AppsFrame :: () -> bool {
                 .caption = TextUntilNul(card.cover.caption[:]),
                 .action = AppsLabel(language, ifx action != "" then action else "open"),
                 .disabled = dialog != 0 || card.disabled ||
-                (!AppsSupported(card, Rules.APPS_OPEN) && !(!card.on_device && AppsSupported(card, Rules.APPS_INSTALL)))}
+                (ifx action == "buy" then !AppsSupported(card, Rules.APPS_INSTALL) else
+                    (!AppsSupported(card, Rules.APPS_OPEN) && !(!card.on_device && AppsSupported(card, Rules.APPS_INSTALL))))}
         }
         cover_time += 1.0 / 60.0
         entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
@@ -908,7 +909,10 @@ AppsFrame :: () -> bool {
             cover_items[:cards.count], *cover_state)
         if entered >= 0 {
             card := *cards[entered]
-            if !card.on_device && AppsSupported(card, Rules.APPS_INSTALL) {
+            if TextUntilNul(card.cover.action[:]) == "buy" && AppsSupported(card, Rules.APPS_INSTALL) {
+                // The host owns purchase confirmation and entitlement checks.
+                AppsAct("install", card.id)
+            } else if !card.on_device && AppsSupported(card, Rules.APPS_INSTALL) {
                 AppsDownloadOpen(card)
             } else {
                 AppsAct("open", card.id)

@@ -57,5 +57,6 @@
   "library_unavailable": "No se pudo actualizar la biblioteca.",
   "saved_library": "Se muestra tu biblioteca guardada.",
   "offline_library": "No tienes conexión. Las aplicaciones descargadas siguen disponibles.",
-  "refresh_library": "Actualizar biblioteca"
+  "refresh_library": "Actualizar biblioteca",
+  "buy": "Comprar"
 }

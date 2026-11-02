@@ -57,5 +57,6 @@
   "library_unavailable": "Knihovnu se nepodařilo obnovit.",
   "saved_library": "Zobrazuje se uložená knihovna.",
   "offline_library": "Jste offline. Stažené aplikace jsou stále dostupné.",
-  "refresh_library": "Obnovit knihovnu"
+  "refresh_library": "Obnovit knihovnu",
+  "buy": "Koupit"
 }

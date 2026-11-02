@@ -15,6 +15,10 @@ WORK = Path(os.environ.get('APPS_TEST_OUTPUT', ROOT / 'build/native-test')).reso
 ZIRAN = str(ROOT / 'scripts/ziran.sh')
 LOCK_FLAGS = [] if (ROOT / 'ziran.local.toml').exists() else ['--locked']
 WINDOWS = os.environ.get('APPS_TEST_PLATFORM') == 'windows'
+CONTROLLER_ONLY = '--controller-only' in sys.argv
+if CONTROLLER_ONLY:
+    sys.argv.remove('--controller-only')
+ENTRY = 'ControllerCheck' if CONTROLLER_ONLY else 'Check'
 
 
 def run(*arguments):
@@ -145,7 +149,7 @@ def main():
     os.environ['APPS_FIXTURE_THIN_ROOT_SHA256'] = digest(thin_root)
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'download-ready', 'download-installed', 'download-request', 'cover-download', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-installed', 'download-request', 'cover-download', 'cover-buy', 'cover-buy-de', 'cover-buy-denied', 'cover-grid', 'cover-grid-download', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -166,10 +170,17 @@ def main():
             candidate['children'][1].update(installed=False, on_device=True, actions=['open', 'install'])
         if name == 'download-request':
             candidate['presentation'].update(download_id='native.clock', download_request=1)
-        if name == 'cover-download':
+        if name == 'cover-download' or name.startswith('cover-buy'):
             candidate['presentation']['mode'] = 'preview'
             candidate['children'] = [candidate['children'][1]]
             candidate['children'][0]['cover'] = {'portrait': 'assets/preview.png', 'action': 'open'}
+        if name.startswith('cover-buy'):
+            candidate['children'][0].update(on_device=True, installed=True, actions=['install'])
+            candidate['children'][0]['cover']['action'] = 'buy'
+        if name == 'cover-buy-de':
+            candidate['locale'] = 'de'
+        if name == 'cover-buy-denied':
+            candidate['children'][0]['actions'] = ['open']
         if name.startswith('simple-'):
             candidate['presentation']['hide_sizes'] = True
             candidate['presentation']['mode'] = 'list' if name == 'simple-list' else 'icon'
@@ -198,9 +209,9 @@ def main():
     output = WORK / 'c'
     output.mkdir(exist_ok=True)
     defines = ['--define', '_WIN32'] if WINDOWS else []
-    run(ZIRAN, 'build', '--project', *LOCK_FLAGS, '--target=c', '--no-main', '--entry', 'native_behavior:Check',
+    run(ZIRAN, 'build', '--project', *LOCK_FLAGS, '--target=c', '--no-main', '--entry', 'native_behavior:' + ENTRY,
         *defines, '--root', str(ROOT / 'tests'), '-o', str(output), str(ROOT / 'tests/native_behavior.zi'))
-    (output / 'main.c').write_text('#include <stdio.h>\n#include "native_behavior.h"\nint main(void) { int r=Check(); if(r) fprintf(stderr,"Apps native check %d failed\\n",r); return r ? 1 : 0; }\n')
+    (output / 'main.c').write_text('#include <stdio.h>\n#include "native_behavior.h"\nint main(void) { int r=' + ENTRY + '(); if(r) fprintf(stderr,"Apps native check %d failed\\n",r); return r ? 1 : 0; }\n')
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran', *LOCK_FLAGS], cwd=ROOT, text=True).strip())
     includes = [argument for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for argument in ('-iquote', str(path))]
     compiler = os.environ.get('CC', 'x86_64-w64-mingw32-gcc' if WINDOWS else 'cc')
@@ -238,6 +249,9 @@ def main():
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)
         result.check_returncode()
+    if CONTROLLER_ONLY:
+        print('Apps controller local tests: cards, menus, update/rollback, download consent, covers and English/German Buy/capability checks passed')
+        return
     print('Apps native: asynchronous root/child preparation and favorites, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
 
 

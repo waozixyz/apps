@@ -612,6 +612,19 @@ NativeControllerCheck :: () -> s32 {
     if !NativeDraw(false, false) || NativeLabel("Download size: 4.1 kB") < 0 { return 645 }
     if native_queued != covered { return 646 }
     if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) { return 647 }
+    if !NativeLoadCatalog("cover-buy") || !NativeDraw(false, false) || NativeLabel("Buy", WidgetKindButton) < 0 { return 648 }
+    covered = native_queued
+    if !NativeClick("Buy", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 ||
+        native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" ||
+        NativeLabel("Download size: 4.1 kB") >= 0 { return 649 }
+    if !NativeLoadCatalog("cover-buy-de") || !NativeDraw(false, false) || NativeLabel("Kaufen", WidgetKindButton) < 0 { return 650 }
+    covered = native_queued
+    if !NativeClick("Kaufen", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 ||
+        native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 651 }
+    if !NativeLoadCatalog("cover-buy-denied") || !NativeDraw(false, false) { return 652 }
+    covered = native_queued
+    unused NativeClick("Buy", WidgetKindButton)
+    if !NativeDraw(false, false) || native_queued != covered { return 653 }
     native_icon_mode = true
     // A host chooses compact cards without discarding bytes from its catalog.
     native_capture_actions = true
@@ -2046,5 +2059,15 @@ Check :: () -> s32 {
     AppHostTrustHarness(*trusting, newer) || !AppHostTrustHarness(*trusting, earlier[0]) ||
     !AppHostStart(*trusting, bytes, "fixture.test", "fixture.root", "collection", digest, "account-a", platform, newer) { return 628 }
     if !AppHostStop(*trusting) { return 629 }
+    return NativeControllerCheck()
+}
+
+// Independently runnable UI coverage; no host/library fixture is required.
+#program_export
+ControllerCheck :: () -> s32 {
+    PreparationTestBegin()
+    ui_session = SessionOpen()
+    if !SessionValid(ui_session) { return 50 }
+    defer { SessionClose(ui_session) }
     return NativeControllerCheck()
 }

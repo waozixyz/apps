@@ -60,6 +60,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Zobrazuje se uložená knihovna." }
         if key == "offline_library" { return "Jste offline. Stažené aplikace jsou stále dostupné." }
         if key == "refresh_library" { return "Obnovit knihovnu" }
+        if key == "buy" { return "Koupit" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -121,6 +122,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Deine gespeicherte Bibliothek wird angezeigt." }
         if key == "offline_library" { return "Du bist offline. Heruntergeladene Apps bleiben verfügbar." }
         if key == "refresh_library" { return "Bibliothek aktualisieren" }
+        if key == "buy" { return "Kaufen" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -182,6 +184,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Se muestra tu biblioteca guardada." }
         if key == "offline_library" { return "No tienes conexión. Las aplicaciones descargadas siguen disponibles." }
         if key == "refresh_library" { return "Actualizar biblioteca" }
+        if key == "buy" { return "Comprar" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -243,6 +246,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Votre bibliothèque enregistrée est affichée." }
         if key == "offline_library" { return "Vous êtes hors ligne. Les applications téléchargées restent disponibles." }
         if key == "refresh_library" { return "Actualiser la bibliothèque" }
+        if key == "buy" { return "Acheter" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -304,6 +308,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Menampilkan pustaka tersimpan Anda." }
         if key == "offline_library" { return "Anda sedang luring. Aplikasi yang diunduh tetap tersedia." }
         if key == "refresh_library" { return "Perbarui pustaka" }
+        if key == "buy" { return "Beli" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -365,6 +370,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Viene mostrata la raccolta salvata." }
         if key == "offline_library" { return "Sei offline. Le app scaricate restano disponibili." }
         if key == "refresh_library" { return "Aggiorna raccolta" }
+        if key == "buy" { return "Acquista" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -426,6 +432,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "保存済みのライブラリを表示しています。" }
         if key == "offline_library" { return "オフラインです。ダウンロード済みのアプリは引き続き利用できます。" }
         if key == "refresh_library" { return "ライブラリを更新" }
+        if key == "buy" { return "購入" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -487,6 +494,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "저장된 라이브러리를 표시합니다." }
         if key == "offline_library" { return "오프라인 상태입니다. 다운로드한 앱은 계속 사용할 수 있습니다." }
         if key == "refresh_library" { return "라이브러리 새로 고침" }
+        if key == "buy" { return "구매" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -548,6 +556,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Mostrando sua biblioteca salva." }
         if key == "offline_library" { return "Você está offline. Os aplicativos baixados continuam disponíveis." }
         if key == "refresh_library" { return "Atualizar biblioteca" }
+        if key == "buy" { return "Comprar" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -609,6 +618,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "Показана сохранённая библиотека." }
         if key == "offline_library" { return "Вы офлайн. Загруженные приложения по-прежнему доступны." }
         if key == "refresh_library" { return "Обновить библиотеку" }
+        if key == "buy" { return "Купить" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -670,6 +680,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "saved_library" { return "正在显示已保存的应用库。" }
         if key == "offline_library" { return "你处于离线状态，已下载的应用仍可使用。" }
         if key == "refresh_library" { return "刷新应用库" }
+        if key == "buy" { return "购买" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -730,5 +741,6 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "saved_library" { return "Showing your saved library." }
     if key == "offline_library" { return "You’re offline. Downloaded apps are still available." }
     if key == "refresh_library" { return "Refresh library" }
+    if key == "buy" { return "Buy" }
     return key
 }

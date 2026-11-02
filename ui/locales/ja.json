@@ -57,5 +57,6 @@
   "library_unavailable": "ライブラリを更新できませんでした。",
   "saved_library": "保存済みのライブラリを表示しています。",
   "offline_library": "オフラインです。ダウンロード済みのアプリは引き続き利用できます。",
-  "refresh_library": "ライブラリを更新"
+  "refresh_library": "ライブラリを更新",
+  "buy": "購入"
 }
