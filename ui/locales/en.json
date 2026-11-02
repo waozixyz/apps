@@ -9,7 +9,7 @@
   "prompt_pending": "Launcher confirmation pending",
   "launcher_installed": "Installed in launcher",
   "queued": "Request queued",
-  "rejected": "Request rejected",
+  "rejected": "Could not complete this action. Try again.",
   "unavailable": "Apps are unavailable",
   "empty": "No apps in this collection",
   "options": "App options",

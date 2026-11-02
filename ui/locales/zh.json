@@ -9,7 +9,7 @@
   "prompt_pending": "等待启动器确认",
   "launcher_installed": "已安装到启动器",
   "queued": "请求已排队",
-  "rejected": "请求被拒绝",
+  "rejected": "无法完成此操作。请重试。",
   "unavailable": "应用不可用",
   "empty": "此集合中没有应用",
   "options": "应用选项",

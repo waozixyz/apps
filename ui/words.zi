@@ -11,7 +11,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Čeká se na potvrzení spouštěče" }
         if key == "launcher_installed" { return "Nainstalováno ve spouštěči" }
         if key == "queued" { return "Požadavek zařazen do fronty" }
-        if key == "rejected" { return "Požadavek zamítnut" }
+        if key == "rejected" { return "Akci se nepodařilo dokončit. Zkus to znovu." }
         if key == "unavailable" { return "Aplikace nejsou dostupné" }
         if key == "empty" { return "V této kolekci nejsou žádné aplikace" }
         if key == "options" { return "Možnosti aplikace" }
@@ -73,7 +73,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Bestätigung des Startmenüs ausstehend" }
         if key == "launcher_installed" { return "Im Startmenü installiert" }
         if key == "queued" { return "Anfrage vorgemerkt" }
-        if key == "rejected" { return "Anfrage abgelehnt" }
+        if key == "rejected" { return "Die Aktion konnte nicht abgeschlossen werden. Versuche es erneut." }
         if key == "unavailable" { return "Apps sind nicht verfügbar" }
         if key == "empty" { return "Keine Apps in dieser Sammlung" }
         if key == "options" { return "App-Optionen" }
@@ -135,7 +135,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Pendiente de confirmación del lanzador" }
         if key == "launcher_installed" { return "Instalado en el lanzador" }
         if key == "queued" { return "Solicitud en cola" }
-        if key == "rejected" { return "Solicitud rechazada" }
+        if key == "rejected" { return "No se pudo completar esta acción. Inténtalo de nuevo." }
         if key == "unavailable" { return "Las aplicaciones no están disponibles" }
         if key == "empty" { return "No hay aplicaciones en esta colección" }
         if key == "options" { return "Opciones de la aplicación" }
@@ -197,7 +197,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Confirmation du lanceur en attente" }
         if key == "launcher_installed" { return "Installé dans le lanceur" }
         if key == "queued" { return "Demande en attente" }
-        if key == "rejected" { return "Demande refusée" }
+        if key == "rejected" { return "Impossible de terminer cette action. Réessaie." }
         if key == "unavailable" { return "Les applications sont indisponibles" }
         if key == "empty" { return "Aucune application dans cette collection" }
         if key == "options" { return "Options de l’application" }
@@ -259,7 +259,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Menunggu konfirmasi peluncur" }
         if key == "launcher_installed" { return "Terpasang di peluncur" }
         if key == "queued" { return "Permintaan diantrekan" }
-        if key == "rejected" { return "Permintaan ditolak" }
+        if key == "rejected" { return "Tindakan ini tidak dapat diselesaikan. Coba lagi." }
         if key == "unavailable" { return "Aplikasi tidak tersedia" }
         if key == "empty" { return "Tidak ada aplikasi dalam koleksi ini" }
         if key == "options" { return "Opsi aplikasi" }
@@ -321,7 +321,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "In attesa della conferma del launcher" }
         if key == "launcher_installed" { return "Installato nel launcher" }
         if key == "queued" { return "Richiesta in coda" }
-        if key == "rejected" { return "Richiesta rifiutata" }
+        if key == "rejected" { return "Impossibile completare questa azione. Riprova." }
         if key == "unavailable" { return "Le app non sono disponibili" }
         if key == "empty" { return "Nessuna app in questa raccolta" }
         if key == "options" { return "Opzioni app" }
@@ -383,7 +383,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "ランチャーの確認待ち" }
         if key == "launcher_installed" { return "ランチャーにインストール済み" }
         if key == "queued" { return "リクエストを受け付けました" }
-        if key == "rejected" { return "リクエストが拒否されました" }
+        if key == "rejected" { return "操作を完了できませんでした。もう一度お試しください。" }
         if key == "unavailable" { return "アプリを利用できません" }
         if key == "empty" { return "このコレクションにはアプリがありません" }
         if key == "options" { return "アプリのオプション" }
@@ -445,7 +445,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "런처 확인 대기 중" }
         if key == "launcher_installed" { return "런처에 설치됨" }
         if key == "queued" { return "요청 대기 중" }
-        if key == "rejected" { return "요청 거부됨" }
+        if key == "rejected" { return "작업을 완료하지 못했습니다. 다시 시도해 주세요." }
         if key == "unavailable" { return "앱을 사용할 수 없습니다" }
         if key == "empty" { return "이 모음에는 앱이 없습니다" }
         if key == "options" { return "앱 옵션" }
@@ -507,7 +507,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Aguardando confirmação do lançador" }
         if key == "launcher_installed" { return "Instalado no lançador" }
         if key == "queued" { return "Solicitação na fila" }
-        if key == "rejected" { return "Solicitação rejeitada" }
+        if key == "rejected" { return "Não foi possível concluir esta ação. Tenta novamente." }
         if key == "unavailable" { return "Os aplicativos estão indisponíveis" }
         if key == "empty" { return "Nenhum aplicativo nesta coleção" }
         if key == "options" { return "Opções da aplicação" }
@@ -569,7 +569,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "Ожидается подтверждение меню приложений" }
         if key == "launcher_installed" { return "Установлено в меню приложений" }
         if key == "queued" { return "Запрос в очереди" }
-        if key == "rejected" { return "Запрос отклонён" }
+        if key == "rejected" { return "Не удалось выполнить действие. Попробуйте ещё раз." }
         if key == "unavailable" { return "Приложения недоступны" }
         if key == "empty" { return "В этой коллекции нет приложений" }
         if key == "options" { return "Параметры приложения" }
@@ -631,7 +631,7 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "prompt_pending" { return "等待启动器确认" }
         if key == "launcher_installed" { return "已安装到启动器" }
         if key == "queued" { return "请求已排队" }
-        if key == "rejected" { return "请求被拒绝" }
+        if key == "rejected" { return "无法完成此操作。请重试。" }
         if key == "unavailable" { return "应用不可用" }
         if key == "empty" { return "此集合中没有应用" }
         if key == "options" { return "应用选项" }
@@ -692,7 +692,7 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "prompt_pending" { return "Launcher confirmation pending" }
     if key == "launcher_installed" { return "Installed in launcher" }
     if key == "queued" { return "Request queued" }
-    if key == "rejected" { return "Request rejected" }
+    if key == "rejected" { return "Could not complete this action. Try again." }
     if key == "unavailable" { return "Apps are unavailable" }
     if key == "empty" { return "No apps in this collection" }
     if key == "options" { return "App options" }

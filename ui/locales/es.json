@@ -9,7 +9,7 @@
   "prompt_pending": "Pendiente de confirmación del lanzador",
   "launcher_installed": "Instalado en el lanzador",
   "queued": "Solicitud en cola",
-  "rejected": "Solicitud rechazada",
+  "rejected": "No se pudo completar esta acción. Inténtalo de nuevo.",
   "unavailable": "Las aplicaciones no están disponibles",
   "empty": "No hay aplicaciones en esta colección",
   "options": "Opciones de la aplicación",

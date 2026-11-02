@@ -9,7 +9,7 @@
   "prompt_pending": "Čeká se na potvrzení spouštěče",
   "launcher_installed": "Nainstalováno ve spouštěči",
   "queued": "Požadavek zařazen do fronty",
-  "rejected": "Požadavek zamítnut",
+  "rejected": "Akci se nepodařilo dokončit. Zkus to znovu.",
   "unavailable": "Aplikace nejsou dostupné",
   "empty": "V této kolekci nejsou žádné aplikace",
   "options": "Možnosti aplikace",

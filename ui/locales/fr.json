@@ -9,7 +9,7 @@
   "prompt_pending": "Confirmation du lanceur en attente",
   "launcher_installed": "Installé dans le lanceur",
   "queued": "Demande en attente",
-  "rejected": "Demande refusée",
+  "rejected": "Impossible de terminer cette action. Réessaie.",
   "unavailable": "Les applications sont indisponibles",
   "empty": "Aucune application dans cette collection",
   "options": "Options de l’application",

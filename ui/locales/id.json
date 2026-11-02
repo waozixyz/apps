@@ -9,7 +9,7 @@
   "prompt_pending": "Menunggu konfirmasi peluncur",
   "launcher_installed": "Terpasang di peluncur",
   "queued": "Permintaan diantrekan",
-  "rejected": "Permintaan ditolak",
+  "rejected": "Tindakan ini tidak dapat diselesaikan. Coba lagi.",
   "unavailable": "Aplikasi tidak tersedia",
   "empty": "Tidak ada aplikasi dalam koleksi ini",
   "options": "Opsi aplikasi",

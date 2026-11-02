@@ -9,7 +9,7 @@
   "prompt_pending": "In attesa della conferma del launcher",
   "launcher_installed": "Installato nel launcher",
   "queued": "Richiesta in coda",
-  "rejected": "Richiesta rifiutata",
+  "rejected": "Impossibile completare questa azione. Riprova.",
   "unavailable": "Le app non sono disponibili",
   "empty": "Nessuna app in questa raccolta",
   "options": "Opzioni app",
