@@ -155,6 +155,7 @@ verifies public package imports and launcher search/grouping.
 
 ## Unreleased
 
+- Align the shared controller with Profile apps using the fixed Android renderer packages.
 - `apps/connection` asks one origin-bound permission for fetching content and
   automatic app updates. Existing stored yes answers remain valid, and hosts
   set `AppPlatform.content_allowed` only after that consent. Installed children
