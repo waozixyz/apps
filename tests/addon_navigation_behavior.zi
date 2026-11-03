@@ -1,6 +1,8 @@
 // Actual shared host/tree and portable VMs; reuse only the headless renderer.
 #import, file "native_behavior.zi";
 #import "host"
+#import "kryon/tree"
+#import "kryon/tree_input"
 #import "tree"
 #import "protocol"
 #import "catalog"
@@ -336,10 +338,34 @@ AddonCheck :: () -> s32 {
         if !Command(*host, "read") || host.last_reply != "legacy private draft" ||
         !Command(*host, "write") || nav_game_record != "game progress" || nav_addon_record != "edited draft" { return 13 }
         flush_failed = true
-        if AppHostBack(*host) != -1 || AppHostActiveRuntime(*host) != addon { return 14 }
+        if AppHostHome(*host) || AppHostActiveRuntime(*host) != addon { return 14 }
         flush_failed = false
         if AppHostBack(*host) != 1 || !AppHandleEqual(host.tree.active, game) ||
-        AppHostActiveRuntime(*host) != runtime || !NavStop(*host) { return 15 }
+        AppHostActiveRuntime(*host) != runtime { return 15 }
+        runtime.legacy.message.screen = 0
+        if !Draw(*host, 800, 480, false) { return 170 }
+        for index: cast(s32)0..TreeCount(ui_session) - 1 {
+            if TreeNodeAt(ui_session, index).key == cast(u64)49210 { return 171 }
+        }
+        root.catalog.cover_grid = true
+        if !Draw(*host, 800, 480, false) { return 172 }
+        home_index: s32 = -1
+        for index: cast(s32)0..TreeCount(ui_session) - 1 {
+            item := TreeNodeAt(ui_session, index)
+            if item.key == cast(u64)49210 {
+                if item.bounds.x != 12.0 || item.bounds.y != 8.0 || item.bounds.height != 48.0 { return 173 }
+                home_index = index
+            }
+        }
+        flush_failed = true
+        runtime.app.key = 290
+        if !Draw(*host, 360, 640, false) || !AppHandleEqual(host.tree.active, game) { return 179 }
+        flush_failed = false
+        if home_index < 0 { return 174 }
+        if !TreeActivateAt(ui_session, home_index) { return 175 }
+        if !Draw(*host, 360, 640, false) { return 176 }
+        if AppHostActiveRuntime(*host).node.parent.generation != 0 { return 177 }
+        if !NavStop(*host) { return 178 }
         nav_addon_record = "legacy private draft"
     }
     // Save failure, revalidation of catalog/account/source, and original

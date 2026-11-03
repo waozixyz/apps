@@ -5,6 +5,7 @@
 #import "kryon/image_props"
 #import "kryon/button_widget"
 #import "kryon/button_props"
+#import "kryon/control_props"
 #import "kryon/text_widget"
 #import "kryon/text_props"
 #import "kryon/text_align"
@@ -74,4 +75,22 @@ AppGameHud :: (session: Session, props: AppGameHudProps) -> s32 {
     if profile_action != 0 { return 1 }
     if dew_action != 0 { return 2 }
     return 0
+}
+
+// Optional host navigation. Standalone games simply do not compose this.
+AppGameHomeProps :: struct {
+    key: u64
+    bounds: Rectangle
+    label: string
+}
+
+#program_export
+AppGameHome :: (session: Session, props: AppGameHomeProps) -> bool {
+    unused WidgetPaletteUse(session, WidgetPalette.{.background = 0x111316ff,
+        .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
+        .selected_text = 0xffeec1ff, .border = 0x66522bff})
+    defer { unused WidgetPaletteRestore(session) }
+    return Button(session, ButtonProps.{.key = props.key, .bounds = props.bounds,
+        .label = props.label, .icon_shape = "S1.8rr:M3 11L12 3L21 11M5 10V21H10V15H14V21H19V10",
+        .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0
 }

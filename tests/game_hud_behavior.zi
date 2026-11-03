@@ -48,6 +48,13 @@ Check :: () -> s32 {
     if Frame(session, props) != 0 || TreeCount(session) != 1 { return 9 }
     props.bounds.width = 240.0; props.bounds.height = -1.0
     if Frame(session, props) != 0 || TreeCount(session) != 1 { return 10 }
+    BeginFrame(session, 9900, Rectangle.{0.0, 0.0, 1024.0, 768.0})
+    if AppGameHome(session, AppGameHomeProps.{.key = 200, .bounds = Rectangle.{12.0, 12.0, 124.0, 48.0}, .label = "Arcade"}) { return 13 }
+    if cast(s32)CommitFrame(session) != 0 || TreeNodeAt(session, 1).semantic_label != "Arcade" { return 14 }
+    if !TreeActivateAt(session, 1) { return 15 }
+    BeginFrame(session, 9900, Rectangle.{0.0, 0.0, 1024.0, 768.0})
+    if !AppGameHome(session, AppGameHomeProps.{.key = 200, .bounds = Rectangle.{12.0, 12.0, 124.0, 48.0}, .label = "Arcade"}) { return 16 }
+    if cast(s32)CommitFrame(session) != 0 { return 17 }
     unused SessionClose(session)
     return 0
 }

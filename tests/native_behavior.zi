@@ -680,20 +680,20 @@ NativeControllerCheck :: () -> s32 {
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
     TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
-    // Artwork has no size captions; the named install dialog shows the size.
+    // Artwork has no captions; its ordinary launch page names the download.
     if !NativeLoadCatalog("cover-grid-download") { return 951 }
     if !NativeDraw(false, false) { return 952 }
     if NativeLabel("4.1 kB", WidgetKindText) >= 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 953 }
     if !NativeClick("Clock", WidgetKindButton) { return 954 }
     if !NativeDraw(false, false) { return 955 }
-    if NativeLabel("Download size: 4.1 kB", WidgetKindText) < 0 { return 956 }
+    if NativeLabel("Download size: 4.1 kB", WidgetKindText) < 0 || NativeLabel("Clock", WidgetKindModal) >= 0 { return 956 }
     if !NativeClick("Cancel", WidgetKindButton) { return 957 }
     if !NativeDraw(false, false) { return 958 }
     // Cached bytes after uninstall still require named installation consent.
     covered = native_queued
     if !NativeLoadCatalog("cover-grid-cached") || !NativeDraw(false, false) ||
     !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
-    NativeLabel("Clock", WidgetKindModal) < 0 || NativeLabel("Install", WidgetKindButton) < 0 ||
+    NativeLabel("Clock", WidgetKindModal) >= 0 || NativeLabel("Clock", WidgetKindText) < 0 || NativeLabel("Install", WidgetKindButton) < 0 ||
     native_queued != covered { return 959 }
     if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered { return 960 }
     if !NativeLoadCatalog("cover-grid-dependencies") || !NativeDraw(false, false) ||

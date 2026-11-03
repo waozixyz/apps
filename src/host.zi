@@ -16,6 +16,12 @@
 #import "kryon/session"
 #import "kryon/geometry"
 #import "kryon/tree"
+#import "kryon/tree_input"
+#import "kryon/box_widget"
+#import "kryon/box_props"
+#import "kryon/drawing_props"
+#import, file "game_hud.zi";
+#import, file "appearance.zi";
 #import "kryon/widget_host"
 #import "kryon/widget_kind"
 #import "kryon/bundle_names"
@@ -1437,6 +1443,23 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
         frontend.app.command = runtime.app.command
         runtime = frontend
     }
+    root := AppTreeNode(*host.tree, AppHandle.{0, 1})
+    home := mode == APP_FRAME && !node.collection && node.parent.generation != 0 &&
+        root != null && root.collection && (root.catalog.cover_grid || host.platform.presentation.cover_grid)
+    home_requested := home && runtime.app.key == 290
+    if home_requested { runtime.app.key = 0 }
+    // Host navigation owns its activation. Enter must never also start play.
+    if home && (runtime.app.key == 257 || runtime.app.key == 32) {
+        index: s32
+        while index < TreeCount(runtime.app.session) {
+            item := TreeInputAt(runtime.app.session, index)
+            if item.key == cast(u64)49210 && TreeFocusedAt(runtime.app.session, index) { runtime.app.key = 0 }
+            index += 1
+        }
+    }
+    original_bounds := runtime.app.bounds
+    original_top := runtime.legacy.frame.top
+    home_bounds: Rectangle
     if runtime.busy || !AppTreeBegin(*host.tree, host.tree.active) { return false }
     runtime.busy = true
     if !AppHostAllows(cast(*void)runtime, "AppSoundHost") { AppContextAudioReset(*runtime.app) }
@@ -1446,18 +1469,30 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     if runtime.protocol == APPS_NODE_PROTOCOL { frame_session = runtime.legacy.frame.session }
     mounted: bool
     if mode == APP_FRAME {
-        bounds := runtime.app.bounds
-        if runtime.protocol == APPS_NODE_PROTOCOL && (bounds.width <= 0.0 || bounds.height <= 0.0) {
+        guest_area := runtime.app.bounds
+        if runtime.protocol == APPS_NODE_PROTOCOL && (guest_area.width <= 0.0 || guest_area.height <= 0.0) {
             frame := runtime.legacy.frame
-            bounds = Rectangle.{0.0, cast(float32)frame.top, cast(float32)frame.width,
+            guest_area = Rectangle.{0.0, cast(float32)frame.top, cast(float32)frame.width,
                 cast(float32)(frame.height - frame.top - frame.bottom)}
+        }
+        if home {
+            home_bounds = guest_area
+            // The shared host owns this opaque strip in every consumer.
+            // Games retain all of their own Back, title and play controls below.
+            runtime.app.bounds = Rectangle.{guest_area.x, guest_area.y + 64.0, guest_area.width, guest_area.height - 64.0}
+            runtime.legacy.frame.top += 64
+            guest_area = runtime.app.bounds
+            unused Box(frame_session, BoxProps.{.key = cast(u64)49190,
+                .bounds = Rectangle.{home_bounds.x, home_bounds.y, home_bounds.width, 64.0},
+                .fill = ColorFromPacked(AppCoversPalette().background)})
         }
         if SessionValid(frame_session) {
             mount := TreeSubmitCurrent(frame_session, cast(u64)1099511627776 + cast(u64)node.generation,
-                cast(s32)WidgetKindCustom, bounds)
+                cast(s32)WidgetKindCustom, guest_area)
             if mount >= 0 { mounted = TreePushScope(frame_session, mount) }
         }
         if !mounted {
+            if home { runtime.app.bounds = original_bounds; runtime.legacy.frame.top = original_top }
             runtime.busy = false
             unused AppTreeEnd(*host.tree, handle)
             return false
@@ -1492,6 +1527,14 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     unused AppTreeEnd(*host.tree, handle)
     // Child open/close and platform effects happen only after Run returns.
     unused AppTreeDrain(*host.tree)
+    if home && AppHandleEqual(host.tree.active, handle) {
+        clicked_home := AppGameHome(frame_session, AppGameHomeProps.{.key = cast(u64)49210,
+            .bounds = Rectangle.{home_bounds.x + 12.0, home_bounds.y + 8.0, 124.0, 48.0},
+            .label = TextUntilNul(root.catalog.title[:])})
+        // A rejected save consumes Home while keeping the working game open.
+        if clicked_home || home_requested { unused AppHostHome(host) }
+    }
+    if home { runtime.app.bounds = original_bounds; runtime.legacy.frame.top = original_top }
     return result
 }
 
@@ -1520,6 +1563,26 @@ AppHostBack :: (host: *AppHost) -> s32 {
     queued := AppTreeQueue(*host.tree, active, AppsRequest.{.operation = APPS_BACK})
     if queued.status != APPS_QUEUED || !AppTreeDrain(*host.tree) { return -1 }
     return ifx !AppHandleEqual(host.tree.active, active) then 1 else -1
+}
+
+// Host-owned Home goes directly to the collection, saving every departing
+// guest through the same verified tree boundary as Back. A failed save keeps
+// the current guest alive; its own Back handler cannot consume this action.
+AppHostHome :: (host: *AppHost) -> bool {
+    if host.tree.busy || host.tree.draining { return false }
+    AppHostCancelLocator(host)
+    remaining := host.tree.nodes.count + 1
+    while remaining > 0 {
+        active := host.tree.active
+        node := AppTreeNode(*host.tree, active)
+        if node == null { return false }
+        if AppTreeNode(*host.tree, node.parent) == null { return true }
+        queued := AppTreeQueue(*host.tree, active, AppsRequest.{.operation = APPS_BACK})
+        if queued.status != APPS_QUEUED || !AppTreeDrain(*host.tree) ||
+        AppHandleEqual(host.tree.active, active) { return false }
+        remaining -= 1
+    }
+    return false
 }
 
 AppHostSave :: (context: *void, node: *AppNode) -> bool {

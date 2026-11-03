@@ -655,9 +655,9 @@ AppsDownloadOpen :: (card: *AppCard) {
     download_fresh = true
 }
 
-// Before anything downloads the dialog says how big the app is and what it
-// may reach, and Download is the consent; then it shows the progress and
-// ends with Open, or Try again when the download failed.
+// Console launches keep the game artwork and input in the normal page.
+// Download is explicit consent; the verified game then opens its own title.
+// Other collection presentations retain their existing install dialog.
 AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: string, font: s32) {
     opening := download_fresh
     download_fresh = false
@@ -698,12 +698,34 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
     if card.download_count > 1 { content_height += cast(float32)card.download_count * line + gap }
     if asking && permission_count > 0 { content_height += line + cast(float32)permission_count * line + gap }
     if card.downloading || (download_started && !card.on_device && !card.download_failed) { content_height += bar + gap }
-    frame := ModalFrame(session, ModalFrameProps.{.key = cast(u64)19, .title = TextUntilNul(card.title[:]),
-            .width = cast(s32)(440.0 * scale), .height = cast(s32)(content_height + 74.0 * scale), .scale = scale,
-            .dismiss_disabled = opening})
-    if frame.dismissed { AppsPropertiesClose(); return }
-    if !frame.opened { return }
-    area := frame.layout.content
+    area: Rectangle
+    if cover_grid {
+        viewport := AppBounds()
+        art := ifx viewport.width > viewport.height then TextUntilNul(card.cover.landscape[:]) else TextUntilNul(card.cover.portrait[:])
+        if art == "" { art = TextUntilNul(card.preview[:]) }
+        unused Image(session, ImageProps.{.key = cast(u64)50030, .bounds = viewport,
+            .asset_path = art, .alt_text = TextUntilNul(card.title[:]), .fit = ImageFit.ImageFitCover, .smooth = true})
+        unused Box(session, BoxProps.{.key = cast(u64)50031, .bounds = viewport,
+            .fill = Color.{5, 13, 20, 35}, .fill_bottom = Color.{5, 13, 20, 245}, .has_fill_bottom = true})
+        width := viewport.width - 48.0 * scale
+        if width > 560.0 * scale { width = 560.0 * scale }
+        area = Rectangle.{viewport.x + (viewport.width - width) * 0.5,
+            viewport.y + viewport.height - content_height - 36.0 * scale, width, content_height}
+        if area.y < viewport.y + 120.0 * scale { area.y = viewport.y + 120.0 * scale }
+        AppsText(session, cast(u64)50032, Rectangle.{area.x, area.y - 64.0 * scale, width, 52.0 * scale},
+            TextUntilNul(card.title[:]), font + 18)
+        if Button(session, ButtonProps.{.key = cast(u64)50033,
+            .bounds = Rectangle.{viewport.x + 12.0 * scale, viewport.y + 12.0 * scale, 108.0 * scale, 48.0 * scale},
+            .label = AppsLabel(language, "back"), .icon_shape = "S2rr:M15 18L9 12L15 6",
+            .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0 { AppsPropertiesClose(); return }
+    } else {
+        frame := ModalFrame(session, ModalFrameProps.{.key = cast(u64)19, .title = TextUntilNul(card.title[:]),
+                .width = cast(s32)(440.0 * scale), .height = cast(s32)(content_height + 74.0 * scale), .scale = scale,
+                .dismiss_disabled = opening})
+        if frame.dismissed { AppsPropertiesClose(); return }
+        if !frame.opened { return }
+        area = frame.layout.content
+    }
     x := area.x
     y := area.y
     width := area.width
@@ -798,7 +820,7 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
         close := Button(session, ButtonProps.{.key = cast(u64)31, .bounds = secondary,
                 .label = AppsLabel(language, ifx asking then "cancel" else "close"),
                 .emphasis = cast(ButtonEmphasis)ButtonEmphasisGhost}) != 0
-        End(session)
+        if !cover_grid { End(session) }
         if close { AppsPropertiesClose() }
         else if go && card.on_device && card.installed { AppsAct("open", card.id); AppsPropertiesClose() }
         else if go { AppsAct("install", card.id); download_started = true; download_installing = false; download_frames = 0 }
@@ -807,14 +829,14 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
     // The download goes on without the dialog.
     hide := Button(session, ButtonProps.{.key = cast(u64)32, .label = AppsLabel(language, "hide"), .bounds = primary,
             .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0
-    End(session)
+    if !cover_grid { End(session) }
     if hide { AppsPropertiesClose() }
 }
 
 AppsDialog :: (session: Session, scale: float32, language: string, font: s32) {
     if dialog == 0 { return }
     card := AppsFind(dialog_id)
-    if card == null || card.disabled || (!download_fresh && (AppKey() == 256 || AppKey() == 27)) { AppsPropertiesClose(); return }
+    if card == null || card.disabled || (!download_fresh && (AppKey() == 256 || AppKey() == 27 || (cover_grid && AppKey() == 290))) { AppsPropertiesClose(); return }
     if dialog == 5 {
         AppsDownload(session, card, scale, language, font)
         return
@@ -1095,7 +1117,8 @@ AppsFrame :: () -> bool {
         VecFree(bytes)
     }
     if cover_grid {
-        AppsConsole(session, bounds, scale, language, font)
+        if dialog == 5 { AppsDialog(session, scale, language, font) }
+        else { AppsConsole(session, bounds, scale, language, font) }
         return true
     }
     if cover_mode && !icon_mode && !cover_grid {

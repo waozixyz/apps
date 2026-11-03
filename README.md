@@ -31,14 +31,22 @@ carousel layout. The controller accepts the same presentation fields.
 `AppPresentation.cover_grid` selects a console shelf with one focused cover,
 neighboring artwork, and keyboard, swipe and wheel selection. Landscape screens
 use landscape covers; portrait screens use portrait covers. Names remain in
-accessibility and download dialogs, with no visible home title or captions.
+accessibility and the full-art launch page, with no visible home title or captions.
 Clicking artwork launches directly; Enter/Space opens the selected game.
 `image_class` applies the host's standard Image styles, including rounded
-corners. The shared controller owns scrolling, menus and download dialogs;
+corners. Cover-grid downloads use a normal launch page with progress and retry,
+without modal focus or stopping background transfers when leaving the page.
+After installation the verified game opens its own title screen.
+The shared controller owns scrolling, menus and installation;
 hosts supply the same verified cover assets already used by the carousel.
 Collections may declare `"presentation": {"mode": "covers"}` in their signed
 catalog so every supported host presents the same dark cover library.
 Each child's optional `bytes` value supplies its exact initial download size.
+For console collections, the shared host composes `AppGameHome` above the
+guest in its own opaque strip and `AppHostHome` saves each departing game or
+editor before returning to the root collection. F1 and controller View/Select
+use the same route. This also applies to nested hosts such as Inner Breeze;
+standalone games do not gain a collection navigation control.
 
 A carousel cover with `action: "buy"` shows a localized Buy button and sends
 `install` directly to the host. The host owns the price confirmation, purchase
