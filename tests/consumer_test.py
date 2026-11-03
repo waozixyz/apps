@@ -28,7 +28,8 @@ def main():
     if not os.environ.get('APPS_TEST_UI'):
         run(sys.executable, str(ROOT / 'scripts/build-ui.py'))
     package = 'p0000000000000001'
-    lines = ['P\troot\t' + str(CONSUMER), 'M\troot\tmain\t' + str(CONSUMER / 'main.zi')]
+    lines = ['P\troot\t' + str(CONSUMER), 'M\troot\tmain\t' + str(CONSUMER / 'main.zi'),
+             'M\troot\tgame_hud_host\t' + str(ROOT / 'tests/game_hud_host.zi')]
     for line in (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines():
         values = line.split('\t')
         if len(values) > 1 and values[1] == 'root':
@@ -49,7 +50,8 @@ def main():
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran'], cwd=ROOT, text=True).strip())
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     run(str(toolchain / 'build/bin/zi2c'), '--prune-stale', '--no-main', '--entry', 'main:Check', '--module-path', str(toolchain / 'std'),
-        '--root', str(CONSUMER), '-o', str(output), str(CONSUMER / 'main.zi'))
+        '--root', str(CONSUMER), '-o', str(output), str(CONSUMER / 'main.zi'),
+        str(ROOT / 'tests/game_hud_host.zi'))
     (output / 'entry.c').write_text('#include "main.h"\nint main(void) { return Check(); }\n')
     includes = [arg for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for arg in ('-iquote', str(path))]
     run(os.environ.get('CC', 'cc'), '-std=c11', '-O2', '-ffunction-sections', '-fdata-sections',
