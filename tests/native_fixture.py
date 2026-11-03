@@ -149,7 +149,7 @@ def main():
     os.environ['APPS_FIXTURE_THIN_ROOT_SHA256'] = digest(thin_root)
     native_catalog = json.loads((ROOT / 'fixtures/consumer/catalog.json').read_text())
     for name in ('native', 'seen', 'no-update', 'changed-update', 'preview', 'download', 'downloading',
-                 'download-failed', 'download-ready', 'download-installed', 'download-request', 'cover-download', 'cover-buy', 'cover-buy-de', 'cover-buy-denied', 'cover-grid', 'cover-grid-download', 'cover-grid-cached', 'cover-grid-dependencies', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
+                 'download-failed', 'download-ready', 'download-installed', 'download-request', 'cover-download', 'cover-buy', 'cover-buy-de', 'cover-buy-denied', 'cover-grid', 'cover-grid-download', 'cover-grid-cached', 'cover-grid-dependencies', 'cover-grid-request', 'reorder-list', 'reorder-grid', 'simple-grid', 'simple-list', 'simple-downloading'):
         import copy
         candidate = copy.deepcopy(native_catalog)
         if name == 'seen':
@@ -194,13 +194,16 @@ def main():
             candidate['presentation']['mode'] = 'preview'
             for card in candidate['children']:
                 card['preview'] = 'assets/preview.png'
-        if name in ('cover-grid', 'cover-grid-download', 'cover-grid-cached', 'cover-grid-dependencies'):
+        if name in ('cover-grid', 'cover-grid-download', 'cover-grid-cached', 'cover-grid-dependencies', 'cover-grid-request'):
             candidate['presentation']['mode'] = 'covers'
             for card in candidate['children']:
                 card['cover'] = {'portrait': 'assets/preview.png', 'landscape': 'assets/preview.png',
                                  'logo': 'assets/preview.png', 'action': 'open'}
         if name == 'cover-grid-download':
             candidate['children'][1].update(on_device=False, bytes=4096, actions=['open', 'install'])
+        if name == 'cover-grid-request':
+            candidate['children'][1].update(on_device=False, bytes=4096, actions=['open', 'install'])
+            candidate['presentation'].update(download_id='native.clock', download_request=2)
         if name == 'cover-grid-cached':
             candidate['children'][1].update(installed=False, on_device=True, bytes=4096, actions=['install'])
         if name == 'cover-grid-dependencies':

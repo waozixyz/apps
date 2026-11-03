@@ -4,6 +4,7 @@
 #import "std/json_scan"
 #import "std/c_string"
 #import "std/vec"
+#import "std/option"
 #import "std/text_buffer"
 #import "kryon/app_context"
 #import "kryon/app_protocol"
@@ -147,6 +148,16 @@ download_installing: bool;
 download_frames: s32;
 download_fresh: bool;
 last_download_request: s64;
+// Console games use the same artwork title as standalone cover collections.
+title_id: [128]u8;
+title_state: CarouselState;
+title_fresh: bool;
+ConsoleDownload :: struct {
+    id: [128]u8
+    installing: bool
+}
+console_downloads: Vec(ConsoleDownload);
+
 dialog_target: Rules.AppVersion;
 dialog_message: [2048]u8;
 
@@ -356,8 +367,15 @@ AppsReadCatalog :: () -> bool {
     // Consume each request once so Cancel and Hide keep working.
     if download_request > last_download_request && requested_download[0] != 0 {
         target := AppsFind(requested_download)
-        if target != null && (!target.on_device || !target.installed) && AppsSupported(target, Rules.APPS_INSTALL) {
-            AppsDownloadOpen(target)
+        if target != null {
+            // Console shelves keep their own selection; a requested add-on such
+            // as a game's editor uses the named install page, then opens.
+            if !cover_grid {
+                for index: cast(s32)0..cast(s32)cards.count - 1 {
+                    if TextUntilNul(cards[index].id[:]) == TextUntilNul(target.id[:]) { cover_state.selected = index; cover_state.position = cast(float32)index }
+                }
+            }
+            if (!target.on_device || !target.installed) && AppsSupported(target, Rules.APPS_INSTALL) { AppsDownloadOpen(target) }
             last_download_request = download_request
         }
     }
@@ -444,6 +462,7 @@ AppsMenu :: (session: Session, scale: float32, language: string) {
     if menu.activated_id == Rules.APPS_UPDATE { dialog_id = card.id; dialog = 1; dialog_target = card.available }
     else if menu.activated_id == Rules.APPS_ROLLBACK { dialog_id = card.id; dialog = 2 }
     else if menu.activated_id == Rules.APPS_PROPERTIES { AppsPropertiesOpen(card) }
+    else if menu.activated_id == Rules.APPS_OPEN && cover_grid { AppsConsoleOpen(card) }
     else if menu.activated_id > 0 {
         operation := ifx menu.activated_id == Rules.APPS_OPEN then "open" else ifx menu.activated_id == Rules.APPS_INSTALL then "install" else ifx menu.activated_id == Rules.APPS_UNINSTALL then "uninstall" else ifx menu.activated_id == Rules.APPS_PIN then "pin" else ifx menu.activated_id == Rules.APPS_UNPIN then "unpin" else "install_to_launcher"
         AppsAct(operation, card.id)
@@ -675,8 +694,9 @@ AppsDownload :: (session: Session, card: *AppCard, scale: float32, language: str
             }
             return
         }
-        AppsAct("open", card.id)
         AppsPropertiesClose()
+        if cover_grid && TextUntilNul(card.cover.action[:]) == "title" { AppsTitleOpen(card) }
+        else { AppsAct("open", card.id) }
         return
     }
     gap := 12.0 * scale
@@ -902,8 +922,176 @@ AppsSize :: (bytes: s64, output: []u8) -> bool {
     return result
 }
 
-// Console home: a landscape hero and bottom shelf, or a portrait carousel.
+// Reuse the collection's artwork, logo, caption and Play control unchanged.
+AppsTitleOpen :: (card: *AppCard) {
+    title_id = card.id
+    title_state = CarouselState.{}
+    title_fresh = true
+}
+
+AppsConsolePending :: (id: [128]u8) -> s64 {
+    for index: cast(s64)0..console_downloads.count - 1 {
+        if TextUntilNul(console_downloads[index].id[:]) == TextUntilNul(id[:]) { return index }
+    }
+    return -1
+}
+
+AppsConsoleDownload :: (card: *AppCard) {
+    if AppsConsolePending(card.id) >= 0 || action_taken { return }
+    AppsAct("install", card.id)
+    if TextUntilNul(status[:]) != "rejected" {
+        unused VecPush(console_downloads, ConsoleDownload.{.id = card.id, .installing = card.on_device})
+    }
+}
+
+// Complete verified installation in the background. Opening always needs a
+// fresh activation so finishing a transfer never interrupts browsing.
+AppsConsoleDownloads :: () {
+    index: s64
+    while index < console_downloads.count {
+        pending := *console_downloads[index]
+        card := AppsFind(pending.id)
+        if card == null || card.download_failed || (card.on_device && card.installed) {
+            console_downloads[index] = console_downloads[console_downloads.count - 1]
+            unused VecPop(console_downloads)
+            continue
+        }
+        if card.on_device && !card.installed && !pending.installing && !action_taken {
+            AppsAct("install", card.id)
+            pending.installing = true
+        }
+        index += 1
+    }
+}
+
+AppsConsoleOpen :: (card: *AppCard) {
+    if (!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL) { AppsConsoleDownload(card) }
+    else if AppsSupported(card, Rules.APPS_OPEN) {
+        if TextUntilNul(card.cover.action[:]) == "title" { AppsTitleOpen(card) }
+        else { AppsAct("open", card.id) }
+    }
+}
+
+AppsTitle :: (session: Session, bounds: Rectangle, scale: float32, language: string) {
+    card := AppsFind(title_id)
+    if card == null || card.disabled { title_id[0] = 0; return }
+    items: [1]CarouselItem
+    action := TextUntilNul(card.cover.action[:])
+    items[0] = CarouselItem.{.label = TextUntilNul(card.title[:]),
+        .portrait = ifx card.cover.portrait[0] != 0 then TextUntilNul(card.cover.portrait[:]) else TextUntilNul(card.preview[:]),
+        .landscape = TextUntilNul(card.cover.landscape[:]), .logo = TextUntilNul(card.cover.logo[:]),
+        .caption = TextUntilNul(card.cover.caption[:]),
+        .action = AppsLabel(language, ifx action == "title" then "play" else (ifx action != "" then action else "open")),
+        .disabled = dialog != 0 || title_fresh || card.disabled ||
+            (ifx action == "buy" then !AppsSupported(card, Rules.APPS_INSTALL) else
+                (!AppsSupported(card, Rules.APPS_OPEN) && !((!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL))))}
+    cover_time += 1.0 / 60.0
+    entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
+        .logo_max_width = cover_logo_width, .logo_top = cover_logo_top,
+        .label = TextUntilNul(card.title[:]), .now = cover_time,
+        .key_pressed = ifx title_fresh || dialog != 0 then 0 else AppKey(), .scale = scale, .dark = AppDark(),
+        .previous_label = AppsLabel(language, "previous"), .next_label = AppsLabel(language, "next")},
+        items[:], *title_state)
+    title_fresh = false
+    if entered >= 0 {
+        if (!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL) { AppsDownloadOpen(card) }
+        else { AppsAct("open", card.id); title_id[0] = 0 }
+    }
+    if AppKey() == 256 || AppKey() == 27 || AppKey() == 290 || Button(session, ButtonProps.{.key = cast(u64)2,
+        .label = AppsLabel(language, "back"),
+        .bounds = Rectangle.{bounds.x + 12.0 * scale, bounds.y + 12.0 * scale, 84.0 * scale, 44.0 * scale},
+        .emphasis = cast(ButtonEmphasis)ButtonEmphasisSoft}) != 0 { title_id[0] = 0 }
+    AppsDialog(session, scale, language, AppFont())
+}
+
+AppsSceneryCircle :: (session: Session, key: u64, x: float32, y: float32, radius: float32, fill: Color) {
+    Box(session, BoxProps.{.key = key, .bounds = Rectangle.{x - radius, y - radius, radius * 2.0, radius * 2.0},
+        .radius = radius, .fill = fill})
+}
+
+// The first tile offset at or left of the edge for a pattern drifted by shift.
+AppsSceneryStart :: (shift: float32, tile: float32) -> float32 {
+    start := shift - cast(float32)cast(s64)(shift / tile) * tile
+    if start > 0.0 { start -= tile }
+    return start
+}
+
+// A quiet dusk landscape pattern behind the console covers in either
+// orientation: sky, sun glow, clouds and rolling hills with round trees. It
+// repeats across any width, drifts gently with the selection and never paints a
+// game's own artwork behind its cover.
+AppsScenery :: (session: Session, bounds: Rectangle, scale: float32, position: float32) {
+    Box(session, BoxProps.{.key = cast(u64)50400, .bounds = bounds,
+        .fill = Color.{17, 42, 66, 255}, .fill_bottom = Color.{58, 124, 122, 255}, .has_fill_bottom = true})
+    // A low moon with a faint halo.
+    moon_x := bounds.x + bounds.width * 0.17
+    moon_y := bounds.y + bounds.height * 0.2
+    for ring: cast(s32)0..2 {
+        AppsSceneryCircle(session, cast(u64)(50401 + ring), moon_x, moon_y,
+            cast(float32)(96 - ring * 22) * scale, Color.{255, 230, 184, cast(u8)(9 + ring * 5)})
+    }
+    AppsSceneryCircle(session, cast(u64)50404, moon_x, moon_y, 30.0 * scale, Color.{255, 236, 196, 235})
+    tile := 360.0 * scale
+    tiles := cast(s32)(bounds.width / tile) + 2
+    if tiles > 60 { tiles = 60 }
+    // Sparkles and clouds drift with the farthest hills.
+    start := AppsSceneryStart(-position * 16.0 * scale, tile)
+    for index: cast(s32)0..tiles - 1 {
+        x := bounds.x + start + cast(float32)index * tile
+        key := cast(u64)(54000 + index * 16)
+        for star: cast(s32)0..5 {
+            column := cast(float32)((star * 37 + 11) % 100) / 100.0
+            row := cast(float32)((star * 53 + 7) % 40) / 100.0
+            AppsSceneryCircle(session, key + cast(u64)star, x + column * tile, bounds.y + bounds.height * (0.05 + row),
+                cast(float32)(1 + star % 2) * scale, Color.{232, 246, 255, 120})
+        }
+        cloud_y := bounds.y + bounds.height * (ifx index % 2 == 0 then 0.17 else 0.31)
+        // Solid, so overlapping puffs read as one soft cloud.
+        cloud := Color.{50, 88, 106, 255}
+        Box(session, BoxProps.{.key = key + cast(u64)6, .bounds = Rectangle.{x + tile * 0.30, cloud_y, tile * 0.42, 22.0 * scale},
+            .radius = 11.0 * scale, .fill = cloud})
+        AppsSceneryCircle(session, key + cast(u64)7, x + tile * 0.44, cloud_y + 2.0 * scale, 20.0 * scale, cloud)
+        AppsSceneryCircle(session, key + cast(u64)8, x + tile * 0.56, cloud_y + 4.0 * scale, 14.0 * scale, cloud)
+    }
+    // Far, middle and near hills; nearer layers drift further.
+    for layer: cast(s32)0..2 {
+        top := bounds.y + bounds.height * (0.58 + cast(float32)layer * 0.13)
+        radius := tile * (0.56 - cast(float32)layer * 0.06)
+        fill := ifx layer == 0 then Color.{56, 122, 124, 255} else ifx layer == 1 then Color.{36, 96, 96, 255} else Color.{21, 64, 68, 255}
+        Box(session, BoxProps.{.key = cast(u64)(50410 + layer),
+            .bounds = Rectangle.{bounds.x, top, bounds.width, bounds.y + bounds.height - top}, .fill = fill})
+        layer_start := AppsSceneryStart(-position * cast(float32)(24 + layer * 28) * scale - cast(float32)layer * tile * 0.37, tile)
+        for index: cast(s32)0..tiles - 1 {
+            x := bounds.x + layer_start + cast(float32)index * tile
+            key := cast(u64)(51000 + layer * 1000 + index * 16)
+            AppsSceneryCircle(session, key, x + tile * 0.25, top + radius * 0.62, radius, fill)
+            AppsSceneryCircle(session, key + cast(u64)1, x + tile * 0.78, top + radius * 0.8, radius * 0.7, fill)
+        }
+        if layer != 1 { continue }
+        // Round trees stand on the middle hills, behind the nearest ones.
+        for index: cast(s32)0..tiles - 1 {
+            x := bounds.x + layer_start + cast(float32)index * tile
+            key := cast(u64)(55000 + index * 16)
+            for tree: cast(s32)0..2 {
+                tree_x := x + tile * (0.12 + cast(float32)tree * 0.31)
+                size := cast(float32)(13 + (tree * 5 + index * 3) % 8) * scale
+                base := top - radius * (0.18 - cast(float32)tree * 0.05)
+                Box(session, BoxProps.{.key = key + cast(u64)(tree * 2), .bounds = Rectangle.{tree_x - 2.0 * scale, base - size, 4.0 * scale, size + 4.0 * scale},
+                    .fill = Color.{30, 62, 58, 255}})
+                AppsSceneryCircle(session, key + cast(u64)(tree * 2 + 1), tree_x, base - size * 1.4, size,
+                    Color.{28, 82, 78, 255})
+            }
+        }
+    }
+    shade := bounds.y + bounds.height * 0.62
+    Box(session, BoxProps.{.key = cast(u64)50420, .bounds = Rectangle.{bounds.x, shade, bounds.width, bounds.y + bounds.height - shade},
+        .fill = Color.{6, 18, 24, 0}, .fill_bottom = Color.{6, 18, 24, 170}, .has_fill_bottom = true})
+}
+
+// Console home: one cover carousel on a scenic pattern in both orientations.
+// Landscape screens use landscape covers; portrait screens use portrait covers.
 AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: string, font: s32) {
+    AppsConsoleDownloads()
     visible: [4096]s32
     count: s32
     for index: cast(s32)0..cast(s32)cards.count - 1 {
@@ -925,33 +1113,18 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
         }
     }
     CarouselSelect(*cover_state, count, delta, cover_time)
-    selected := *cards[visible[cover_state.selected]]
-    backdrop := ifx wide then TextUntilNul(selected.cover.landscape[:]) else TextUntilNul(selected.cover.portrait[:])
-    if backdrop == "" { backdrop = TextUntilNul(selected.preview[:]) }
-    Image(session, ImageProps.{.key = cast(u64)50021, .bounds = bounds, .asset_path = backdrop,
-        .alt_text = "", .fit = ImageFit.ImageFitCover, .smooth = true})
-    Box(session, BoxProps.{.key = cast(u64)50022, .bounds = bounds,
-        .fill = Color.{7, 16, 21, ifx wide then cast(u8)0 else cast(u8)115},
-        .fill_bottom = Color.{5, 13, 20, 210}, .has_fill_bottom = true})
-    margin := 28.0 * scale
+    selected_index := cover_state.selected
+    AppsScenery(session, bounds, scale, cover_state.position)
     gap := 18.0 * scale
     center := bounds.x + bounds.width * 0.5
     ratio: float32 = ifx wide then 16.0 / 9.0 else 2.0 / 3.0
-    width: float32
-    y: float32
-    if wide {
-        width = (bounds.width - margin * 2.0 - gap * cast(float32)(count - 1)) / cast(float32)count
-        if width > 300.0 * scale { width = 300.0 * scale }
-        if width < 160.0 * scale { width = 160.0 * scale }
-        if width / ratio > bounds.height * 0.28 { width = bounds.height * 0.28 * ratio }
-        y = bounds.y + bounds.height - width / ratio - margin
-    } else {
-        width = bounds.width * 0.70
-        available := bounds.height - 220.0 * scale
-        if width / ratio > available { width = available * ratio }
-        y = bounds.y + 108.0 * scale + (available - width / ratio) * 0.5
-    }
+    // The centred cover leaves room for the HUD above and the markers below;
+    // neighbouring covers show at both sides.
+    width := bounds.width * (ifx wide then 0.58 else 0.70)
+    available := bounds.height - 220.0 * scale
+    if width / ratio > available { width = available * ratio }
     if width < 40.0 * scale { width = 40.0 * scale }
+    y := bounds.y + 108.0 * scale + (available - width / ratio) * 0.5
     stride := width + gap
     height := width / ratio
     frames: [4096]Rectangle
@@ -960,13 +1133,12 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
     focused_action_enabled: bool
     activated: s32 = -1
     if key == 257 || key == 32 { activated = cover_state.selected }
-    row_width := cast(float32)count * width + cast(float32)(count - 1) * gap
     for index: cast(s32)0..count - 1 {
         card := *cards[visible[index]]
-        focused := index == cover_state.selected
-        x := ifx wide then center - row_width * 0.5 + cast(float32)index * stride else center - width * 0.5 + (cast(float32)index - cover_state.position) * stride
+        focused := index == selected_index
+        x := center - width * 0.5 + (cast(float32)index - cover_state.position) * stride
         if x + width < bounds.x || x > bounds.x + bounds.width { continue }
-        shrink: float32 = ifx focused || wide then 1.0 else 0.92
+        shrink: float32 = ifx focused then 1.0 else 0.92
         w := width * shrink
         h := height * shrink
         frame := Rectangle.{x + (width - w) * 0.5, y + (height - h) * 0.5, w, h}
@@ -998,8 +1170,26 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
         if Button(session, ButtonProps.{.key = card_key, .bounds = frame, .label = TextUntilNul(card.title[:]),
             .selected = focused, .invisible = true, .disabled = dialog != 0 || card.disabled ||
                 ((key == 257 || key == 32) && !focused) || (!AppsSupported(card, Rules.APPS_OPEN) && !download_first)}) != 0 {
-            cover_state.selected = index
-            activated = index
+            if focused { activated = index }
+            else { cover_state.selected = index }
+        }
+        pending := AppsConsolePending(card.id) >= 0
+        if card.downloading || pending {
+            track := Rectangle.{frame.x + 10.0 * scale, frame.y + h - 24.0 * scale, w - 64.0 * scale, 14.0 * scale}
+            Box(session, BoxProps.{.key = card_key + cast(u64)14, .bounds = track,
+                .radius = 7.0 * scale, .fill = Color.{20, 39, 42, 240}})
+            fill := track
+            progress := ifx card.on_device then 100 else (ifx card.progress >= 0 then card.progress else 1)
+            fill.width = track.width * cast(float32)progress / 100.0
+            Box(session, BoxProps.{.key = card_key + cast(u64)15, .bounds = fill,
+                .radius = 7.0 * scale, .fill = Color.{131, 246, 183, 255}})
+            AppsText(session, card_key + cast(u64)16,
+                Rectangle.{track.x, track.y - 24.0 * scale, track.width, 22.0 * scale},
+                AppsLabel(language, "downloading"), font)
+        } else if card.download_failed {
+            AppsText(session, card_key + cast(u64)14,
+                Rectangle.{frame.x + 8.0 * scale, frame.y + h - 32.0 * scale, w - 60.0 * scale, 28.0 * scale},
+                AppsLabel(language, "download_failed"), font)
         }
         if focused {
             action := AppsActionProps(card_key + cast(u64)5, card, action_class,
@@ -1009,7 +1199,7 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
             focused_action_enabled = !action.disabled
             if !card.on_device || !card.installed {
                 action.label = AppsLabel(language, ifx card.on_device then "install" else "download"); action.icon_shape = APP_DOWNLOAD
-                if Button(session, action) != 0 { AppsDownloadOpen(card) }
+                if Button(session, action) != 0 { AppsConsoleDownload(card) }
             } else if Button(session, action) != 0 || key == 77 {
                 menu_id = card.id; menu_x = action.bounds.x; menu_y = action.bounds.y
                 if card.update_available && !card.update_seen && AppsSupported(card, Rules.APPS_SEEN) { AppsAct("seen", card.id, card.available) }
@@ -1019,12 +1209,11 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
     if activated >= 0 {
         card := *cards[visible[activated]]
         if !card.disabled {
-            if (!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL) { AppsDownloadOpen(card) }
-            else if AppsSupported(card, Rules.APPS_OPEN) { AppsAct("open", card.id) }
+            AppsConsoleOpen(card)
         }
     }
-    if !wide {
-        mini_height := 76.0 * scale
+    {
+        mini_height := (ifx wide then 58.0 else 76.0) * scale
         mini_width := mini_height * ratio
         mini_gap := 14.0 * scale
         mini_row := cast(float32)count * (mini_width + mini_gap) - mini_gap
@@ -1032,14 +1221,17 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
             target := Rectangle.{center - mini_row * 0.5 + cast(float32)index * (mini_width + mini_gap),
                 bounds.y + bounds.height - mini_height - 24.0 * scale, mini_width, mini_height}
             markers[index] = target
-            focused := index == cover_state.selected
+            focused := index == selected_index
             if focused {
                 Box(session, BoxProps.{.key = cast(u64)(50100 + index),
                     .bounds = Rectangle.{target.x - 3.0 * scale, target.y - 3.0 * scale, target.width + 6.0 * scale, target.height + 6.0 * scale},
                     .radius = 10.0 * scale, .fill = Color.{211, 255, 219, 255}})
             }
+            marker := *cards[visible[index]]
+            marker_art := ifx wide then TextUntilNul(marker.cover.landscape[:]) else TextUntilNul(marker.cover.portrait[:])
+            if marker_art == "" { marker_art = TextUntilNul(marker.preview[:]) }
             Image(session, ImageProps.{.key = cast(u64)(50300 + index), .bounds = target,
-                .asset_path = TextUntilNul(cards[visible[index]].cover.portrait[:]), .alt_text = "", .radius = 8.0 * scale,
+                .asset_path = marker_art, .alt_text = "", .radius = 8.0 * scale,
                 .fit = ImageFit.ImageFitCover, .smooth = true})
             if Button(session, ButtonProps.{.key = cast(u64)(50200 + index), .bounds = target,
                 .label = TextUntilNul(cards[visible[index]].title[:]), .invisible = true,
@@ -1057,17 +1249,15 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
         if gesture.swiped == 2 { CarouselSelect(*cover_state, count, -1, cover_time) }
         if gesture.tapped {
             handled: bool
-            if !wide {
-                for index: cast(s32)0..count - 1 {
-                    if PointInBounds(gesture.x, gesture.y, markers[index]) {
-                        cover_state.selected = index; handled = true
-                    }
+            for index: cast(s32)0..count - 1 {
+                if PointInBounds(gesture.x, gesture.y, markers[index]) {
+                    cover_state.selected = index; handled = true
                 }
             }
             if !handled && PointInBounds(gesture.x, gesture.y, focused_action) {
                 card := *cards[visible[cover_state.selected]]
                 if !card.disabled && focused_action_enabled {
-                    if !card.on_device || !card.installed { AppsDownloadOpen(card) }
+                    if !card.on_device || !card.installed { AppsConsoleDownload(card) }
                     else {
                         menu_id = card.id; menu_x = focused_action.x; menu_y = focused_action.y
                         if card.update_available && !card.update_seen && AppsSupported(card, Rules.APPS_SEEN) { AppsAct("seen", card.id, card.available) }
@@ -1080,9 +1270,8 @@ AppsConsole :: (session: Session, bounds: Rectangle, scale: float32, language: s
                     if frames[index].width > 0.0 && PointInBounds(gesture.x, gesture.y, frames[index]) {
                         card := *cards[visible[index]]
                         if !card.disabled {
-                            cover_state.selected = index
-                            if (!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL) { AppsDownloadOpen(card) }
-                            else if AppsSupported(card, Rules.APPS_OPEN) { AppsAct("open", card.id) }
+                            if index == selected_index { AppsConsoleOpen(card) }
+                            else { cover_state.selected = index }
                         }
                     }
                 }
@@ -1118,6 +1307,7 @@ AppsFrame :: () -> bool {
     }
     if cover_grid {
         if dialog == 5 { AppsDialog(session, scale, language, font) }
+        else if title_id[0] != 0 { AppsTitle(session, bounds, scale, language) }
         else { AppsConsole(session, bounds, scale, language, font) }
         return true
     }
@@ -1130,10 +1320,10 @@ AppsFrame :: () -> bool {
                 .portrait = ifx card.cover.portrait[0] != 0 then TextUntilNul(card.cover.portrait[:]) else TextUntilNul(card.preview[:]),
                 .landscape = TextUntilNul(card.cover.landscape[:]), .logo = TextUntilNul(card.cover.logo[:]),
                 .caption = TextUntilNul(card.cover.caption[:]),
-                .action = AppsLabel(language, ifx action != "" then action else "open"),
+                .action = AppsLabel(language, ifx action == "title" then "play" else (ifx action != "" then action else "open")),
                 .disabled = dialog != 0 || card.disabled ||
-                (ifx action == "buy" then !AppsSupported(card, Rules.APPS_INSTALL) else
-                    (!AppsSupported(card, Rules.APPS_OPEN) && !(!card.on_device && AppsSupported(card, Rules.APPS_INSTALL))))}
+                    (ifx action == "buy" then !AppsSupported(card, Rules.APPS_INSTALL) else
+                        (!AppsSupported(card, Rules.APPS_OPEN) && !((!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL))))}
         }
         cover_time += 1.0 / 60.0
         entered := Carousel(session, CarouselProps.{.key = cast(u64)50000, .bounds = bounds,
@@ -1146,7 +1336,7 @@ AppsFrame :: () -> bool {
             if TextUntilNul(card.cover.action[:]) == "buy" && AppsSupported(card, Rules.APPS_INSTALL) {
                 // The host owns purchase confirmation and entitlement checks.
                 AppsAct("install", card.id)
-            } else if !card.on_device && AppsSupported(card, Rules.APPS_INSTALL) {
+            } else if (!card.on_device || !card.installed) && AppsSupported(card, Rules.APPS_INSTALL) {
                 AppsDownloadOpen(card)
             } else {
                 AppsAct("open", card.id)

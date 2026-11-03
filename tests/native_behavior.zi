@@ -680,26 +680,42 @@ NativeControllerCheck :: () -> s32 {
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
     TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
-    // Artwork has no captions; its ordinary launch page names the download.
+    // Artwork has no captions. A neighbouring cover only selects; the selected
+    // cover downloads in place with progress, without a launch page or modal.
     if !NativeLoadCatalog("cover-grid-download") { return 951 }
     if !NativeDraw(false, false) { return 952 }
     if NativeLabel("4.1 kB", WidgetKindText) >= 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 953 }
-    if !NativeClick("Clock", WidgetKindButton) { return 954 }
-    if !NativeDraw(false, false) { return 955 }
-    if NativeLabel("Download size: 4.1 kB", WidgetKindText) < 0 || NativeLabel("Clock", WidgetKindModal) >= 0 { return 956 }
-    if !NativeClick("Cancel", WidgetKindButton) { return 957 }
-    if !NativeDraw(false, false) { return 958 }
-    // Cached bytes after uninstall still require named installation consent.
     covered = native_queued
-    if !NativeLoadCatalog("cover-grid-cached") || !NativeDraw(false, false) ||
-    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
-    NativeLabel("Clock", WidgetKindModal) >= 0 || NativeLabel("Clock", WidgetKindText) < 0 || NativeLabel("Install", WidgetKindButton) < 0 ||
-    native_queued != covered { return 959 }
-    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered { return 960 }
+    if !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) || !NativeDraw(false, false) ||
+    native_queued != covered { return 954 }
+    if !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) { return 955 }
+    if native_queued != covered + 1 || native_request.operation != APPS_INSTALL ||
+    TextUntilNul(native_request.id[:]) != "native.clock" { return 956 }
+    if !NativeDraw(false, false) || NativeLabel("Downloading", WidgetKindText) < 0 || NativeLabel("Download size: 4.1 kB", WidgetKindText) >= 0 ||
+    NativeLabel("Cancel", WidgetKindButton) >= 0 || NativeLabel("Clock", WidgetKindModal) >= 0 { return 957 }
+    // Activating it again never queues a duplicate transfer.
+    if !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 { return 958 }
+    // The finished transfer installs in the background, once, without another activation.
+    if !NativeLoadCatalog("cover-grid-cached") || !NativeDraw(false, false) || !NativeDraw(false, false) ||
+    native_queued != covered + 2 || native_request.operation != APPS_INSTALL ||
+    TextUntilNul(native_request.id[:]) != "native.clock" || NativeLabel("Clock", WidgetKindModal) >= 0 { return 959 }
+    // Once installed, a fresh activation opens the game.
+    if !NativeLoadCatalog("cover-grid") || !NativeDraw(false, false) || NativeLabel("Downloading", WidgetKindText) >= 0 ||
+    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 3 ||
+    native_request.operation != APPS_OPEN || TextUntilNul(native_request.id[:]) != "native.clock" { return 960 }
+    // Games with required downloads also start in place, as one install request.
+    covered = native_queued
     if !NativeLoadCatalog("cover-grid-dependencies") || !NativeDraw(false, false) ||
-    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
-    NativeLabel("Breathing (required) · 100 B", WidgetKindText) < 0 ||
-    NativeLabel("Clock · 40 B", WidgetKindText) < 0 { return 97 }
+    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 ||
+    native_request.operation != APPS_INSTALL || !NativeDraw(false, false) ||
+    NativeLabel("Breathing (required) · 100 B", WidgetKindText) >= 0 || NativeLabel("Downloading", WidgetKindText) < 0 { return 97 }
+    // A game's request for its missing editor opens the named install page
+    // instead of a background install, so the editor can open afterwards.
+    covered = native_queued
+    if !NativeLoadCatalog("cover-grid-request") || !NativeDraw(false, false) || !NativeDraw(false, false) ||
+    native_queued != covered || NativeLabel("Download size: 4.1 kB", WidgetKindText) < 0 { return 961 }
+    if !NativeClick("Back", WidgetKindButton) || !NativeDraw(false, false) || !NativeDraw(false, false) ||
+    NativeLabel("Download size: 4.1 kB", WidgetKindText) >= 0 || native_queued != covered { return 962 }
     if !AppControllerClose(*native_controller) { return 65 }
     AppFileFree(bytes); AppFileFree(native_catalog); native_catalog = ""
     return 0

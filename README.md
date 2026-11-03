@@ -28,15 +28,18 @@ size; download progress remains visible in either presentation.
 `cover_logo_top` positions them below a host toolbar. Zero keeps the standard
 carousel layout. The controller accepts the same presentation fields.
 
-`AppPresentation.cover_grid` selects a console shelf with one focused cover,
-neighboring artwork, and keyboard, swipe and wheel selection. Landscape screens
+`AppPresentation.cover_grid` selects a console carousel with one centred cover,
+neighboring artwork at both sides, small cover markers, and keyboard, swipe and
+wheel selection. Both orientations use the same carousel on a drawn scenic
+pattern, never a game's artwork behind its cover. Landscape screens
 use landscape covers; portrait screens use portrait covers. Names remain in
 accessibility and the full-art launch page, with no visible home title or captions.
-Clicking artwork launches directly; Enter/Space opens the selected game.
+Clicking a neighbouring cover selects it; activating the selected cover opens it.
+Enter/Space opens the selected game.
 `image_class` applies the host's standard Image styles, including rounded
-corners. Cover-grid downloads use a normal launch page with progress and retry,
-without modal focus or stopping background transfers when leaving the page.
-After installation the verified game opens its own title screen.
+corners. Cover-grid activation starts missing downloads immediately on the cover, with a
+progress bar while the shelf stays available. Installation finishes in the
+background; another activation opens the installed game through its title.
 The shared controller owns scrolling, menus and installation;
 hosts supply the same verified cover assets already used by the carousel.
 Collections may declare `"presentation": {"mode": "covers"}` in their signed
@@ -47,6 +50,11 @@ guest in its own opaque strip and `AppHostHome` saves each departing game or
 editor before returning to the root collection. F1 and controller View/Select
 use the same route. This also applies to nested hosts such as Inner Breeze;
 standalone games do not gain a collection navigation control.
+
+A cover with `action: "title"` uses the shared artwork title and Play control.
+Console shelves show that title before opening the game; standalone cover
+collections already display it. Play opens the game directly. Games that draw
+their own title retain `action: "play"`. Activating a missing console game downloads it in place before its title can open.
 
 A carousel cover with `action: "buy"` shows a localized Buy button and sends
 `install` directly to the host. The host owns the price confirmation, purchase
