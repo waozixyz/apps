@@ -28,9 +28,11 @@ size; download progress remains visible in either presentation.
 `cover_logo_top` positions them below a host toolbar. Zero keeps the standard
 carousel layout. The controller accepts the same presentation fields.
 
-`AppPresentation.cover_grid` selects large, clickable title-screen artwork,
-logos, and visible app titles in a responsive grid. There are no separate
-launch buttons.
+`AppPresentation.cover_grid` selects a console shelf with one focused cover,
+neighboring artwork, and keyboard, swipe and wheel selection. Landscape screens
+use landscape covers; portrait screens use portrait covers. Names remain in
+accessibility and download dialogs, with no visible home title or captions.
+Clicking artwork launches directly; Enter/Space opens the selected game.
 `image_class` applies the host's standard Image styles, including rounded
 corners. The shared controller owns scrolling, menus and download dialogs;
 hosts supply the same verified cover assets already used by the carousel.

@@ -58,5 +58,8 @@
   "saved_library": "Se muestra tu biblioteca guardada.",
   "offline_library": "No tienes conexión. Las aplicaciones descargadas siguen disponibles.",
   "refresh_library": "Actualizar biblioteca",
-  "buy": "Comprar"
+  "buy": "Comprar",
+  "profile": "Perfil",
+  "editor_addon": "Complemento opcional del editor que se abre dentro del juego. Se conservan tus borradores.",
+  "library_connection": "Conexión de la biblioteca"
 }

@@ -58,5 +58,8 @@
   "saved_library": "保存済みのライブラリを表示しています。",
   "offline_library": "オフラインです。ダウンロード済みのアプリは引き続き利用できます。",
   "refresh_library": "ライブラリを更新",
-  "buy": "購入"
+  "buy": "購入",
+  "profile": "プロフィール",
+  "editor_addon": "ゲーム内で開く任意のエディター追加機能です。下書きは保持されます。",
+  "library_connection": "ライブラリの接続"
 }

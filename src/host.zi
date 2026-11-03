@@ -146,6 +146,13 @@ AppRuntime :: struct {
     dependency_count: s32
     dependency_entries: [32]*AppEntry
     dependency_apps: [32]HostedApp
+    dependency_owners: [32]*AppRuntime
+    // Exact immutable source identity only; never dereferenced after open.
+    source_data: *u8
+    source_bytes: s64
+    // Leases keep this runtime and its original aggregate byte charge alive
+    // through workers, linked children, retirement and renderer collection.
+    library_borrows: s32
     // The catalog this controller last received and its revision. A
     // controller that already holds it is told so instead of parsing it
     // again in the VM on every frame.
@@ -201,11 +208,70 @@ AppHostAssetMatches :: (container: *AppNode, path: string, bytes: string, digest
 AppHostAllows :: (context: *void, function: string) -> bool {
     runtime := cast(*AppRuntime)context
     if runtime.retired { return false }
+    if function == APPS_NAVIGATION_SERVICE || function == APPS_NAVIGATION_CAPABILITY {
+        return AppHostAddonCaller(runtime)
+    }
     if function == "apps.records" { return runtime.node.entry.dependency_count > 0 && runtime.host.platform.call != null }
     if function == APPS_SERVICE { return runtime.controller && runtime.node.collection }
     platform := runtime.host.platform
     if AppHostDocumentFunction(function) && platform.documents == null { return false }
     return platform.allows != null && platform.allows(platform.context, runtime.node, function)
+}
+
+AppHostAddonCaller :: (runtime: *AppRuntime) -> bool {
+    if runtime == null || runtime.host == null || runtime.node == null || runtime.retired ||
+    runtime.controller || runtime.node.collection || TextUntilNul(runtime.node.entry.cover.action[:]) == "internal" ||
+    runtime.node.runtime != cast(*void)runtime { return false }
+    host := runtime.host
+    if AppTreeNode(*host.tree, host.tree.active) != runtime.node ||
+    runtime.node.account_epoch != host.tree.account_epoch ||
+    TextUntilNul(runtime.node.account[:]) != TextUntilNul(host.tree.account[:]) { return false }
+    parent := AppTreeNode(*host.tree, runtime.node.parent)
+    return parent != null && parent.collection && parent.account_epoch == host.tree.account_epoch &&
+        TextUntilNul(parent.account[:]) == TextUntilNul(host.tree.account[:]) &&
+        TextUntilNul(parent.identity.authority[:]) == TextUntilNul(runtime.node.identity.authority[:])
+}
+
+// The request is a raw bounded catalog ID, never a route, callback or locator.
+// All authorization is repeated by the tree at its deferred drain boundary.
+AppHostAddonNavigation :: (runtime: *AppRuntime, request: string) -> HostValue {
+    if runtime == null || runtime.host == null { return AppHostText("{\"status\":\"rejected\"}") }
+    host := runtime.host
+    if !AppHostAddonCaller(runtime) || !runtime.busy || !host.tree.busy ||
+    !AppHandleEqual(host.tree.running, host.tree.active) || !Rules.AppIdValid(request) {
+        return AppHostReply(host, AppRejected("add-on caller or request invalid"))
+    }
+    return AppHostReply(host, AppTreeQueueAddon(*host.tree, host.tree.running, request))
+}
+
+AppHostAddonMissing :: (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> bool {
+    host := cast(*AppHost)context
+    plan: AppInstallPlan
+    missing := !AppHostInstallPlan(host, parent, entry, *plan) || plan.count > 0
+    identity := AppIdentity.{.authority = parent.identity.authority, .id = entry.id}
+    state: AppState
+    if host.platform.state != null {
+        missing = missing || !host.platform.state(host.platform.context, TextUntilNul(host.tree.account[:]), *identity, *state) || !state.installed
+    }
+    packed: bool
+    missing = missing || !AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, entry, *packed).found
+    return missing
+}
+
+AppHostAddonPresent :: (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> bool {
+    host := cast(*AppHost)context
+    current: bool
+    for index: cast(s64)0..host.tree.pending.count - 1 {
+        pending := *host.tree.pending[index]
+        if pending.reply.request == sequence && pending.addon && AppTreeAddonCurrent(*host.tree, pending) &&
+        AppTreeNode(*host.tree, pending.owner) == parent { current = true; break }
+    }
+    if !current { return false }
+    // This only presents consent. The collection's ordinary install request
+    // remains the sole path to fetch, including failed/retried downloads.
+    host.platform.presentation.download_id = entry.id
+    host.platform.presentation.download_request = sequence
+    return true
 }
 
 AppHostDocumentFunction :: (name: string) -> bool {
@@ -285,7 +351,7 @@ AppHostCatalog :: (runtime: *AppRuntime, revision: s64 = 0) -> HostValue {
     AppHostWriteQuoted(*bytes, TextUntilNul(presentation.download_id[:]))
     BuilderPrint(*bytes, ",\"cover_logo_width\":%,\"cover_logo_top\":%}",
         presentation.cover_logo_width, presentation.cover_logo_top)
-    BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null)
+    BuilderPrint(*bytes, ",\"can_back\":%,\"children\":[", AppTreeNode(*host.tree, node.parent) != null || AppTreeReturn(*host.tree, node) != null)
     item := node.catalog.children
     while item != null {
         if item != node.catalog.children { BuilderPrint(*bytes, ",") }
@@ -381,6 +447,12 @@ AppHostCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValu
     if runtime.retired { return 0 }
     name := TextFromCString(function)
     if AppHostDocumentFunction(name) { return AppHostDocumentCall(runtime, module, function, count, result) }
+    if name == "AppServiceHost" && count == 2 &&
+    HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
+    HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == APPS_NAVIGATION_SERVICE {
+        result.* = AppHostAddonNavigation(runtime, AppArgumentText(arguments[1]))
+        return 1
+    }
     if name == "AppServiceHost" && count == 2 &&
     HostScalarValid(arguments[0], "string", cast(s32)HostString) &&
     HostScalarValid(arguments[1], "string", cast(s32)HostString) && AppArgumentText(arguments[0]) == "apps.records" {
@@ -585,6 +657,9 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     runtime.node = node
     runtime.protocol = protocol
     runtime.controller = controller
+    source := cast(*TextDescriptor)(*bytes)
+    runtime.source_data = source.data
+    runtime.source_bytes = bytes.count
     runtime.app.context = cast(*void)runtime
     runtime.app.allows = AppHostAllows
     runtime.app.services = AppHostCall
@@ -611,9 +686,7 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     if !controller && preparation != null {
         if !AppHostTakePreparedLibraries(runtime, preparation) {
             HostedAppClose(opened)
-            for index: cast(s32)0..runtime.dependency_count - 1 {
-                HostedAppClose(*runtime.dependency_apps[index])
-            }
+            AppHostCloseLibraries(runtime)
             free(runtime)
             return null
         }
@@ -644,9 +717,7 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
-        for index: cast(s32)0..runtime.dependency_count - 1 {
-            HostedAppClose(*runtime.dependency_apps[index])
-        }
+        AppHostCloseLibraries(runtime)
         free(runtime)
         return null
     }
@@ -850,20 +921,28 @@ AppHostPreparationCurrent :: (host: *AppHost) -> bool {
     if host.preparation_sequence == 0 {
         return true
     }
-    if !AppHandleEqual(host.preparation_parent, host.tree.active) {
-        return false
-    }
     for index: cast(s64)0..host.tree.pending.count - 1 {
         pending := host.tree.pending[index]
         if pending.reply.request == host.preparation_sequence {
             return !pending.complete && pending.account_epoch == host.tree.account_epoch &&
-            AppHandleEqual(pending.caller, host.preparation_parent)
+            AppHandleEqual(pending.caller, host.tree.active) &&
+            (ifx pending.addon then AppHandleEqual(pending.owner, host.preparation_parent) &&
+                AppTreeAddonCurrent(*host.tree, *pending) else AppHandleEqual(pending.caller, host.preparation_parent))
         }
     }
     return false
 }
 
 AppHostClearPreparation :: (host: *AppHost) -> bool {
+    if host.preparation != null && !AppPreparationReady(host.preparation) { return false }
+    // Release opaque host leases only once the worker stopped borrowing.
+    // ClosePreparation skips leased handles; their runtime remains the owner.
+    if host.preparation != null {
+        for index: cast(s32)0..host.preparation.libraries.count - 1 {
+            owner := cast(*AppRuntime)host.preparation.libraries.items[index].owner
+            if owner != null { owner.library_borrows -= 1 }
+        }
+    }
     if !AppPreparationClose(host.preparation) {
         return false
     }
@@ -881,6 +960,34 @@ AppHostCollectPreparation :: (host: *AppHost) {
         host.preparation_canceled = true
         unused AppHostClearPreparation(host)
     }
+}
+
+// A signed sibling entry, account and exact source must still match the
+// running program. Do not match by digest alone or reuse retired/foreign
+// runtimes. Leaf programs need no reconciliation of linked dependency graphs.
+AppHostLibraryOwner :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, bytes: string) -> *AppRuntime {
+    if entry.dependency_count != 0 || parent.account_epoch != host.tree.account_epoch ||
+    TextUntilNul(parent.account[:]) != TextUntilNul(host.tree.account[:]) { return null }
+    source := cast(*TextDescriptor)(*bytes)
+    for index: cast(s64)0..host.tree.nodes.count - 1 {
+        node := host.tree.nodes[index].node
+        if node == null || node.runtime == null || node.collection ||
+        AppTreeNode(*host.tree, node.parent) != parent ||
+        node.account_epoch != host.tree.account_epoch ||
+        TextUntilNul(node.account[:]) != TextUntilNul(host.tree.account[:]) ||
+        TextUntilNul(node.identity.authority[:]) != TextUntilNul(parent.identity.authority[:]) ||
+        TextUntilNul(node.identity.id[:]) != TextUntilNul(entry.id[:]) ||
+        TextUntilNul(node.entry.sha256[:]) != TextUntilNul(entry.sha256[:]) ||
+        TextUntilNul(node.entry.expected_id[:]) != TextUntilNul(entry.expected_id[:]) ||
+        TextUntilNul(node.entry.package_id[:]) != TextUntilNul(entry.package_id[:]) ||
+        node.entry.protocol != entry.protocol || node.entry.dependency_count != 0 ||
+        node.entry.shared_code != entry.shared_code { continue }
+        runtime := cast(*AppRuntime)node.runtime
+        if runtime.host == host && runtime.node == node && !runtime.retired && !runtime.controller &&
+        runtime.dependency_count == 0 && runtime.source_data == source.data && runtime.source_bytes == bytes.count &&
+        AppContextRuntime(*runtime.app).bundle != null { return runtime }
+    }
+    return null
 }
 
 AppHostPrepareLibraries :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
@@ -903,7 +1010,27 @@ AppHostPrepareLibraries :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
         if !resource.found { return false }
         libraries.items[libraries.count] = AppPreparationLibrary.{
             .bytes = resource.data, .entry = dependency}
+        // Reuse only a dependency-free sibling's exact verified program.
+        // More complex linked graphs keep their existing separate ownership.
+        library_owner := AppHostLibraryOwner(host, parent, dependency, resource.data)
+        if library_owner != null {
+            libraries.items[libraries.count].owner = cast(*void)library_owner
+            libraries.items[libraries.count].bundle = AppContextRuntime(*library_owner.app).bundle
+        }
         libraries.count += 1
+    }
+    return true
+}
+
+AppHostPreparedLibrariesCurrent :: (host: *AppHost, parent: *AppNode, preparation: *AppPreparation) -> bool {
+    for index: cast(s32)0..preparation.libraries.count - 1 {
+        item := preparation.libraries.items[index]
+        if item.owner == null { continue }
+        packed: bool
+        resource := AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, item.entry, *packed)
+        if !resource.found || AppHostLibraryOwner(host, parent, item.entry, resource.data) != cast(*AppRuntime)item.owner {
+            return false
+        }
     }
     return true
 }
@@ -950,7 +1077,7 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
         if !AppPreparationReady(host.preparation) {
             return 0
         }
-        if !host.preparation.valid {
+        if !host.preparation.valid || !AppHostPreparedLibrariesCurrent(host, parent, host.preparation) {
             unused AppHostClearPreparation(host)
             return -1
         }
@@ -964,9 +1091,17 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
     }
     libraries := AppPreparationLibraries.{.root = AppPreparationImportsFor(entry)}
     if !AppHostPrepareLibraries(host, parent, entry, *libraries, 0) { return -1 }
+    for index: cast(s32)0..libraries.count - 1 {
+        library_owner := cast(*AppRuntime)libraries.items[index].owner
+        if library_owner != null { library_owner.library_borrows += 1 }
+    }
     preparation := AppPrepare(resource.data, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]),
         host.tree.byte_limit - host.tree.bytes - host.retired_bytes, *libraries)
     if preparation == null {
+        for index: cast(s32)0..libraries.count - 1 {
+            library_owner := cast(*AppRuntime)libraries.items[index].owner
+            if library_owner != null { library_owner.library_borrows -= 1 }
+        }
         return -1
     }
     host.preparation = preparation
@@ -1254,6 +1389,7 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
             unused AppHostClearPreparation(host)
         }
     }
+    if preparation != null && !AppHostPreparedLibrariesCurrent(host, parent, preparation) { return false }
     if !resource.found || (preparation == null && (ifx packed
         then !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:]))
         else !AppHostBytesMatch(resource.data, TextUntilNul(entry.sha256[:])))) { return false }
@@ -1380,7 +1516,7 @@ AppHostBack :: (host: *AppHost) -> s32 {
     (runtime.protocol != APPS_NODE_PROTOCOL && host.last_reply == "consumed") { return 1 }
     node := AppTreeNode(*host.tree, active)
     if node == null { return -1 }
-    if AppTreeNode(*host.tree, node.parent) == null { return 0 }
+    if AppTreeNode(*host.tree, node.parent) == null && AppTreeReturn(*host.tree, node) == null { return 0 }
     queued := AppTreeQueue(*host.tree, active, AppsRequest.{.operation = APPS_BACK})
     if queued.status != APPS_QUEUED || !AppTreeDrain(*host.tree) { return -1 }
     return ifx !AppHandleEqual(host.tree.active, active) then 1 else -1
@@ -1431,9 +1567,14 @@ AppHostCollect :: (host: *AppHost) {
     runtime := host.retired
     host.retired = null
     retained: *AppRuntime
-    while runtime != null {
+    // Closing a child can release a lease on an earlier retained sibling.
+    // Repeat only after freeing something, so Stop drains such chains too.
+    collecting := true
+    while collecting {
+      progress := false
+      while runtime != null {
         next := runtime.next_retired
-        if runtime.busy || (runtime.frontend != null && runtime.frontend.busy) ||
+        if runtime.busy || runtime.library_borrows > 0 || (runtime.frontend != null && runtime.frontend.busy) ||
         (host.preparation != null && host.preparation_owner == runtime) {
             runtime.next_retired = retained
             retained = runtime
@@ -1447,11 +1588,18 @@ AppHostCollect :: (host: *AppHost) {
             free(runtime.frontend)
         }
         HostedAppClose(AppContextRuntime(*runtime.app))
-        for index: cast(s32)0..runtime.dependency_count - 1 { HostedAppClose(*runtime.dependency_apps[index]) }
+        AppHostCloseLibraries(runtime)
         if runtime.art_open { HostedAppClose(*runtime.art) }
         AppFileFree(runtime.catalog)
         free(runtime)
+        progress = true
         runtime = next
+      }
+      collecting = progress && retained != null
+      if collecting {
+          runtime = retained
+          retained = null
+      }
     }
     host.retired = retained
 }
@@ -1531,7 +1679,8 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     manifest := HostedAppAsset(AppContextRuntime(*runtime.app), APPS_CATALOG_ASSET)
     root.collection = manifest.found
     provider := AppProvider.{.context = cast(*void)host, .open = AppHostOpen,
-        .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect}
+        .save = AppHostSave, .close = AppHostClose, .effect = AppHostEffect,
+        .addon_missing = AppHostAddonMissing, .addon_present = AppHostAddonPresent}
     if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
     if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
     if platform.fetch != null { provider.fetch = AppHostFetch }
@@ -1693,9 +1842,12 @@ AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparat
         if item.bundle == null || item.entry == null || opened >= 32 { return false }
         runtime.dependency_apps[opened].bundle = item.bundle
         runtime.dependency_entries[opened] = item.entry
+        runtime.dependency_owners[opened] = cast(*AppRuntime)item.owner
+        borrowed := item.owner != null
+        item.owner = null
         item.bundle = null
         runtime.dependency_count += 1
-        runtime.node.bytes += item.bytes.count + 65536
+        if !borrowed { runtime.node.bytes += item.bytes.count + 65536 }
         if item.entry.protocol == APPS_NODE_PROTOCOL {
             node := NodeContext.{.app = *runtime.dependency_apps[opened], .host_api = runtime.host.platform.host_api}
             if !NodeAssetsValid(*node, TextUntilNul(item.entry.id[:]),
@@ -1703,6 +1855,20 @@ AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparat
         }
     }
     return true
+}
+
+// Close the child bundle first: it retains linked library handles itself.
+// A leased HostedApp is just an asset view, never another instance or owner.
+AppHostCloseLibraries :: (runtime: *AppRuntime) {
+    for index: cast(s32)0..runtime.dependency_count - 1 {
+        owner := runtime.dependency_owners[index]
+        if owner != null {
+            owner.library_borrows -= 1
+            runtime.dependency_owners[index] = null
+            runtime.dependency_apps[index] = HostedApp.{}
+        } else { HostedAppClose(*runtime.dependency_apps[index]) }
+    }
+    runtime.dependency_count = 0
 }
 
 AppHostDependenciesOpen :: (runtime: *AppRuntime, parent: *AppNode, entry: *AppEntry, depth: s32) -> bool {

@@ -7,6 +7,7 @@ git = "https://github.com/ziranlang/ziran.git"
 ref = "972dc244c4ae67e87b6089869dff5abc9d36c1f8"
 
 [exports]
+game_hud = "src/game_hud.zi"
 appearance = "src/appearance.zi"
 protocol = "src/protocol.zi"
 catalog = "src/catalog.zi"

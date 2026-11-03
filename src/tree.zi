@@ -29,6 +29,15 @@ AppNode :: struct {
     generation: s64
     bytes: s64
     collection: bool
+    account: [256]u8
+    account_epoch: s64
+    // Navigation context only. An add-on remains a sibling for identity,
+    // verification, dependency resolution and persistent locators.
+    return_to: AppHandle
+    return_epoch: s64
+    return_account: [256]u8
+    return_target: [128]u8
+    return_digest: [65]u8
 }
 
 // Open must read the exact parent-contained asset, verify its SHA-256 and
@@ -71,6 +80,10 @@ AppProviderOpenEffect :: #type (context: *void, account: string, locator: *AppLo
 AppProviderFetch :: #type (context: *void, account: string, parent: *AppNode,
     entry: *AppEntry, operation: s32, reply: *AppsReply) -> bool;
 
+// Shared host only: detect missing content, then present ordinary collection
+// consent after the current game saved. Neither callback downloads or runs a guest.
+AppProviderAddonMissing :: #type (context: *void, parent: *AppNode, entry: *AppEntry, sequence: s64) -> bool;
+
 AppProvider :: struct {
     context: *void
     open: AppProviderOpen
@@ -81,6 +94,8 @@ AppProvider :: struct {
     version_effect: AppProviderVersionEffect
     open_effect: AppProviderOpenEffect
     fetch: AppProviderFetch
+    addon_missing: AppProviderAddonMissing
+    addon_present: AppProviderAddonMissing
 }
 
 AppPending :: struct {
@@ -89,6 +104,11 @@ AppPending :: struct {
     reply: AppsReply
     account_epoch: s64
     complete: bool
+    addon: bool
+    consent: bool
+    owner: AppHandle
+    digest: [65]u8
+    account: [256]u8
 }
 
 AppSlot :: struct { node: *AppNode }
@@ -130,6 +150,8 @@ AppTreeStart :: (tree: *AppTree, root: *AppNode, account: string,
     root.bytes < 0 || root.bytes > byte_limit || pending_limit < 1 { return false }
     root.parent = AppHandle.{-1, 0}
     root.generation = 1
+    root.account = tree.account
+    root.account_epoch = 1
     if !VecPush(tree.nodes, AppSlot.{root}) { return false }
     tree.provider = provider
     tree.active = AppHandle.{0, 1}
@@ -199,10 +221,57 @@ AppTreeQueue :: (tree: *AppTree, caller: AppHandle, request: AppsRequest) -> App
         return AppRejected("version target unavailable")
     }
     if request.operation == APPS_BACK {
-        if AppTreeNode(tree, node.parent) == null { return AppRejected("already at root") }
+        if AppTreeNode(tree, node.parent) == null && AppTreeReturn(tree, node) == null { return AppRejected("already at root") }
     } else if !node.collection || AppCatalogFind(*node.catalog, TextUntilNul(request.id[:])) < 0 {
         return AppRejected("undeclared child")
     }
+    pending := AppPending.{.caller = caller, .request = request}
+    if request.operation != APPS_BACK && request.id[0] != 0 && node.return_epoch > 0 &&
+    TextUntilNul(node.return_target[:]) == TextUntilNul(request.id[:]) {
+        pending.consent = true
+        pending.owner = node.return_to
+        pending.digest = node.return_digest
+    }
+    return AppTreeEnqueue(tree, pending)
+}
+
+// A noncollection caller gets only its own explicitly declared internal
+// add-on, within its original verified collection and account.
+AppTreeAddon :: (tree: *AppTree, caller: AppHandle, id: string, active: bool = true) -> *AppEntry {
+    node := AppTreeNode(tree, caller)
+    if node == null || node.collection || (active && !AppHandleEqual(caller, tree.active)) ||
+    node.account_epoch != tree.account_epoch || TextUntilNul(node.account[:]) != TextUntilNul(tree.account[:]) ||
+    TextUntilNul(node.entry.cover.action[:]) == "internal" || !AppIdValid(id) { return null }
+    parent := AppTreeNode(tree, node.parent)
+    if parent == null || !parent.collection || parent.account_epoch != tree.account_epoch ||
+    TextUntilNul(parent.account[:]) != TextUntilNul(tree.account[:]) ||
+    TextUntilNul(parent.identity.authority[:]) != TextUntilNul(node.identity.authority[:]) { return null }
+    source := AppCatalogAt(*parent.catalog, AppCatalogFind(*parent.catalog, TextUntilNul(node.identity.id[:])))
+    target := AppCatalogAt(*parent.catalog, AppCatalogFind(*parent.catalog, id))
+    if source == null || target == null || source == target ||
+    TextUntilNul(source.sha256[:]) != TextUntilNul(node.entry.sha256[:]) ||
+    TextUntilNul(source.expected_id[:]) != TextUntilNul(node.entry.expected_id[:]) || source.protocol != node.entry.protocol ||
+    target.protocol == APPS_COLLECTION_PROTOCOL || TextUntilNul(target.cover.action[:]) != "internal" { return null }
+    for index: cast(s32)0..target.dependency_count - 1 {
+        if TextUntilNul(target.dependencies[index][:]) == TextUntilNul(node.identity.id[:]) { return target }
+    }
+    return null
+}
+
+AppTreeQueueAddon :: (tree: *AppTree, caller: AppHandle, id: string) -> AppsReply {
+    if tree.draining { return AppRejected("effects are draining") }
+    entry := AppTreeAddon(tree, caller, id)
+    if entry == null { return AppRejected("add-on not authorized") }
+    for index: cast(s64)0..tree.pending.count - 1 {
+        pending := tree.pending[index]
+        if !pending.complete && pending.addon && AppHandleEqual(pending.caller, caller) { return AppRejected("add-on already queued") }
+    }
+    node := AppTreeNode(tree, caller)
+    return AppTreeEnqueue(tree, AppPending.{.caller = caller, .owner = node.parent, .addon = true,
+        .digest = entry.sha256, .request = AppsRequest.{.operation = APPS_OPEN, .id = entry.id}})
+}
+
+AppTreeEnqueue :: (tree: *AppTree, pending: AppPending) -> AppsReply {
     if tree.pending.count >= tree.pending_limit {
         reclaimed := false
         for index: cast(s64)0..tree.pending.count - 1 {
@@ -216,10 +285,51 @@ AppTreeQueue :: (tree: *AppTree, caller: AppHandle, request: AppsRequest) -> App
     }
     if tree.sequence >= 2147483647 { return AppRejected("request limit") }
     tree.sequence += 1
-    pending := AppPending.{.caller = caller, .request = request, .account_epoch = tree.account_epoch,
-        .reply = AppsReply.{.status = APPS_QUEUED, .request = tree.sequence}}
+    pending.account_epoch = tree.account_epoch
+    pending.account = tree.account
+    pending.reply = AppsReply.{.status = APPS_QUEUED, .request = tree.sequence}
     if !VecPush(tree.pending, pending) { return AppRejected("request allocation failed") }
     return pending.reply
+}
+
+AppTreeReturn :: (tree: *AppTree, node: *AppNode) -> *AppNode {
+    if node == null || node.return_epoch != tree.account_epoch ||
+    TextUntilNul(node.return_account[:]) != TextUntilNul(tree.account[:]) { return null }
+    game := AppTreeNode(tree, node.return_to)
+    if game == null || game.collection ||
+    TextUntilNul(game.identity.authority[:]) != TextUntilNul(node.identity.authority[:]) { return null }
+    if node.collection {
+        if AppTreeNode(tree, game.parent) != node { return null }
+    } else if !AppHandleEqual(game.parent, node.parent) { return null }
+    return game
+}
+
+AppTreeClearReturn :: (node: *AppNode) {
+    node.return_to = AppHandle.{}
+    node.return_epoch = 0
+    node.return_account[0] = 0
+    node.return_target[0] = 0
+    node.return_digest[0] = 0
+}
+
+AppTreeAddonCurrent :: (tree: *AppTree, pending: *AppPending) -> bool {
+    node := AppTreeNode(tree, pending.caller)
+    if node == null || pending.account_epoch != tree.account_epoch ||
+    TextUntilNul(pending.account[:]) != TextUntilNul(tree.account[:]) ||
+    !AppHandleEqual(node.parent, pending.owner) { return false }
+    entry := AppTreeAddon(tree, pending.caller, TextUntilNul(pending.request.id[:]))
+    return entry != null && TextUntilNul(entry.sha256[:]) == TextUntilNul(pending.digest[:])
+}
+
+AppTreeConsentCurrent :: (tree: *AppTree, pending: *AppPending) -> bool {
+    node := AppTreeNode(tree, pending.caller)
+    if node == null || pending.account_epoch != tree.account_epoch ||
+    TextUntilNul(pending.account[:]) != TextUntilNul(tree.account[:]) ||
+    AppTreeReturn(tree, node) == null || !AppHandleEqual(node.return_to, pending.owner) ||
+    TextUntilNul(node.return_target[:]) != TextUntilNul(pending.request.id[:]) { return false }
+    entry := AppTreeAddon(tree, pending.owner, TextUntilNul(pending.request.id[:]), false)
+    return entry != null && TextUntilNul(entry.sha256[:]) == TextUntilNul(pending.digest[:]) &&
+        TextUntilNul(node.return_digest[:]) == TextUntilNul(pending.digest[:])
 }
 
 AppLocatorClear :: (locator: *AppLocator) {
@@ -272,6 +382,12 @@ AppTreeDiscard :: (tree: *AppTree, node: *AppNode) {
 AppTreeDrop :: (tree: *AppTree, handle: AppHandle) {
     node := AppTreeNode(tree, handle)
     if node == null { return }
+    // Leaving a consent/add-on route also releases its dormant game. Back
+    // clears this context first because it is returning to that same game.
+    returning := AppTreeReturn(tree, node)
+    abandoned := node.return_to
+    AppTreeClearReturn(node)
+    if returning != null && !AppHandleEqual(tree.active, abandoned) { AppTreeDrop(tree, abandoned) }
     tree.bytes -= node.bytes
     tree.nodes[handle.slot].node = null
     AppTreeDiscard(tree, node)
@@ -303,6 +419,8 @@ AppTreeOpenChild :: (tree: *AppTree, parent: AppHandle, entry: *AppEntry) -> App
         return invalid
     }
     candidate.parent = parent
+    candidate.account = tree.account
+    candidate.account_epoch = tree.account_epoch
     tree.generation += 1
     candidate.generation = tree.generation
     slot := tree.nodes.count
@@ -328,34 +446,73 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
         sequence := pending.reply.request
         caller := pending.caller
         node := AppTreeNode(tree, caller)
-        if node == null || pending.account_epoch != tree.account_epoch || !AppHandleEqual(caller, tree.active) {
+        if node == null || pending.account_epoch != tree.account_epoch || !AppHandleEqual(caller, tree.active) ||
+        (pending.consent && !AppTreeConsentCurrent(tree, pending)) {
             pending.complete = true
             pending.reply = AppRejected("stale caller")
             pending.reply.request = sequence
             continue
         }
+        owner := caller
+        container := node
+        if pending.addon {
+            if !AppTreeAddonCurrent(tree, pending) {
+                pending.complete = true
+                pending.reply = AppRejected("stale add-on")
+                pending.reply.request = sequence
+                continue
+            }
+            owner = pending.owner
+            container = AppTreeNode(tree, owner)
+            entry := AppTreeAddon(tree, caller, TextUntilNul(pending.request.id[:]))
+            if tree.provider.addon_missing != null && tree.provider.addon_missing(tree.provider.context, container, entry, sequence) {
+                pending.complete = true
+                if !AppTreeAddonCurrent(tree, pending) || !tree.provider.save(tree.provider.context, node) ||
+                !AppTreeAddonCurrent(tree, pending) || tree.provider.addon_present == null ||
+                !tree.provider.addon_present(tree.provider.context, container, entry, sequence) ||
+                !AppTreeAddonCurrent(tree, pending) { pending.reply = AppRejected("add-on save failed or stale") }
+                else {
+                    container.return_to = caller
+                    container.return_epoch = tree.account_epoch
+                    container.return_account = tree.account
+                    container.return_target = entry.id
+                    container.return_digest = entry.sha256
+                    tree.active = owner
+                    pending.reply.status = APPS_APPLIED
+                }
+                pending.reply.request = sequence
+                continue
+            }
+            if !AppTreeAddonCurrent(tree, pending) {
+                pending.complete = true
+                pending.reply = AppRejected("stale add-on")
+                pending.reply.request = sequence
+                continue
+            }
+        }
         // A child that is not on the device has nothing to prepare or open.
         if pending.request.operation != APPS_OPEN && pending.request.operation != APPS_BACK &&
         tree.provider.fetch != null {
-            at := AppCatalogFind(*node.catalog, TextUntilNul(pending.request.id[:]))
+            at := AppCatalogFind(*container.catalog, TextUntilNul(pending.request.id[:]))
             if at >= 0 && tree.provider.fetch(tree.provider.context, TextUntilNul(tree.account[:]), node,
                 AppCatalogAt(*node.catalog, at), pending.request.operation, *pending.reply) {
                 pending.complete = true
+                if pending.consent && !AppTreeConsentCurrent(tree, pending) { pending.reply = AppRejected("stale add-on consent") }
                 if pending.reply.status != APPS_QUEUED && pending.reply.status != APPS_APPLIED { pending.reply = AppRejected("effect rejected") }
                 pending.reply.request = sequence
                 continue
             }
         }
         if tree.provider.prepare != null && pending.request.operation != APPS_BACK {
-            at := AppCatalogFind(*node.catalog, TextUntilNul(pending.request.id[:]))
+            at := AppCatalogFind(*container.catalog, TextUntilNul(pending.request.id[:]))
             if at < 0 {
                 pending.complete = true
                 pending.reply = AppRejected("child unavailable")
                 pending.reply.request = sequence
                 continue
             }
-            entry := AppCatalogAt(*node.catalog, at).*
-            prepared := tree.provider.prepare(tree.provider.context, node, *entry, sequence)
+            entry := AppCatalogAt(*container.catalog, at).*
+            prepared := tree.provider.prepare(tree.provider.context, container, *entry, sequence)
             if prepared == 0 {
                 continue
             }
@@ -367,14 +524,22 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
             }
         }
         pending.complete = true
-        if !tree.provider.save(tree.provider.context, node) {
+        if !tree.provider.save(tree.provider.context, node) ||
+        (pending.addon && !AppTreeAddonCurrent(tree, pending)) ||
+        (pending.consent && !AppTreeConsentCurrent(tree, pending)) {
             pending.reply = AppRejected("save failed")
             pending.reply.request = sequence
             continue
         }
         request := pending.request
         if request.operation == APPS_BACK {
-            if AppTreeNode(tree, node.parent) == null { pending.reply = AppRejected("parent unavailable") }
+            returning := AppTreeReturn(tree, node)
+            if returning != null {
+                tree.active = node.return_to
+                AppTreeClearReturn(node)
+                pending.reply.status = APPS_APPLIED
+                if !node.collection { AppTreeDrop(tree, caller) }
+            } else if AppTreeNode(tree, node.parent) == null { pending.reply = AppRejected("parent unavailable") }
             else {
                 tree.active = node.parent
                 pending.reply.status = APPS_APPLIED
@@ -383,24 +548,35 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
             pending.reply.request = sequence
             continue
         }
-        entry_index := AppCatalogFind(*node.catalog, TextUntilNul(request.id[:]))
+        entry_index := AppCatalogFind(*container.catalog, TextUntilNul(request.id[:]))
         if entry_index < 0 {
             pending.reply = AppRejected("child unavailable")
             pending.reply.request = sequence
             continue
         }
         // Copy the manifest entry before growing the node vector.
-        entry := AppCatalogAt(*node.catalog, entry_index).*
-        child := AppTreeOpenChild(tree, caller, *entry)
+        entry := AppCatalogAt(*container.catalog, entry_index).*
+        child := AppTreeOpenChild(tree, owner, *entry)
         candidate := AppTreeNode(tree, child)
         if candidate == null {
             pending.reply = AppRejected("child verification failed")
             pending.reply.request = sequence
             continue
         }
+        if (pending.addon && !AppTreeAddonCurrent(tree, pending)) ||
+        (pending.consent && !AppTreeConsentCurrent(tree, pending)) {
+            AppTreeDrop(tree, child)
+            pending.reply = AppRejected("stale add-on")
+            pending.reply.request = sequence
+            continue
+        }
         if request.operation == APPS_OPEN {
+            returning := AppTreeReturn(tree, container)
+            consent := pending.consent
             decision: s32 = APP_OPEN_DECLARED
-            if tree.provider.open_effect != null {
+            // Add-ons always use this exact verified sibling. Platform
+            // callbacks cannot replace them with an alternate runtime/route.
+            if !pending.addon && !consent && tree.provider.open_effect != null {
                 locator: AppLocator
                 decision = APP_OPEN_REJECTED
                 if AppTreeLocate(tree, child, *locator) {
@@ -410,6 +586,16 @@ AppTreeDrain :: (tree: *AppTree) -> bool {
                 AppLocatorClear(*locator)
             }
             if decision == APP_OPEN_DECLARED {
+                if pending.addon || consent {
+                    candidate.return_to = ifx pending.addon then caller else container.return_to
+                    candidate.return_epoch = tree.account_epoch
+                    candidate.return_account = tree.account
+                }
+                if returning != null {
+                    abandoned := container.return_to
+                    AppTreeClearReturn(container)
+                    if !consent { AppTreeDrop(tree, abandoned) }
+                }
                 tree.active = child
                 pending.reply.status = APPS_APPLIED
             } else {

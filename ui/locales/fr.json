@@ -58,5 +58,8 @@
   "saved_library": "Votre bibliothèque enregistrée est affichée.",
   "offline_library": "Vous êtes hors ligne. Les applications téléchargées restent disponibles.",
   "refresh_library": "Actualiser la bibliothèque",
-  "buy": "Acheter"
+  "buy": "Acheter",
+  "profile": "Profil",
+  "editor_addon": "Extension facultative de l’éditeur, accessible dans le jeu. Vos brouillons sont conservés.",
+  "library_connection": "Connexion de la bibliothèque"
 }

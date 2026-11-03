@@ -58,5 +58,8 @@
   "saved_library": "Deine gespeicherte Bibliothek wird angezeigt.",
   "offline_library": "Du bist offline. Heruntergeladene Apps bleiben verfügbar.",
   "refresh_library": "Bibliothek aktualisieren",
-  "buy": "Kaufen"
+  "buy": "Kaufen",
+  "profile": "Profil",
+  "editor_addon": "Optionales Editor-Add-on, das im Spiel geöffnet wird. Deine Entwürfe bleiben erhalten.",
+  "library_connection": "Bibliotheksverbindung"
 }

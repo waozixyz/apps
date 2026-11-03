@@ -58,5 +58,8 @@
   "saved_library": "Menampilkan pustaka tersimpan Anda.",
   "offline_library": "Anda sedang luring. Aplikasi yang diunduh tetap tersedia.",
   "refresh_library": "Perbarui pustaka",
-  "buy": "Beli"
+  "buy": "Beli",
+  "profile": "Profil",
+  "editor_addon": "Add-on editor opsional, dibuka dari dalam game. Draf Anda tetap tersimpan.",
+  "library_connection": "Koneksi pustaka"
 }

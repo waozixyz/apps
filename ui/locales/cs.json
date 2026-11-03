@@ -58,5 +58,8 @@
   "saved_library": "Zobrazuje se uložená knihovna.",
   "offline_library": "Jste offline. Stažené aplikace jsou stále dostupné.",
   "refresh_library": "Obnovit knihovnu",
-  "buy": "Koupit"
+  "buy": "Koupit",
+  "profile": "Profil",
+  "editor_addon": "Volitelný doplněk editoru se otevírá ve hře. Vaše návrhy zůstanou zachovány.",
+  "library_connection": "Připojení knihovny"
 }

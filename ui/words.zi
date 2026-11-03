@@ -61,6 +61,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Jste offline. Stažené aplikace jsou stále dostupné." }
         if key == "refresh_library" { return "Obnovit knihovnu" }
         if key == "buy" { return "Koupit" }
+        if key == "profile" { return "Profil" }
+        if key == "editor_addon" { return "Volitelný doplněk editoru se otevírá ve hře. Vaše návrhy zůstanou zachovány." }
+        if key == "library_connection" { return "Připojení knihovny" }
     }
     if locale == "de" {
         if key == "back" { return "Zurück" }
@@ -123,6 +126,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Du bist offline. Heruntergeladene Apps bleiben verfügbar." }
         if key == "refresh_library" { return "Bibliothek aktualisieren" }
         if key == "buy" { return "Kaufen" }
+        if key == "profile" { return "Profil" }
+        if key == "editor_addon" { return "Optionales Editor-Add-on, das im Spiel geöffnet wird. Deine Entwürfe bleiben erhalten." }
+        if key == "library_connection" { return "Bibliotheksverbindung" }
     }
     if locale == "es" {
         if key == "back" { return "Volver" }
@@ -185,6 +191,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "No tienes conexión. Las aplicaciones descargadas siguen disponibles." }
         if key == "refresh_library" { return "Actualizar biblioteca" }
         if key == "buy" { return "Comprar" }
+        if key == "profile" { return "Perfil" }
+        if key == "editor_addon" { return "Complemento opcional del editor que se abre dentro del juego. Se conservan tus borradores." }
+        if key == "library_connection" { return "Conexión de la biblioteca" }
     }
     if locale == "fr" {
         if key == "back" { return "Retour" }
@@ -247,6 +256,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Vous êtes hors ligne. Les applications téléchargées restent disponibles." }
         if key == "refresh_library" { return "Actualiser la bibliothèque" }
         if key == "buy" { return "Acheter" }
+        if key == "profile" { return "Profil" }
+        if key == "editor_addon" { return "Extension facultative de l’éditeur, accessible dans le jeu. Vos brouillons sont conservés." }
+        if key == "library_connection" { return "Connexion de la bibliothèque" }
     }
     if locale == "id" {
         if key == "back" { return "Kembali" }
@@ -309,6 +321,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Anda sedang luring. Aplikasi yang diunduh tetap tersedia." }
         if key == "refresh_library" { return "Perbarui pustaka" }
         if key == "buy" { return "Beli" }
+        if key == "profile" { return "Profil" }
+        if key == "editor_addon" { return "Add-on editor opsional, dibuka dari dalam game. Draf Anda tetap tersimpan." }
+        if key == "library_connection" { return "Koneksi pustaka" }
     }
     if locale == "it" {
         if key == "back" { return "Indietro" }
@@ -371,6 +386,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Sei offline. Le app scaricate restano disponibili." }
         if key == "refresh_library" { return "Aggiorna raccolta" }
         if key == "buy" { return "Acquista" }
+        if key == "profile" { return "Profilo" }
+        if key == "editor_addon" { return "Componente aggiuntivo opzionale dell’editor, accessibile nel gioco. Le bozze vengono conservate." }
+        if key == "library_connection" { return "Connessione alla libreria" }
     }
     if locale == "ja" {
         if key == "back" { return "戻る" }
@@ -433,6 +451,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "オフラインです。ダウンロード済みのアプリは引き続き利用できます。" }
         if key == "refresh_library" { return "ライブラリを更新" }
         if key == "buy" { return "購入" }
+        if key == "profile" { return "プロフィール" }
+        if key == "editor_addon" { return "ゲーム内で開く任意のエディター追加機能です。下書きは保持されます。" }
+        if key == "library_connection" { return "ライブラリの接続" }
     }
     if locale == "ko" {
         if key == "back" { return "뒤로" }
@@ -495,6 +516,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "오프라인 상태입니다. 다운로드한 앱은 계속 사용할 수 있습니다." }
         if key == "refresh_library" { return "라이브러리 새로 고침" }
         if key == "buy" { return "구매" }
+        if key == "profile" { return "프로필" }
+        if key == "editor_addon" { return "게임 안에서 여는 선택적 편집기 추가 기능입니다. 초안은 유지됩니다." }
+        if key == "library_connection" { return "라이브러리 연결" }
     }
     if locale == "pt" {
         if key == "back" { return "Voltar" }
@@ -557,6 +581,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Você está offline. Os aplicativos baixados continuam disponíveis." }
         if key == "refresh_library" { return "Atualizar biblioteca" }
         if key == "buy" { return "Comprar" }
+        if key == "profile" { return "Perfil" }
+        if key == "editor_addon" { return "Complemento opcional do editor, aberto dentro do jogo. Seus rascunhos são mantidos." }
+        if key == "library_connection" { return "Conexão da biblioteca" }
     }
     if locale == "ru" {
         if key == "back" { return "Назад" }
@@ -619,6 +646,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "Вы офлайн. Загруженные приложения по-прежнему доступны." }
         if key == "refresh_library" { return "Обновить библиотеку" }
         if key == "buy" { return "Купить" }
+        if key == "profile" { return "Профиль" }
+        if key == "editor_addon" { return "Необязательное дополнение редактора открывается в игре. Ваши черновики сохраняются." }
+        if key == "library_connection" { return "Подключение библиотеки" }
     }
     if locale == "zh" {
         if key == "back" { return "返回" }
@@ -681,6 +711,9 @@ AppsLabel :: (locale: string, key: string) -> string {
         if key == "offline_library" { return "你处于离线状态，已下载的应用仍可使用。" }
         if key == "refresh_library" { return "刷新应用库" }
         if key == "buy" { return "购买" }
+        if key == "profile" { return "个人资料" }
+        if key == "editor_addon" { return "可选的编辑器扩展，在游戏内打开。你的草稿会保留。" }
+        if key == "library_connection" { return "游戏库连接" }
     }
     if key == "back" { return "Back" }
     if key == "open" { return "Open" }
@@ -742,5 +775,8 @@ AppsLabel :: (locale: string, key: string) -> string {
     if key == "offline_library" { return "You’re offline. Downloaded apps are still available." }
     if key == "refresh_library" { return "Refresh library" }
     if key == "buy" { return "Buy" }
+    if key == "profile" { return "Profile" }
+    if key == "editor_addon" { return "Optional editor add-on, opened inside the game. Your drafts are kept." }
+    if key == "library_connection" { return "Library connection" }
     return key
 }

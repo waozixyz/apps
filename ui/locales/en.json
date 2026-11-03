@@ -58,5 +58,8 @@
   "saved_library": "Showing your saved library.",
   "offline_library": "You’re offline. Downloaded apps are still available.",
   "refresh_library": "Refresh library",
-  "buy": "Buy"
+  "buy": "Buy",
+  "profile": "Profile",
+  "editor_addon": "Optional editor add-on, opened inside the game. Your drafts are kept.",
+  "library_connection": "Library connection"
 }

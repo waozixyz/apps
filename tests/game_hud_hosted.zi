@@ -1,0 +1,76 @@
+#import "game_hud"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/image_props"
+#import "kryon/button_props"
+#import "kryon/text_props"
+#import "kryon/box_props"
+boxes: [3]BoxProps;
+box_count: s32;
+#program_export
+HudBox :: (session: Session, props: BoxProps) -> s32 {
+    unused session
+    if box_count < 3 { boxes[box_count] = props }
+    box_count += 1
+    return 0
+}
+images: [2]ImageProps;
+buttons: [2]ButtonProps;
+amount: TextProps;
+image_count: s32;
+button_count: s32;
+activation: s32;
+palette_text: u32;
+restores: s32;
+#program_export
+HudImage :: (session: Session, props: ImageProps) {
+    unused session
+    if image_count < 2 { images[image_count] = props }
+    image_count += 1
+}
+#program_export
+HudButton :: (session: Session, props: ButtonProps) -> s32 {
+    unused session
+    if button_count < 2 { buttons[button_count] = props }
+    button_count += 1
+    return ifx button_count == activation then 1 else 0
+}
+#program_export
+HudText :: (session: Session, props: TextProps) { unused session; amount = props }
+#program_export
+Check :: () -> s32 {
+    props := AppGameHudProps.{.key = 700, .bounds = Rectangle.{31.0, 47.0, 240.0, 56.0},
+        .profile_label = "Perfil", .dew_label = "Rocío", .dew_text = "123.45"}
+    session := Session.{.slot = 1, .epoch = 2}
+    for selected: 0..2 {
+        activation = cast(s32)selected; image_count = 0; button_count = 0; box_count = 0
+        if AppGameHud(session, props) != selected || image_count != 2 || button_count != 2 || box_count != 3 { return 1 }
+        if images[0].asset_path != "assets/hud/profile.webp" || images[1].asset_path != "assets/hud/dew.webp" { return 2 }
+        if !buttons[0].invisible || !buttons[1].invisible || buttons[0].label != "Perfil" || buttons[1].label != "Rocío" { return 3 }
+        if amount.text != "123.45" || images[0].bounds.x <= images[1].bounds.x || images[0].radius != images[0].bounds.width / 2.0 { return 4 }
+        if buttons[0].bounds.width != images[0].bounds.width || buttons[1].bounds.x > images[1].bounds.x { return 5 }
+    }
+    if !boxes[0].has_fill_bottom || !boxes[1].has_fill_bottom || !buttons[0].circle ||
+        amount.bounds.x <= images[1].bounds.x || amount.bounds.x + amount.bounds.width >= images[0].bounds.x { return 8 }
+    if palette_text != cast(u32)0xffeec1ff || restores != 3 { return 9 }
+    props.profile_image = "assets/account.webp"; props.dew_image = "assets/currency.webp"
+    image_count = 0; button_count = 0; box_count = 0
+    unused AppGameHud(session, props)
+    if images[0].asset_path != props.profile_image || images[1].asset_path != props.dew_image { return 6 }
+    if images[0].preview_path != "assets/hud/profile.webp" || images[1].preview_path != "assets/hud/dew.webp" { return 10 }
+    props.bounds.height = 0.0; image_count = 0; button_count = 0; box_count = 0
+    if AppGameHud(session, props) != 0 || image_count != 0 || button_count != 0 { return 7 }
+    return 0
+}
+
+#program_export
+HudPalette :: (session: Session, background: u32, base: u32, text: u32,
+    selected: u32, selected_text: u32, border: u32, danger: u32, warning: u32,
+    success: u32, material: bool) -> bool {
+    unused session; unused background; unused base; unused selected
+    unused selected_text; unused border; unused danger; unused warning; unused success; unused material
+    palette_text = text
+    return true
+}
+#program_export
+HudPaletteRestore :: (session: Session) -> bool { unused session; restores += 1; return true }

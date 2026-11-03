@@ -1,0 +1,53 @@
+#import "game_hud"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/tree"
+#import "kryon/tree_draw"
+#import "kryon/semantic"
+#import "kryon/widget_kind"
+#import "kryon/tree_input"
+#import, file "game_hud_host.zi";
+using WidgetKind;
+
+Frame :: (session: Session, props: AppGameHudProps) -> s32 {
+    BeginFrame(session, 9900, Rectangle.{0.0, 0.0, 1024.0, 768.0})
+    action := AppGameHud(session, props)
+    if cast(s32)CommitFrame(session) != 0 { return -1 }
+    return action
+}
+#program_export
+Check :: () -> s32 {
+    session := SessionOpen()
+    props := AppGameHudProps.{.key = 100, .bounds = Rectangle.{17.0, 23.0, 240.0, 56.0},
+        .profile_label = "Perfil", .dew_label = "Comprar rocío", .dew_text = "1,234.50"}
+    if Frame(session, props) != 0 || TreeCount(session) != 9 { return 1 }
+    profile := TreeNodeAt(session, 5)
+    dew := TreeNodeAt(session, 8)
+    if profile.key != 100 || profile.kind != WidgetKindButton || profile.semantic_label != "Perfil" ||
+        dew.key != 102 || dew.kind != WidgetKindButton || dew.semantic_label != "Comprar rocío" { return 2 }
+    if TreeNodeAt(session, 4).kind != WidgetKindImage || TreeNodeAt(session, 6).kind != WidgetKindImage { return 3 }
+    if TreeNodeAt(session, 7).semantic_label != "1,234.50" { return 4 }
+    if !TreeActivateAt(session, 5) || Frame(session, props) != 1 { return 5 }
+    if Frame(session, props) != 0 { return 6 }
+    if !TreeActivateAt(session, 8) || Frame(session, props) != 2 { return 7 }
+    // Offset, short, narrow and fractional bounds must contain every child.
+    for width: 1..320 {
+        props.bounds = Rectangle.{17.0, 23.0, cast(float32)width + 0.5, 31.0}
+        unused Frame(session, props)
+        for index: 1..8 {
+            bounds := TreeNodeAt(session, cast(s32)index).bounds
+            if bounds.width < 0.0 || bounds.height < 0.0 || bounds.x < 16.99 || bounds.y < 22.99 ||
+                bounds.x + bounds.width > 17.01 + props.bounds.width ||
+                bounds.y + bounds.height > 54.01 { return 8 }
+        }
+    }
+    props.bounds = Rectangle.{17.0, 23.0, 240.0, 120.0}
+    if Frame(session, props) != 0 || TreeNodeAt(session, 1).bounds.height != 64.0 { return 11 }
+    if TreeNodeAt(session, 4).bounds.x <= TreeNodeAt(session, 6).bounds.x { return 12 }
+    props.bounds.width = 0.0
+    if Frame(session, props) != 0 || TreeCount(session) != 1 { return 9 }
+    props.bounds.width = 240.0; props.bounds.height = -1.0
+    if Frame(session, props) != 0 || TreeCount(session) != 1 { return 10 }
+    unused SessionClose(session)
+    return 0
+}

@@ -1,0 +1,477 @@
+// Actual shared host/tree and portable VMs; reuse only the headless renderer.
+#import, file "native_behavior.zi";
+#import "host"
+#import "tree"
+#import "protocol"
+#import "catalog"
+#import "preparation"
+#import "std/file"
+#import "std/byte_text_linux"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/bundle_host"
+#import "std/timer_linux"
+#import "kryon/app_protocol"
+#import "kryon/app_context_host"
+#import "kryon/app_files"
+#import "kryon/hosted_app"
+#import "kryon/session"
+#import "kryon/widget_kind"
+#import "kryon/hosted_values"
+
+using HostValueKind;
+using WidgetKind;
+
+nav_host: *AppHost;
+nav_payload: string;
+nav_base: string;
+nav_large: bool;
+nav_installed: bool = true;
+nav_cached: bool;
+nav_failed: bool;
+nav_corrupt: bool;
+nav_fetches: s32;
+nav_opens: s32;
+nav_probes: s32;
+nav_saves: s32;
+nav_bad: bool;
+nav_stage: s32;
+nav_game_record: string = "game progress";
+nav_addon_record: string = "legacy private draft";
+
+NavAllows :: (context: *void, node: *AppNode, name: string) -> bool {
+    return name == "probe" || name == "AppRecordHost" || name == "SaveAppRecordHost" ||
+        name == "DocumentReadHost" || name == "DocumentWriteHost"
+}
+NavCall :: (context: *void, node: *AppNode, module: *u8, function: *u8,
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 {
+    name := TextFromCString(function)
+    id := TextUntilNul(node.identity.id[:])
+    if TextUntilNul(node.identity.authority[:]) != "fixture.authority" ||
+    TextUntilNul(nav_host.tree.account[:]) != "account-a" { nav_bad = true }
+    if name == "AppServiceHost" && count == 2 && AppArgumentText(arguments[0]) == "probe" {
+        nav_probes += 1
+        if id != "fixture.game" || !nav_host.tree.busy || nav_host.tree.draining ||
+        AppHostActiveRuntime(nav_host).node != node || nav_host.tree.nodes.count != 2 { nav_bad = true }
+        result.* = AppHostText("deferred")
+        return 1
+    }
+    if (name == "AppRecordHost" || name == "DocumentReadHost") && count == 1 && AppArgumentText(arguments[0]) == "local.campaign" {
+        result.* = AppHostText(ifx id == "fixture.addon" then nav_addon_record else nav_game_record)
+        return 1
+    }
+    if (name == "SaveAppRecordHost" || name == "DocumentWriteHost") && count == 2 && id == "fixture.addon" &&
+    AppArgumentText(arguments[0]) == "local.campaign" && AppArgumentText(arguments[1]) == "edited draft" {
+        nav_addon_record = "edited draft"
+        result.* = HostScalar("bool", 1)
+        return 1
+    }
+    return 0
+}
+NavSave :: (context: *void, node: *AppNode) -> bool {
+    nav_saves += 1
+    if nav_host.tree.busy { nav_bad = true }
+    return !flush_failed
+}
+NavState :: (context: *void, account: string, identity: *AppIdentity, state: *AppState) -> bool {
+    state.* = AppState.{.installed = TextUntilNul(identity.id[:]) != "fixture.addon" || nav_installed,
+        .bytes = 4096, .actions_known = true, .actions = cast(u64)4092}
+    return account == "account-a"
+}
+NavBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    if nav_large && TextUntilNul(entry.id[:]) == "fixture.counter" {
+        return HostedAsset.{.found = true, .data = nav_base}
+    }
+    if TextUntilNul(entry.id[:]) != "fixture.addon" || (!nav_installed && !nav_cached) { return HostedAsset.{} }
+    return HostedAsset.{.found = true, .data = ifx nav_corrupt then "corrupt payload" else nav_payload}
+}
+NavDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool {
+    if TextUntilNul(entry.id[:]) != "fixture.addon" || nav_installed || nav_cached { return false }
+    download.* = AppDownload.{.bytes = 4096, .progress = -1, .failed = nav_failed}
+    return true
+}
+NavFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    nav_fetches += 1
+    if nav_host.tree.busy || account != "account-a" || !parent.collection ||
+    TextUntilNul(entry.id[:]) != "fixture.addon" || operation != APPS_INSTALL { nav_bad = true; return false }
+    if nav_failed { reply.* = AppRejected("fixture install failed"); return true }
+    nav_installed = true
+    reply.status = APPS_APPLIED
+    return true
+}
+NavOpenEffect :: (context: *void, account: string, locator: *AppLocator,
+    request: *AppsRequest, reply: *AppsReply) -> s32 {
+    nav_opens += 1
+    return APP_OPEN_REJECTED
+}
+
+NavDrain :: (host: *AppHost) -> bool {
+    deadline := MonotonicMilliseconds() + 10000
+    while MonotonicMilliseconds() < deadline {
+        if !AppTreeDrain(*host.tree) { return false }
+        pending: bool
+        for index: cast(s64)0..host.tree.pending.count - 1 { pending = pending || !host.tree.pending[index].complete }
+        if !pending { return true }
+        unused SleepMilliseconds(1)
+    }
+    return false
+}
+NavActiveIs :: (host: *AppHost, id: string) -> bool {
+    runtime := AppHostActiveRuntime(host)
+    return runtime != null && TextUntilNul(runtime.node.identity.id[:]) == id
+}
+NavStart :: (host: *AppHost, protocol: s32) -> bool {
+    nav_host = host
+    path := ifx protocol == 1 then "work/arcade-addon/root-1.zx" else "work/arcade-addon/root-2.zx"
+    hash := ifx protocol == 1 then "work/arcade-addon/root-1.sha256" else "work/arcade-addon/root-2.sha256"
+    bytes, found := ReadEntireFile(path)
+    digest, hash_found := ReadEntireFile(hash)
+    controller, controller_found := ReadEntireFile("work/arcade-addon/controller.sha256")
+    nav_stage = 100
+    if !found || !hash_found || !controller_found { return false }
+    platform := AppPlatform.{.host_api = 42, .allows = NavAllows, .call = NavCall, .save = NavSave,
+        .widgets = Widgets, .state = NavState, .bundle = NavBundle, .download = NavDownload, .fetch = NavFetch}
+    ready := AppHostStart(host, bytes, "fixture.authority", "fixture.root", "collection", digest,
+        "account-a", platform, controller)
+    AppFileFree(bytes); AppFileFree(digest); AppFileFree(controller)
+    nav_stage = 110
+    if !ready { return false }
+    nav_stage = 120
+    if !Command(host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.game\"}") { return false }
+    nav_stage = 130
+    if !NavDrain(host) { return false }
+    nav_stage = 140
+    unused WriteEntireFile("work/arcade-addon/last-reply.txt", host.last_reply)
+    if host.tree.pending.count > 0 {
+        last := host.tree.pending[host.tree.pending.count - 1]
+        unused WriteEntireFile("work/arcade-addon/last-reason.txt", TextUntilNul(last.reply.reason[:]))
+    }
+    return NavActiveIs(host, "fixture.game")
+}
+NavAttempt :: (host: *AppHost, target: string) -> string {
+    runtime := AppHostActiveRuntime(host)
+    handle := host.tree.active
+    if !AppTreeBegin(*host.tree, handle) { return "" }
+    runtime.busy = true
+    reply := AppArgumentText(AppHostAddonNavigation(runtime, target))
+    runtime.busy = false
+    unused AppTreeEnd(*host.tree, handle)
+    return reply
+}
+NavStop :: (host: *AppHost) -> bool {
+    deadline := MonotonicMilliseconds() + 10000
+    while !AppHostStop(host) && MonotonicMilliseconds() < deadline { unused SleepMilliseconds(1) }
+    AppHostCollect(host)
+    return host.tree.nodes.count == 0 && host.retired_bytes == 0
+}
+
+// A real large remote game remains alive for Back while its thin editor uses
+// the same code/assets. Exercise the actual preparation/VM/collection path.
+NavLargeCheck :: () -> s32 {
+    base, base_found := ReadEntireFile("work/arcade-addon/large-base.zx")
+    addon, addon_found := ReadEntireFile("work/arcade-addon/large-addon.zx")
+    bytes, found := ReadEntireFile("work/arcade-addon/large-root.zx")
+    digest, hash_found := ReadEntireFile("work/arcade-addon/large-root.sha256")
+    controller, controller_found := ReadEntireFile("work/arcade-addon/controller.sha256")
+    if !base_found || !addon_found || !found || !hash_found || !controller_found ||
+    base.count < 50000000 { return 200 }
+    nav_large = true; nav_base = base; nav_payload = addon; nav_installed = true
+    defer {
+        nav_large = false; nav_base = ""; nav_payload = ""
+        AppFileFree(base); AppFileFree(addon); AppFileFree(bytes)
+        AppFileFree(digest); AppFileFree(controller)
+    }
+    host: AppHost
+    nav_host = *host
+    platform := AppPlatform.{.host_api = 42, .allows = NavAllows, .call = NavCall, .save = NavSave,
+        .widgets = Widgets, .state = NavState, .bundle = NavBundle, .download = NavDownload, .fetch = NavFetch}
+    if !AppHostStart(*host, bytes, "fixture.authority", "fixture.large", "collection", digest,
+        "account-a", platform, controller) { return 201 }
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.counter\"}") { return 225 }
+    if !NavDrain(*host) { return 226 }
+    if !NavActiveIs(*host, "fixture.counter") {
+        if host.tree.pending.count > 0 {
+            unused WriteEntireFile("work/arcade-addon/large-failure.txt",
+                TextUntilNul(host.tree.pending[host.tree.pending.count - 1].reply.reason[:]))
+        }
+        return 227
+    }
+    game := host.tree.active
+    runtime := AppHostActiveRuntime(*host)
+    root := AppTreeNode(*host.tree, runtime.node.parent)
+    base_entry := AppCatalogAt(*root.catalog, 0)
+    entry := AppCatalogAt(*root.catalog, 1)
+    if host.tree.byte_limit != 67108864 || host.tree.bytes < base.count ||
+    AppHostLibraryOwner(*host, root, base_entry, base) != runtime { return 202 }
+    // Reuse never follows digest alone, another source allocation, account,
+    // authority, protocol, expected identity or a changed signed digest.
+    copy, copy_found := ReadEntireFile("work/arcade-addon/large-base.zx")
+    if !copy_found || AppHostLibraryOwner(*host, root, base_entry, copy) != null { return 203 }
+    AppFileFree(copy)
+    authority := runtime.node.identity.authority
+    unused CopyCString("foreign.authority", runtime.node.identity.authority[:])
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 204 }
+    runtime.node.identity.authority = authority
+    host.tree.account_epoch += 1
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 205 }
+    host.tree.account_epoch -= 1
+    unused CopyCString("account-b", host.tree.account[:])
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 206 }
+    unused CopyCString("account-a", host.tree.account[:])
+    saved_entry := base_entry.*
+    base_entry.sha256[0] = ifx base_entry.sha256[0] == #char "a" then #char "b" else #char "a"
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 207 }
+    base_entry.* = saved_entry
+    base_entry.protocol = APPS_NODE_PROTOCOL
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 208 }
+    base_entry.* = saved_entry
+    unused CopyCString("foreign", base_entry.expected_id[:])
+    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 209 }
+    base_entry.* = saved_entry
+    // Without a verified existing owner this really exceeds the same cap.
+    libraries := AppPreparationLibraries.{.root = AppPreparationImportsFor(entry), .count = 1}
+    libraries.items[0] = AppPreparationLibrary.{.bytes = base, .entry = base_entry}
+    remaining := host.tree.byte_limit - host.tree.bytes - host.retired_bytes
+    if AppPrepare(addon, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]), remaining, *libraries) != null { return 210 }
+    host.tree.provider.prepare = AppHostPrepareChild
+    before := host.tree.bytes
+    if AppHostPrepareChild(cast(*void)(*host), root, entry, 0) != 0 ||
+    host.preparation == null || runtime.library_borrows != 1 ||
+    host.preparation.libraries.items[0].bundle != AppContextRuntime(*runtime.app).bundle { return 211 }
+    // Cancellation waits for the worker and releases the lease once.
+    AppHostCancelChild(*host)
+    if !NavDrain(*host) { return 212 }
+    deadline := MonotonicMilliseconds() + 10000
+    while host.preparation != null && MonotonicMilliseconds() < deadline {
+        AppHostCollect(*host); unused SleepMilliseconds(1)
+    }
+    if host.preparation != null || runtime.library_borrows != 0 || host.tree.bytes != before { return 213 }
+    // A changed account during preparation invalidates reuse and cannot open.
+    unused NavAttempt(*host, "fixture.addon")
+    if !AppTreeDrain(*host.tree) || host.preparation == null { return 214 }
+    host.tree.account_epoch += 1
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) { return 215 }
+    deadline = MonotonicMilliseconds() + 10000
+    while host.preparation != null && MonotonicMilliseconds() < deadline {
+        AppHostCollect(*host); unused SleepMilliseconds(1)
+    }
+    host.tree.account_epoch -= 1
+    if runtime.library_borrows != 0 { return 216 }
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || !NavActiveIs(*host, "fixture.addon") { return 217 }
+    editor := AppHostActiveRuntime(*host)
+    if runtime.library_borrows != 1 { return 228 }
+    if editor.dependency_owners[0] != runtime { return 229 }
+    if editor.node.bytes >= 2000000 { return 230 }
+    if host.tree.bytes > host.tree.byte_limit { return 231 }
+    if !Draw(*host, 480, 640, false) { return 232 }
+    shared := AppHostAsset(editor.node, "assets/counter-addon/shared.bin")
+    if !shared.found || shared.data != "library" ||
+    AppHostAsset(editor.node, "assets/counter-addon/large.bin").found { return 219 }
+    if AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 220 }
+    AppHostCollect(*host)
+    if runtime.library_borrows != 0 || host.tree.bytes != before { return 221 }
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || !NavActiveIs(*host, "fixture.addon") { return 222 }
+    editor = AppHostActiveRuntime(*host)
+    // Retiring the game cannot free its resources or erase its budget charge
+    // while an editor/renderer still borrows the program.
+    AppTreeClearReturn(editor.node)
+    AppTreeDrop(*host.tree, game)
+    AppHostCollect(*host)
+    if !runtime.retired || runtime.library_borrows != 1 || host.retired_bytes < base.count ||
+    host.tree.bytes + host.retired_bytes > host.tree.byte_limit ||
+    !AppHostAsset(editor.node, "assets/counter-addon/shared.bin").found || !Draw(*host, 480, 640, false) { return 223 }
+    if !NavStop(*host) || host.retired != null { return 224 }
+    return 0
+}
+
+#program_export
+AddonCheck :: () -> s32 {
+    payload, found := ReadEntireFile("work/arcade-addon/game-1.zx")
+    if !found { return 1 }
+    nav_payload = payload
+    for protocol: cast(s32)1..2 {
+        host: AppHost
+        nav_installed = true
+        if !NavStart(*host, protocol) { return nav_stage + protocol }
+        game := host.tree.active
+        runtime := AppHostActiveRuntime(*host)
+        if !AppHostAllows(cast(*void)runtime, "app-navigation") ||
+        AppHostAllows(cast(*void)runtime, "apps") { return 5 }
+        root := AppTreeNode(*host.tree, runtime.node.parent)
+        if AppHostAllows(cast(*void)cast(*AppRuntime)root.runtime, "app-navigation") { return 6 }
+        if !TextHas(AppArgumentText(AppHostAddonNavigation(runtime, "fixture.addon")), "rejected") { return 7 }
+        if !TextHas(NavAttempt(*host, "fixture.unrelated"), "rejected") ||
+        !TextHas(NavAttempt(*host, "fixture.game"), "rejected") ||
+        !TextHas(NavAttempt(*host, "{\"id\":\"fixture.addon\"}"), "rejected") ||
+        !TextHas(NavAttempt(*host, "../fixture.addon"), "rejected") { return 8 }
+        entry := AppCatalogAt(*root.catalog, 1)
+        authority := root.identity.authority
+        unused CopyCString("foreign.authority", root.identity.authority[:])
+        if !TextHas(NavAttempt(*host, "fixture.addon"), "rejected") || AppHostAllows(cast(*void)runtime, "app-navigation") { return 16 }
+        root.identity.authority = authority
+        root.collection = false
+        if !TextHas(NavAttempt(*host, "fixture.addon"), "rejected") { return 17 }
+        root.collection = true
+        entry.protocol = APPS_COLLECTION_PROTOCOL
+        if !TextHas(NavAttempt(*host, "fixture.addon"), "rejected") { return 18 }
+        entry.protocol = APPS_CONTEXT_PROTOCOL
+        entry.cover.action[0] = 0
+        if !TextHas(NavAttempt(*host, "fixture.addon"), "rejected") { return 9 }
+        unused CopyCString("internal", entry.cover.action[:])
+        before := nav_saves
+        runtime.legacy.message.screen = 1
+        if !Draw(*host, 321, 480, false) || !NavDrain(*host) { return 10 }
+        addon := AppHostActiveRuntime(*host)
+        if nav_saves != before + 1 || nav_bad || nav_probes != protocol ||
+        TextUntilNul(addon.node.identity.id[:]) != "fixture.addon" ||
+        TextUntilNul(addon.node.identity.authority[:]) != "fixture.authority" ||
+        !AppHandleEqual(addon.node.parent, runtime.node.parent) { return 11 }
+        locator: AppLocator
+        if !AppTreeLocate(*host.tree, host.tree.active, *locator) || locator.chain.count != 2 ||
+        TextUntilNul(locator.chain[1].id[:]) != "fixture.addon" { return 12 }
+        AppLocatorClear(*locator)
+        if !Command(*host, "read") || host.last_reply != "legacy private draft" ||
+        !Command(*host, "write") || nav_game_record != "game progress" || nav_addon_record != "edited draft" { return 13 }
+        flush_failed = true
+        if AppHostBack(*host) != -1 || AppHostActiveRuntime(*host) != addon { return 14 }
+        flush_failed = false
+        if AppHostBack(*host) != 1 || !AppHandleEqual(host.tree.active, game) ||
+        AppHostActiveRuntime(*host) != runtime || !NavStop(*host) { return 15 }
+        nav_addon_record = "legacy private draft"
+    }
+    // Save failure, revalidation of catalog/account/source, and original
+    // collection-only Apps authority remain separate from the new service.
+    host: AppHost
+    if !NavStart(*host, 1) { return 20 }
+    game := host.tree.active
+    runtime := AppHostActiveRuntime(*host)
+    root := AppTreeNode(*host.tree, runtime.node.parent)
+    entry := AppCatalogAt(*root.catalog, 1)
+    request: AppsRequest
+    request.operation = APPS_OPEN; request.id = entry.id
+    if AppTreeQueue(*host.tree, game, request).status != APPS_REJECTED { return 21 }
+    foreign := runtime.*
+    foreign.busy = true
+    if !TextHas(AppArgumentText(AppHostAddonNavigation(*foreign, "fixture.addon")), "rejected") { return 22 }
+    if !TextHas(NavAttempt(*host, "fixture.addon"), "queued") ||
+    !TextHas(NavAttempt(*host, "fixture.addon"), "rejected") { return 23 }
+    flush_failed = true
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) || host.tree.nodes.count != 2 { return 24 }
+    flush_failed = false
+    unused NavAttempt(*host, "fixture.addon")
+    host.tree.account_epoch += 1
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) { return 25 }
+    host.tree.account_epoch -= 1
+    unused NavAttempt(*host, "fixture.addon")
+    unused CopyCString("account-b", host.tree.account[:])
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) { return 26 }
+    unused CopyCString("account-a", host.tree.account[:])
+    unused NavAttempt(*host, "fixture.addon")
+    entry.dependency_count = 0
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) { return 27 }
+    entry.dependency_count = 1
+    unused NavAttempt(*host, "fixture.addon")
+    digest := entry.sha256
+    entry.sha256[0] = ifx entry.sha256[0] == #char "a" then #char "b" else #char "a"
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) { return 28 }
+    entry.sha256 = digest
+    nav_corrupt = true
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) || host.tree.nodes.count != 2 { return 29 }
+    nav_corrupt = false
+    nav_installed = false
+    flush_failed = true
+    presentation := host.platform.presentation
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) ||
+    host.platform.presentation.download_request != presentation.download_request { return 39 }
+    flush_failed = false
+    // The missing add-on returns to the same collection, retaining its game
+    // under the named download dialog. No fetch runs until normal install.
+    nav_installed = false
+    before := nav_fetches
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || AppHostActiveRuntime(*host).node != root || nav_fetches != before ||
+    TextUntilNul(host.platform.presentation.download_id[:]) != "fixture.addon" ||
+    host.platform.presentation.download_request < 1 || AppTreeReturn(*host.tree, root) != runtime.node { return 30 }
+    if !Draw(*host, 480, 640, false) || NativeLabel("Installed private editor") < 0 ||
+    NativeLabel("Download size: 4.1 kB") < 0 || NativeLabel("Download", WidgetKindButton) < 0 { return 31 }
+    // Stale consent must reject its own target, without becoming an ordinary
+    // collection open that a native callback can redirect elsewhere.
+    host.tree.provider.open_effect = AppHostOpenEffect
+    host.platform.open_effect = NavOpenEffect
+    host.tree.account_epoch += 1
+    nav_installed = true
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}") || !NavDrain(*host) ||
+    AppHostActiveRuntime(*host).node != root || nav_opens != 0 { return 45 }
+    host.tree.account_epoch -= 1
+    nav_installed = false
+    // Also invalidate a queued install after its request, before drain.
+    request = AppsRequest.{.operation = APPS_INSTALL, .id = entry.id}
+    if AppTreeQueue(*host.tree, host.tree.active, request).status != APPS_QUEUED { return 46 }
+    dependency := entry.dependencies[0]
+    unused CopyCString("fixture.unrelated", entry.dependencies[0][:])
+    if !NavDrain(*host) || nav_fetches != before || AppHostActiveRuntime(*host).node != root { return 47 }
+    entry.dependencies[0] = dependency
+    nav_failed = true
+    if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.addon\"}") ||
+    !NavDrain(*host) || nav_fetches != before + 1 || AppHostActiveRuntime(*host).node != root ||
+    !Draw(*host, 480, 640, false) || NativeLabel("Download failed") < 0 { return 32 }
+    if AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 33 }
+    nav_failed = false
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || AppHostActiveRuntime(*host).node != root { return 34 }
+    // Neither add-on direct open nor its post-install open can be intercepted
+    // by a native alternate runtime/route callback.
+    host.tree.provider.open_effect = AppHostOpenEffect
+    host.platform.open_effect = NavOpenEffect
+    if !Command(*host, "{\"v\":1,\"op\":\"install\",\"id\":\"fixture.addon\"}") || !NavDrain(*host) ||
+    !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}") || !NavDrain(*host) ||
+    !NavActiveIs(*host, "fixture.addon") || nav_opens != 0 { return 35 }
+    if !Command(*host, "read") || host.last_reply != "legacy private draft" ||
+    AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 36 }
+    // Exercise asynchronous preparation with the collection as byte owner,
+    // while the active game remains the queued authority.
+    host.tree.provider.prepare = AppHostPrepareChild
+    before_saves := nav_saves
+    unused NavAttempt(*host, "fixture.addon")
+    if !AppTreeDrain(*host.tree) || !AppHandleEqual(game, host.tree.active) || nav_saves != before_saves { return 40 }
+    // A newly failed final save after asynchronous verification must retain
+    // the game; no early save can stand in for this activation boundary.
+    flush_failed = true
+    if !NavDrain(*host) || !AppHandleEqual(game, host.tree.active) || nav_saves != before_saves + 1 { return 41 }
+    flush_failed = false
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || !NavActiveIs(*host, "fixture.addon") ||
+    nav_opens != 0 || AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 37 }
+    // Cached payload is still uninstalled: use named Install consent, and
+    // never mistake the bytes on disk for permission to open/download it.
+    nav_installed = false; nav_cached = true
+    before = nav_fetches
+    unused NavAttempt(*host, "fixture.addon")
+    if !NavDrain(*host) || AppHostActiveRuntime(*host).node != root || nav_fetches != before ||
+    !Draw(*host, 480, 640, false) || NativeLabel("Installed private editor") < 0 ||
+    NativeLabel("Install", WidgetKindButton) < 0 ||
+    AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 42 }
+    nav_installed = true; nav_cached = false
+    game_digest := runtime.node.entry.sha256
+    if nav_bad || !NavStop(*host) { return 38 }
+    // A standalone root game gains no sibling authority, even though it uses
+    // the exact same AppHost and optional AppService transport.
+    standalone: AppHost
+    nav_host = *standalone
+    platform := AppPlatform.{.host_api = 42, .allows = NavAllows, .call = NavCall, .save = NavSave}
+    if !AppHostStart(*standalone, payload, "fixture.authority", "fixture.game", "navigation",
+        TextUntilNul(game_digest[:]), "account-a", platform) { return 43 }
+    root_game := AppHostActiveRuntime(*standalone)
+    if AppHostAllows(cast(*void)root_game, "app-navigation") ||
+    !TextHas(NavAttempt(*standalone, "fixture.addon"), "rejected") || !NavStop(*standalone) { return 44 }
+    AppFileFree(payload)
+    weighted := NavLargeCheck()
+    if weighted != 0 { return weighted }
+    if ui_session.epoch != cast(u64)0 { SessionClose(ui_session) }
+    return 0
+}

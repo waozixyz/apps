@@ -1,0 +1,53 @@
+#import "kryon/app_context"
+#import "kryon/app_protocol"
+host_api :: #system_library "host_api";
+#if #defined(APPS_ADDON_NODE) {
+    #import "node_types"
+    Node :: #import "node_types";
+    ReadAppHost :: () -> AppMessage #foreign host_api;
+    ReadAppUiHost :: () -> AppUiFrame #foreign host_api;
+    WriteAppHost :: (message: AppMessage) #foreign host_api;
+}
+
+Navigate :: () -> bool {
+    if !AppSupports("app-navigation") { return false }
+    reply := AppService("apps.navigation", "fixture.addon")
+    // The host probe asserts that this game is still active, its VM is busy,
+    // and no sibling was opened inside either service callback.
+    if AppService("probe", "") != "deferred" { return false }
+    #if #defined(APPS_ADDON_NODE) {
+        if reply.count == 0 { return false }
+    } else { AppReply(reply) }
+    return true
+}
+
+#program_export
+Main :: () -> s32 {
+    #if #defined(APPS_ADDON_NODE) {
+        message := ReadAppHost()
+        if message.action == MODULE_IDENTIFY { return MODULE_NODE_APP }
+        message.succeeded = message.action == APP_ROUTE
+        if message.action == Node.APP_FRAME {
+            unused ReadAppUiHost()
+            message.succeeded = message.screen != 1 || Navigate()
+        }
+        WriteAppHost(message)
+        return 0
+    } else {
+        mode := AppMode()
+        if mode == APP_IDENTIFY {
+            AppIdentity("navigation")
+            AppDescribe("Navigation fixture", "")
+            return APP_PROTOCOL
+        }
+        if mode == APP_FRAME && cast(s32)AppBounds().width == 321 {
+            return ifx Navigate() then 0 else 1
+        }
+        if mode == APP_COMMAND {
+            if AppCommand() == "navigate" { return ifx Navigate() then 0 else 1 }
+            if AppCommand() == "read" { AppReply(DocumentRead("local.campaign")) }
+            if AppCommand() == "write" && !DocumentWrite("local.campaign", "edited draft") { return 1 }
+        }
+        return 0
+    }
+}

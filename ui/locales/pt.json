@@ -58,5 +58,8 @@
   "saved_library": "Mostrando sua biblioteca salva.",
   "offline_library": "Você está offline. Os aplicativos baixados continuam disponíveis.",
   "refresh_library": "Atualizar biblioteca",
-  "buy": "Comprar"
+  "buy": "Comprar",
+  "profile": "Perfil",
+  "editor_addon": "Complemento opcional do editor, aberto dentro do jogo. Seus rascunhos são mantidos.",
+  "library_connection": "Conexão da biblioteca"
 }

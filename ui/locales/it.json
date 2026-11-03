@@ -58,5 +58,8 @@
   "saved_library": "Viene mostrata la raccolta salvata.",
   "offline_library": "Sei offline. Le app scaricate restano disponibili.",
   "refresh_library": "Aggiorna raccolta",
-  "buy": "Acquista"
+  "buy": "Acquista",
+  "profile": "Profilo",
+  "editor_addon": "Componente aggiuntivo opzionale dell’editor, accessibile nel gioco. Le bozze vengono conservate.",
+  "library_connection": "Connessione alla libreria"
 }

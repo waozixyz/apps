@@ -453,8 +453,13 @@ NativeClickLast :: (label: string, kind: s32 = -1) -> bool {
         }
     }
     if target < 0 { return false }
-    hit := TreeHitAt(ui_session, native_label_bounds.x + native_label_bounds.width * 0.5,
-        native_label_bounds.y + native_label_bounds.height * 0.5)
+    x := native_label_bounds.x + native_label_bounds.width * 0.5
+    y := native_label_bounds.y + native_label_bounds.height * 0.5
+    // Portrait neighbours peek into this 480x600 fixture viewport.
+    if x > 464.0 { x = 464.0 }
+    if x < 16.0 { x = 16.0 }
+    if y > 584.0 { y = 584.0 }
+    hit := TreeHitAt(ui_session, x, y)
     return hit == target && TreeActivateAt(ui_session, hit)
 }
 
@@ -490,8 +495,18 @@ NativeClick :: (label: string, kind: s32 = -1) -> bool {
     target := NativeLabel(label, kind)
     if target < 0 { return false }
     // Hit testing proves the real overlay/menu target receives the click.
-    hit := TreeHitAt(ui_session, native_label_bounds.x + native_label_bounds.width * 0.5,
-        native_label_bounds.y + native_label_bounds.height * 0.5)
+    x := native_label_bounds.x + native_label_bounds.width * 0.5
+    y := native_label_bounds.y + native_label_bounds.height * 0.5
+    // Carousel neighbours can extend beyond this fixture's 480 x 600 viewport.
+    if x > 464.0 { x = 464.0 }
+    if x < 16.0 { x = 16.0 }
+    if y > 584.0 { y = 584.0 }
+    hit := TreeHitAt(ui_session, x, y)
+    // Cover names remain assistive actions beneath the pointer gesture area.
+    // Real swipe/tap routing is exercised by Arcade's private window test.
+    if hit >= 0 && TreeNodeAt(ui_session, hit).key == cast(u64)50020 {
+        return TreeActivateAt(ui_session, target)
+    }
     return hit == target && TreeActivateAt(ui_session, hit)
 }
 
@@ -656,18 +671,31 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("preview") || !NativeDraw() || NativeLabel("Native apps") < 0 { return 64 }
     // The covers themselves open apps, without separate launch buttons.
     if !NativeLoadCatalog("cover-grid") || !NativeDraw(false, false) ||
-    NativeLabel("Native apps") < 0 || NativeLabel("Next", WidgetKindButton) >= 0 { return 91 }
-    if native_tile_bounds.width < 200.0 || native_tile_bounds.height < 350.0 ||
-    native_other_bounds.y != native_tile_bounds.y || native_other_bounds.x <= native_tile_bounds.x { return 92 }
+    NativeLabel("Native apps") >= 0 || NativeLabel("Next", WidgetKindButton) >= 0 { return 91 }
+    if native_tile_bounds.width < 230.0 || native_tile_bounds.height < 350.0 ||
+    native_other_bounds.height >= native_tile_bounds.height || native_other_bounds.x <= native_tile_bounds.x { return 92 }
     if NativeLabel("Open", WidgetKindButton) >= 0 || NativeLabel("Play", WidgetKindButton) >= 0 { return 93 }
-    if NativeLabel("Breathing", WidgetKindText) < 0 || NativeLabel("Clock", WidgetKindText) < 0 { return 96 }
+    if NativeLabel("Breathing", WidgetKindText) >= 0 || NativeLabel("Clock", WidgetKindText) >= 0 { return 96 }
     cover_opened := native_queued
     if !NativeClick("Breathing", WidgetKindButton) || !NativeDraw(false, false) ||
     native_queued != cover_opened + 1 || native_request.operation != APPS_OPEN ||
     TextUntilNul(native_request.id[:]) != "native.breathing" { return 94 }
-    // Uninstalled covers show their download size; installed covers omit it.
-    if !NativeLoadCatalog("cover-grid-download") || !NativeDraw(false, false) ||
-    NativeLabel("4.1 kB", WidgetKindText) < 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 95 }
+    // Artwork has no size captions; the named install dialog shows the size.
+    if !NativeLoadCatalog("cover-grid-download") { return 951 }
+    if !NativeDraw(false, false) { return 952 }
+    if NativeLabel("4.1 kB", WidgetKindText) >= 0 || NativeLabel("12.3 kB", WidgetKindText) >= 0 { return 953 }
+    if !NativeClick("Clock", WidgetKindButton) { return 954 }
+    if !NativeDraw(false, false) { return 955 }
+    if NativeLabel("Download size: 4.1 kB", WidgetKindText) < 0 { return 956 }
+    if !NativeClick("Cancel", WidgetKindButton) { return 957 }
+    if !NativeDraw(false, false) { return 958 }
+    // Cached bytes after uninstall still require named installation consent.
+    covered = native_queued
+    if !NativeLoadCatalog("cover-grid-cached") || !NativeDraw(false, false) ||
+    !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
+    NativeLabel("Clock", WidgetKindModal) < 0 || NativeLabel("Install", WidgetKindButton) < 0 ||
+    native_queued != covered { return 959 }
+    if !NativeClick("Cancel", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered { return 960 }
     if !NativeLoadCatalog("cover-grid-dependencies") || !NativeDraw(false, false) ||
     !NativeClick("Clock", WidgetKindButton) || !NativeDraw(false, false) ||
     NativeLabel("Breathing (required) · 100 B", WidgetKindText) < 0 ||

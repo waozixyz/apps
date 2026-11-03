@@ -25,6 +25,10 @@ AppPreparationLibrary :: struct {
     bytes: string
     entry: *AppEntry
     bundle: *void
+    // Optional host lease on an already verified/opened library. The host
+    // retains its owner and byte charge until transfer or cancellation.
+    // Preparation still hashes the exact source; it never closes this handle.
+    owner: *void
 }
 
 AppPreparationImports :: struct {
@@ -125,9 +129,11 @@ AppPreparationRun :: (argument: *void) {
         item := *preparation.libraries.items[index]
         AppPreparationHash(item.bytes, actual[:])
         if TextUntilNul(actual[:]) != TextUntilNul(item.entry.sha256[:]) { return }
-        imports := AppPreparationImportsFor(item.entry)
-        item.bundle = AppPreparationOpenWithLibraries(item.bytes, *imports,
-            *preparation.libraries, index)
+        if item.owner == null {
+            imports := AppPreparationImportsFor(item.entry)
+            item.bundle = AppPreparationOpenWithLibraries(item.bytes, *imports,
+                *preparation.libraries, index)
+        }
         if item.bundle == null { return }
     }
     preparation.bundle = AppPreparationOpenWithLibraries(preparation.bytes,
@@ -190,11 +196,12 @@ AppPrepare :: (bytes: string, digest: string, id: string,
         for index: cast(s32)0..libraries.count - 1 {
             item := libraries.items[index]
             if item.entry == null || item.bytes.count < 8 ||
-            item.bytes.count > byte_limit - charge - 65536 {
+            (item.owner != null && item.bundle == null) ||
+            (item.owner == null && item.bytes.count > byte_limit - charge - 65536) {
                 AppPreparationFree(cast(*void)preparation)
                 return null
             }
-            charge += item.bytes.count + 65536
+            if item.owner == null { charge += item.bytes.count + 65536 }
         }
         preparation.libraries = libraries.*
     }
@@ -260,7 +267,9 @@ AppPreparationClose :: (preparation: *AppPreparation) -> bool {
     CloseBundle(preparation.bundle)
     CloseBundle(preparation.controller)
     for index: cast(s32)0..preparation.libraries.count - 1 {
-        CloseBundle(preparation.libraries.items[index].bundle)
+        if preparation.libraries.items[index].owner == null {
+            CloseBundle(preparation.libraries.items[index].bundle)
+        }
     }
     AppPreparationFree(cast(*void)preparation)
     return true

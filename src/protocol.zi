@@ -4,6 +4,9 @@
 #import "std/vec"
 
 APPS_SERVICE :: "apps"
+// Optional existing AppService/AppSupports transport; no guest ABI increase.
+APPS_NAVIGATION_SERVICE :: "apps.navigation"
+APPS_NAVIGATION_CAPABILITY :: "app-navigation"
 APPS_VERSION :: 1
 APPS_CATALOG_ASSET :: "assets/apps/catalog.json"
 

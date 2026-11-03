@@ -58,5 +58,8 @@
   "saved_library": "正在显示已保存的应用库。",
   "offline_library": "你处于离线状态，已下载的应用仍可使用。",
   "refresh_library": "刷新应用库",
-  "buy": "购买"
+  "buy": "购买",
+  "profile": "个人资料",
+  "editor_addon": "可选的编辑器扩展，在游戏内打开。你的草稿会保留。",
+  "library_connection": "游戏库连接"
 }
