@@ -126,6 +126,12 @@ def main():
     bundle('collection', thin_root, stage('thin-stage', 'fixture.thin',
         [thin_base, thin_entry],
         {'assets/child.zx': leaf, 'assets/addon.zx': thin}, controller))
+    cached_root = WORK / 'cached-root.zx'
+    bundle('collection', cached_root, stage('cached-stage', 'fixture.cached',
+        [thin_base, thin_entry], {}, controller))
+    os.environ['APPS_FIXTURE_CACHED_ROOT_BUNDLE'] = runtime_path(cached_root)
+    os.environ['APPS_FIXTURE_CACHED_ROOT_SHA256'] = digest(cached_root)
+    os.environ['APPS_FIXTURE_ADDON_BUNDLE'] = runtime_path(thin)
     # A slim collection like Arcade's: no packed controller, and its children's
     # preview art in one separate bundle.
     art_assets = WORK / 'art-stage/assets'
@@ -257,7 +263,7 @@ def main():
     if CONTROLLER_ONLY:
         print('Apps controller local tests: cards, menus, update/rollback, download consent, covers and English/German Buy/capability checks passed')
         return
-    print('Apps native: asynchronous root/child preparation and favorites, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
+    print('Apps native: exact bundle ownership, disk-cache demand restore, asynchronous root/child preparation and favorites, safe cancellation and Back, screenshot/icon cards, menus, update/rollback targets, 12 locales, nested node/2, resource bounds and stable locators passed')
 
 
 if __name__ == '__main__':

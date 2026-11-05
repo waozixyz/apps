@@ -1446,6 +1446,134 @@ PreparationLocatorCheck :: (bytes: string, digest: string, harness_digest: strin
     return 0
 }
 
+cached_base: string;
+cached_addon: string;
+cached_resident: [2]bool;
+cached_pending: [2]bool;
+cached_restores: s32;
+
+CachedIndex :: (entry: *AppEntry) -> s32 {
+    id := TextUntilNul(entry.id[:])
+    if id == "fixture.counter" { return 0 }
+    if id == "fixture.addon" { return 1 }
+    return -1
+}
+
+CachedBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
+    index := CachedIndex(entry)
+    if index < 0 || !cached_resident[index] { return HostedAsset.{} }
+    return HostedAsset.{.found = true, .data = ifx index == 0 then cached_base else cached_addon}
+}
+
+CachedDownload :: (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool {
+    index := CachedIndex(entry)
+    if index < 0 || cached_resident[index] { return false }
+    download.cached = true
+    download.downloading = cached_pending[index]
+    return true
+}
+
+CachedFetch :: (context: *void, account: string, parent: *AppNode, entry: *AppEntry,
+    operation: s32, reply: *AppsReply) -> bool {
+    index := CachedIndex(entry)
+    if index < 0 || operation != APPS_INSTALL { return false }
+    if !cached_pending[index] { cached_restores += 1 }
+    cached_pending[index] = true
+    reply.status = APPS_QUEUED
+    return true
+}
+
+BundleOwnershipCheck :: () -> s32 {
+    bytes, found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_CACHED_ROOT_BUNDLE"))
+    base, base_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_COUNTER_BUNDLE"))
+    addon, addon_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_ADDON_BUNDLE"))
+    duplicate, duplicate_found := ReadEntireFile(FixtureEnvironment("APPS_FIXTURE_COUNTER_BUNDLE"))
+    if !found || !base_found || !addon_found || !duplicate_found { return 1300 }
+    defer { AppFileFree(bytes); AppFileFree(base); AppFileFree(addon); AppFileFree(duplicate) }
+    cached_base = base
+    cached_addon = addon
+    cached_resident[0] = false
+    cached_resident[1] = false
+    cached_pending[0] = false
+    cached_pending[1] = false
+    cached_restores = 0
+    host: AppHost
+    defer { PreparationTestBlock(false); unused SlimStop(*host) }
+    platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call,
+        .widgets = Widgets, .save = Save, .state = State, .bundle = CachedBundle,
+        .download = CachedDownload, .fetch = CachedFetch}
+    digest := FixtureEnvironment("APPS_FIXTURE_CACHED_ROOT_SHA256")
+    harness := FixtureEnvironment("APPS_FIXTURE_HARNESS_SHA256")
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.cached", "collection", digest,
+        "account-a", platform, harness) { return 1301 }
+    root := AppTreeNode(*host.tree, host.tree.active)
+    runtime := cast(*AppRuntime)root.runtime
+    // Shelf probes see verified files, but never cause resident reloads.
+    for frame: cast(s32)0..9 {
+        card := CatalogCard(AppArgumentText(AppHostCatalog(runtime.frontend)), "fixture.addon")
+        if TextHas(card, "\"on_device\":false") || TextHas(card, "\"installed\":false") ||
+        cached_restores != 0 || AppHostBorrowsBundle(*host, base) ||
+        AppHostBorrowsBundle(*host, addon) { return 1302 }
+    }
+    if !AppHostBorrowsBundle(*host, bytes) || AppHostBorrowsBundle(*host, duplicate) { return 1303 }
+    // An actual open restores its dependency, then its own package, without
+    // another consent dialog or attempting to parse absent storage.
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}") ||
+    cached_restores != 1 || !cached_pending[0] || host.preparation != null { return 1304 }
+    cached_resident[0] = true
+    cached_pending[0] = false
+    unused AppTreeDrain(*host.tree)
+    if cached_restores != 2 || !cached_pending[1] || host.preparation != null { return 1305 }
+    cached_resident[1] = true
+    cached_pending[1] = false
+    PreparationTestBlock(true)
+    unused AppTreeDrain(*host.tree)
+    if !PreparationParserWait() || !AppHostBorrowsBundle(*host, base) ||
+    !AppHostBorrowsBundle(*host, addon) || AppHostBorrowsBundle(*host, duplicate) { return 1306 }
+    // Canceled workers retain every input until the parser is actually done.
+    if AppHostStop(*host) || !AppHostBorrowsBundle(*host, base) ||
+    !AppHostBorrowsBundle(*host, addon) { return 1307 }
+    AppHostCollect(*host)
+    if !AppHostBorrowsBundle(*host, base) || !AppHostBorrowsBundle(*host, addon) { return 1308 }
+    PreparationTestBlock(false)
+    if !SlimStop(*host) || AppHostBorrowsBundle(*host, base) ||
+    AppHostBorrowsBundle(*host, addon) || AppHostBorrowsBundle(*host, bytes) { return 1309 }
+
+    if !AppHostStart(*host, bytes, "fixture.test", "fixture.cached", "collection", digest,
+        "account-a", platform, harness) { return 1310 }
+    root_handle := host.tree.active
+    base_handle: AppHandle
+    if PreparationChildWait(*host, root_handle, "fixture.counter", *base_handle) != 1 { return 1311 }
+    base_node := AppTreeNode(*host.tree, base_handle)
+    base_runtime := cast(*AppRuntime)base_node.runtime
+    if !Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}") ||
+    !PreparationNavigationWait(*host, root_handle) { return 1312 }
+    runtime = AppHostActiveRuntime(*host)
+    if runtime.dependency_count != 1 || runtime.dependency_owners[0] != base_runtime ||
+    base_runtime.library_borrows != 1 || !AppHostBorrowsBundle(*host, base[4:24]) ||
+    AppHostBorrowsBundle(*host, duplicate) { return 1313 }
+    // Navigation-inactive and even retired libraries remain borrowed by the
+    // live add-on. Collection cannot release their storage or original charge.
+    AppTreeDrop(*host.tree, base_handle)
+    AppHostCollect(*host)
+    if !AppHostBorrowsBundle(*host, base) || !AppHostBorrowsBundle(*host, addon) ||
+    host.retired == null { return 1314 }
+    host.tree.busy = true
+    guarded := AppHostBorrowsBundle(*host, duplicate)
+    host.tree.busy = false
+    if !guarded { return 1315 }
+    if AppHostBack(*host) != 1 || !AppHostBorrowsBundle(*host, base) ||
+    !AppHostBorrowsBundle(*host, addon) { return 1316 }
+    // Paint still has its source before Collect, then both leases retire.
+    AppHostCollect(*host)
+    if AppHostBorrowsBundle(*host, base) || AppHostBorrowsBundle(*host, addon) ||
+    !AppHostBorrowsBundle(*host, bytes) || host.retired != null || cached_restores != 2 { return 1317 }
+    if !SlimStop(*host) || AppHostBorrowsBundle(*host, bytes) { return 1318 }
+    cached_base = ""
+    cached_addon = ""
+    return 0
+}
+
 remote_bytes: string;
 remote_fetches: s32;
 
@@ -1687,6 +1815,7 @@ SlimCollectionCheck :: () -> s32 {
         return 1203
     }
     root := AppTreeNode(*host.tree, host.tree.active)
+    if !AppHostBorrowsBundle(*host, ui) || AppHostBorrowsBundle(*host, art) { return 1210 }
     // The art is missing until it arrives; the first request asks for it once.
     if AppHostAsset(root, "assets/preview.png").found || slim_art_fetches != 1 ||
     !AppHostAssetPending(root, "assets/preview.png") || AppHostAssetPending(root, "../preview.png") { unused SlimStop(*host); return 1204 }
@@ -1705,7 +1834,9 @@ SlimCollectionCheck :: () -> s32 {
     }
     if !preview.found || preview.data.count < 8 || preview.data[1:4] != "PNG" ||
     AppHostAssetPending(root, "assets/missing.png") { unused SlimStop(*host); return 1207 }
+    if !AppHostBorrowsBundle(*host, art) { return 1211 }
     if !SlimStop(*host) { return 1208 }
+    if AppHostBorrowsBundle(*host, art) || AppHostBorrowsBundle(*host, ui) { return 1212 }
     slim_controller = ""
     slim_art = ""
     return 0
@@ -1909,6 +2040,8 @@ Check :: () -> s32 {
     if discovery != 0 {
         return discovery
     }
+    ownership := BundleOwnershipCheck()
+    if ownership != 0 { return ownership }
     declared := DeclaredChildCheck()
     if declared != 0 {
         return declared

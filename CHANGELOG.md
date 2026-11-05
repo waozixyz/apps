@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Expose exact retained bundle ownership and restore verified disk-cached children only when opened, so hosts can bound resident package memory safely.
+
 - Show console covers on a drawn scenic pattern in both orientations, without game art behind the covers.
 - Select a neighbouring console cover with a click or tap; activating the selected cover downloads it in place with a progress bar.
 - Show the shared artwork title with Play for covers whose action is "title".

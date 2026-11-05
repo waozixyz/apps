@@ -57,7 +57,9 @@ AppPlatformState :: #type (context: *void, account: string, identity: *AppIdenti
 // A child its collection declares but does not pack, such as a game that is
 // downloaded on its own. Found once the platform has its bytes, which the
 // host checks against the catalog digest on every open. The platform keeps
-// returned bytes unchanged until AppHostStop.
+// returned bytes unchanged while AppHostBorrowsBundle reports a borrow. Call
+// that query between host calls, after consuming paint and AppHostCollect.
+// Keeping bytes until AppHostStop remains valid.
 AppPlatformBundle :: #type (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset;
 // True for such a child that is not on the device yet, with its download.
 AppPlatformDownload :: #type (context: *void, parent: *AppNode, entry: *AppEntry, download: *AppDownload) -> bool;
@@ -73,6 +75,9 @@ AppDownload :: struct {
     // Percent arrived, or -1 while unknown.
     progress: s32
     failed: bool
+    // Verified on disk, but not necessarily resident. Catalog probes do not
+    // reload it; preparing an actual open asks fetch to restore it.
+    cached: bool
 }
 
 AppPlatform :: struct {
@@ -153,6 +158,8 @@ AppRuntime :: struct {
     dependency_entries: [32]*AppEntry
     dependency_apps: [32]HostedApp
     dependency_owners: [32]*AppRuntime
+    // Exact immutable sources retained by each opened or leased library.
+    dependency_sources: [32]string
     // Exact immutable source identity only; never dereferenced after open.
     source_data: *u8
     source_bytes: s64
@@ -166,6 +173,7 @@ AppRuntime :: struct {
     catalog_revision: s64
     // A collection's separate art bundle, opened once the platform has it.
     art: HostedApp
+    art_source: string
     art_open: bool
     art_requested: bool
     art_retry_at: s64
@@ -260,7 +268,11 @@ AppHostAddonMissing :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
         missing = missing || !host.platform.state(host.platform.context, TextUntilNul(host.tree.account[:]), *identity, *state) || !state.installed
     }
     packed: bool
-    missing = missing || !AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, entry, *packed).found
+    if !missing && !AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, entry, *packed).found {
+        download: AppDownload
+        missing = host.platform.download == null ||
+            !host.platform.download(host.platform.context, parent, entry, *download) || !download.cached
+    }
     return missing
 }
 
@@ -875,6 +887,7 @@ AppHostArtAsset :: (runtime: *AppRuntime, node: *AppNode, path: string) -> Hoste
             AppHostArtRequestFailed(runtime)
             return HostedAsset.{}
         }
+        runtime.art_source = bytes.data
         runtime.art_open = true
     }
     return HostedAppAsset(*runtime.art, path)
@@ -1089,6 +1102,8 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
         }
         return 1
     }
+    resident := AppHostEnsureResident(host, parent, entry, 0)
+    if resident <= 0 { return resident }
     packed: bool
     resource := AppHostChildBundle(host, owner, parent, entry, *packed)
     charge := resource.data.count + 65536 + cast(s64)size_of(AppNode)
@@ -1622,6 +1637,60 @@ AppHostClose :: (context: *void, node: *AppNode) {
     node.runtime = null
 }
 
+// Compare retained source ranges, never their contents. Packed descendants can
+// borrow a slice of the same platform allocation; equal hashes are unrelated.
+AppHostBundleOverlaps :: (bytes: string, data: *u8, count: s64) -> bool {
+    if bytes.count <= 0 || count <= 0 { return false }
+    source := cast(*TextDescriptor)(*bytes)
+    first := cast(usize)source.data
+    second := cast(usize)data
+    if first <= second { return second - first < cast(usize)bytes.count }
+    return first - second < cast(usize)count
+}
+
+AppHostBundleContainsSource :: (bytes: string, source: string) -> bool {
+    descriptor := cast(*TextDescriptor)(*source)
+    return AppHostBundleOverlaps(bytes, descriptor.data, source.count)
+}
+
+AppHostRuntimeBorrowsBundle :: (runtime: *AppRuntime, bytes: string) -> bool {
+    if runtime == null { return false }
+    if runtime.busy || AppHostBundleOverlaps(bytes, runtime.source_data, runtime.source_bytes) ||
+    AppHostBundleContainsSource(bytes, runtime.art_source) { return true }
+    for index: cast(s32)0..runtime.dependency_count - 1 {
+        if AppHostBundleContainsSource(bytes, runtime.dependency_sources[index]) { return true }
+    }
+    return AppHostRuntimeBorrowsBundle(runtime.frontend, bytes)
+}
+
+// Query on the host's owning thread, between host calls. Consume queued paint
+// before Collect; only then may an unborrowed platform allocation be evicted.
+// This does not collect, dereference source bytes, or change any route. Live,
+// dormant, frontend, dependency, art, retired and canceled worker users count
+// independently of active navigation, account and release identity.
+AppHostBorrowsBundle :: (host: *AppHost, bytes: string) -> bool {
+    if bytes.count <= 0 { return false }
+    if host == null || host.tree.busy || host.tree.draining { return true }
+    for index: cast(s64)0..host.tree.nodes.count - 1 {
+        node := host.tree.nodes[index].node
+        if node != null && AppHostRuntimeBorrowsBundle(cast(*AppRuntime)node.runtime, bytes) { return true }
+    }
+    runtime := host.retired
+    while runtime != null {
+        if AppHostRuntimeBorrowsBundle(runtime, bytes) { return true }
+        runtime = runtime.next_retired
+    }
+    preparation := host.preparation
+    if preparation != null {
+        if AppHostBundleContainsSource(bytes, preparation.bytes) ||
+        AppHostBundleContainsSource(bytes, preparation.supplied_controller) { return true }
+        for index: cast(s32)0..preparation.libraries.count - 1 {
+            if AppHostBundleContainsSource(bytes, preparation.libraries.items[index].bytes) { return true }
+        }
+    }
+    return false
+}
+
 // Call only after the root renderer has consumed its frame. Closing a routed
 // VM does not prove that submitted images/text stopped borrowing its storage.
 AppHostCollect :: (host: *AppHost) {
@@ -1747,7 +1816,9 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     if platform.version_effect != null { provider.version_effect = AppHostVersionEffect }
     if platform.open_effect != null { provider.open_effect = AppHostOpenEffect }
     if platform.fetch != null { provider.fetch = AppHostFetch }
-    if preparation != null { provider.prepare = AppHostPrepareChild }
+    if preparation != null || (platform.download != null && platform.fetch != null) {
+        provider.prepare = AppHostPrepareChild
+    }
     catalog_ready := !manifest.found || (AppCatalogRead(manifest.data, id, *root.catalog) &&
         AppHostController(host, root, runtime, preparation))
     item := root.catalog.children
@@ -1850,6 +1921,30 @@ AppHostVersions :: (bytes: *Vec(u8), state: *AppState, enabled: bool, updates_al
     BuilderPrint(bytes, "]")
 }
 
+// Restore disk-cached children only for a requested open, including its exact
+// declared dependencies. A pending restore waits through normal preparation;
+// repeated catalog reads never enter this path or imply network consent.
+AppHostEnsureResident :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, depth: s32) -> s32 {
+    if entry == null || parent == null || parent.runtime == null || depth > 32 { return -1 }
+    for index: cast(s32)0..entry.dependency_count - 1 {
+        dependency := AppCatalogAt(*parent.catalog, AppCatalogFind(*parent.catalog, TextUntilNul(entry.dependencies[index][:])))
+        ready := AppHostEnsureResident(host, parent, dependency, depth + 1)
+        if ready <= 0 { return ready }
+    }
+    packed: bool
+    if AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, entry, *packed).found { return 1 }
+    download: AppDownload
+    if host.platform.download == null ||
+    !host.platform.download(host.platform.context, parent, entry, *download) || download.failed { return -1 }
+    if download.downloading { return 0 }
+    if !download.cached || host.platform.fetch == null { return -1 }
+    reply: AppsReply
+    if !host.platform.fetch(host.platform.context, TextUntilNul(host.tree.account[:]),
+        parent, entry, APPS_INSTALL, *reply) ||
+    (reply.status != APPS_QUEUED && reply.status != APPS_APPLIED) { return -1 }
+    return 0
+}
+
 // One installation plan is shared by consent, progress and the actual fetch.
 // Already present packages are omitted, and a shared dependency appears once.
 AppInstallPlan :: struct {
@@ -1875,6 +1970,7 @@ AppHostPlanEntry :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, plan: *
     }
     download := AppDownload.{.progress = -1}
     if host.platform.download == null || !host.platform.download(host.platform.context, parent, entry, *download) { return true }
+    if download.cached { return true }
     size := ifx download.bytes > 0 then download.bytes else entry.bytes
     plan.entries[plan.count] = entry
     plan.sizes[plan.count] = size
@@ -1906,6 +2002,7 @@ AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparat
         runtime.dependency_apps[opened].bundle = item.bundle
         runtime.dependency_entries[opened] = item.entry
         runtime.dependency_owners[opened] = cast(*AppRuntime)item.owner
+        runtime.dependency_sources[opened] = item.bytes
         borrowed := item.owner != null
         item.owner = null
         item.bundle = null
@@ -1930,6 +2027,7 @@ AppHostCloseLibraries :: (runtime: *AppRuntime) {
             runtime.dependency_owners[index] = null
             runtime.dependency_apps[index] = HostedApp.{}
         } else { HostedAppClose(*runtime.dependency_apps[index]) }
+        runtime.dependency_sources[index] = ""
     }
     runtime.dependency_count = 0
 }
@@ -1959,6 +2057,7 @@ AppHostDependenciesOpen :: (runtime: *AppRuntime, parent: *AppNode, entry: *AppE
             }
         }
         runtime.dependency_entries[opened] = dependency
+        runtime.dependency_sources[opened] = resource.data
         runtime.dependency_count += 1
         runtime.node.bytes += resource.data.count + 65536
         if !AppHostDependenciesOpen(runtime, parent, dependency, depth + 1) { return false }

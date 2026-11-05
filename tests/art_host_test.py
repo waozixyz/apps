@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import threading
@@ -77,12 +78,14 @@ def main():
     run(cc, '-O1', '-ffunction-sections', '-fdata-sections', '-I' + str(raylib / 'src'),
         '-c', raylib / 'src/rtextures.c', '-o', decoder)
     executable = WORK / 'test'
+    webp_libs = shlex.split(subprocess.check_output(
+        ['pkg-config', '--libs', 'libwebpdemux', 'libwebp'], text=True))
     run(cc, '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
         '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
         ROOT / 'tests/preparation_host.c', support, sys.argv[1], decoder,
         '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes', '-Wl,--wrap=BundleOpenBytesWithLibraries',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
-        '-lm', '-lpthread', '-o', executable)
+        *webp_libs, '-lm', '-lpthread', '-o', executable)
     class Handler(http.server.BaseHTTPRequestHandler):
         calls = 0
         def do_GET(self):

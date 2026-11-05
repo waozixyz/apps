@@ -74,6 +74,22 @@ state, `AppPlatform.fetch` installs or removes it without opening it, and
 `AppPlatform.bundle` returns its downloaded bytes, which the host checks
 against the catalog digest before every open.
 
+Providers may bound their resident cache without deleting verified downloads.
+`AppDownload.cached` means the exact digest remains verified on disk. Such a
+package stays installed on the shelf; only preparation of a requested open
+calls `fetch` to restore its bytes, including its declared dependencies. Report
+`downloading` while that restore waits, and keep ordinary missing packages
+behind their existing download consent.
+
+Keep returned bundle bytes immutable while `AppHostBorrowsBundle(host, bytes)`
+returns true. Call it on the owning thread between host calls, after rendering
+has consumed queued paint and `AppHostCollect` has run. It includes live and
+dormant nodes, frontends, separate art, linked/resource dependencies, retired
+runtimes and unfinished or canceled preparation inputs. It compares actual
+source storage, including overlapping packed slices, never hashes or selected
+navigation. Check every host sharing the allocation and any provider-owned
+borrows before eviction. Keeping all bytes until `AppHostStop` remains valid.
+
 An add-on declares its sibling `dependencies` in the same signed catalog.
 Installation lists every missing package and its total size, and skips
 dependencies already on the device. Read-only `resources` links reuse explicit
