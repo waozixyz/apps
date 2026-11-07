@@ -79,8 +79,8 @@
     "name": "Apps"
   },
   "toolchain": {
-    "commit": "e4e8efa4a92f36e2fb0cea1d56b11471afa68621",
-    "ref": "e4e8efa4a92f36e2fb0cea1d56b11471afa68621",
+    "commit": "0e91eb43bd665f02db86eb9b9cdd875b5436a066",
+    "ref": "0e91eb43bd665f02db86eb9b9cdd875b5436a066",
     "url": "https://github.com/ziranlang/ziran.git"
   }
 }

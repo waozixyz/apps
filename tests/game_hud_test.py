@@ -74,7 +74,7 @@ def main():
     bundle = WORK / 'tree.zx'
     run(toolchain / 'build/bin/zi2zx', 'bundle', '--module-path', toolchain / 'std', '--root', ROOT / 'tests',
         '--entry', 'game_hud_behavior:Check', *args, '-o', bundle, ROOT / 'tests/game_hud_behavior.zi')
-    assert run(toolchain / 'build/bin/zi2zx-vm', 'run', bundle).strip() == '0'
+    assert run(toolchain / 'build/bin/zi2zx', 'run', '--vm', bundle).strip() == '0'
     print('PASS portable: same retained-tree behavior and bounds')
     args = [arg for source, target in [('image_widget:ImageHostedHost', 'HudImage'),
             ('button_widget:ButtonHostedHost', 'HudButton'), ('box_widget:BoxHostedHost', 'HudBox'),
@@ -84,7 +84,7 @@ def main():
     bundle = WORK / 'hosted.zx'
     run(toolchain / 'build/bin/zi2zx', 'bundle', '--module-path', toolchain / 'std', '--root', ROOT / 'tests', '--define', 'KRYON_HOSTED_UI',
         '--entry', 'game_hud_hosted:Check', *args, '-o', bundle, ROOT / 'tests/game_hud_hosted.zi')
-    assert run(toolchain / 'build/bin/zi2zx-vm', 'run', bundle).strip() == '0'
+    assert run(toolchain / 'build/bin/zi2zx', 'run', '--vm', bundle).strip() == '0'
     print('PASS hosted portable: images, invisible translated actions, amount, default/custom asset paths and results')
     print('PASS assets: transparent WebP thumbnails <=256px; package export and translations')
     os.environ.pop('ZIRAN_PACKAGE_MAP')
