@@ -4,8 +4,6 @@
 
 - Build with Ziran 0e91eb43 (program format 62); hosts on host_api 43 load the new controller.
 
-- Build with Ziran 0e91eb43, which writes program format 62, so hosts on that toolchain load the Apps controller.
-
 - Expose exact retained bundle ownership and restore verified disk-cached children only when opened, so hosts can bound resident package memory safely.
 
 - Show console covers on a drawn scenic pattern in both orientations, without game art behind the covers.
