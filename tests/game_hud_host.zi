@@ -65,6 +65,11 @@ RasterText :: (value: string, x: s32, y: s32, font: s32,
 }
 
 #program_export
+RasterTextRotated :: (value: string, x: s32, y: s32, font: s32,
+    color: Color, clip: Rectangle, origin: Vector2, rotation: float32,
+    outer_clip: Rectangle, outer_clipped: bool, emphasis: bool, italic: bool) {}
+
+#program_export
 RasterTextClipped :: (value: string, x: s32, y: s32, font: s32,
     color: Color, clip: Rectangle) {
     unused clip
@@ -103,4 +108,10 @@ RasterImageMesh :: (asset_path: string, texture_id: u32,
     unused rows
     unused clip
     unused tint
+}
+
+#program_export
+RasterTriangles :: (points: []Vector2, color: Color) {
+    unused points
+    unused color
 }

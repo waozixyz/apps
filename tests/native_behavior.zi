@@ -112,6 +112,10 @@ RasterTriangles :: (points: []Vector2, color: Color) {}
 #program_export
 RasterText :: (value: string, x: s32, y: s32, font: s32, color: Color) {}
 #program_export
+RasterTextRotated :: (value: string, x: s32, y: s32, font: s32,
+    color: Color, clip: Rectangle, origin: Vector2, rotation: float32,
+    outer_clip: Rectangle, outer_clipped: bool, emphasis: bool, italic: bool) {}
+#program_export
 RasterTextClipped :: (value: string, x: s32, y: s32, font: s32, color: Color, clip: Rectangle) {}
 #program_export
 RasterImage :: (path: string, texture: u32, source: Rectangle, destination: Rectangle,

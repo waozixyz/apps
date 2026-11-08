@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Build with Ziran 0e91eb43 (program format 62) and Kryon b9aed758; hosts on host_api 43 load the new controller.
+- Build with Ziran 0e91eb43 (program format 62) and Kryon 99c934a0 (staged swipes, correction caret and image sizing); hosts on host_api 43 load the new controller.
 
 - Expose exact retained bundle ownership and restore verified disk-cached children only when opened, so hosts can bound resident package memory safely.
 

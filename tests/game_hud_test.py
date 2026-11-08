@@ -64,6 +64,8 @@ def main():
         'font_metrics:MeasureGlyphLineHeight': 'MeasureGlyphLineHeight',
         'image_raster:ImageWidth': 'ImageWidth', 'image_raster:ImageHeight': 'ImageHeight',
         'raster_text:RasterText': 'RasterText', 'raster_text:RasterTextClipped': 'RasterTextClipped',
+        'raster_text:RasterTextRotated': 'RasterTextRotated',
+        'raster_triangles:RasterTriangles': 'RasterTriangles',
         'raster_shape:RasterRoundedRectangle': 'RasterRoundedRectangle',
         'raster_shape:RasterRoundedRectangleOutline': 'RasterRoundedRectangleOutline',
         'raster:RasterLine': 'RasterLine', 'paint_queue:RasterImage': 'RasterImage',
