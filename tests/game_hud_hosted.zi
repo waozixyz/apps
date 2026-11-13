@@ -1,42 +1,42 @@
 #import "game_hud"
 #import "kryon/session"
 #import "kryon/geometry"
-#import "kryon/image_props"
-#import "kryon/button_props"
-#import "kryon/text_props"
-#import "kryon/box_props"
-boxes: [3]BoxProps;
+Box :: #import "kryon/box";
+Button :: #import "kryon/button";
+Image :: #import "kryon/image";
+Text :: #import "kryon/text";
+boxes: [3]Box.Props;
 box_count: s32;
 #program_export
-HudBox :: (session: Session, props: BoxProps) -> s32 {
+HudBox :: (session: Session, props: Box.Props) -> s32 {
     unused session
     if box_count < 3 { boxes[box_count] = props }
     box_count += 1
     return 0
 }
-images: [2]ImageProps;
-buttons: [2]ButtonProps;
-amount: TextProps;
+images: [2]Image.Props;
+buttons: [2]Button.Props;
+amount: Text.Props;
 image_count: s32;
 button_count: s32;
 activation: s32;
 palette_text: u32;
 restores: s32;
 #program_export
-HudImage :: (session: Session, props: ImageProps) {
+HudImage :: (session: Session, props: Image.Props) {
     unused session
     if image_count < 2 { images[image_count] = props }
     image_count += 1
 }
 #program_export
-HudButton :: (session: Session, props: ButtonProps) -> s32 {
+HudButton :: (session: Session, props: Button.Props) -> s32 {
     unused session
     if button_count < 2 { buttons[button_count] = props }
     button_count += 1
     return ifx button_count == activation then 1 else 0
 }
 #program_export
-HudText :: (session: Session, props: TextProps) { unused session; amount = props }
+HudText :: (session: Session, props: Text.Props) { unused session; amount = props }
 #program_export
 Check :: () -> s32 {
     props := AppGameHudProps.{.key = 700, .bounds = Rectangle.{31.0, 47.0, 240.0, 56.0},

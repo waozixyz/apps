@@ -14,7 +14,7 @@
 #import "kryon/notification_schedule_host"
 #import "kryon/widget_host"
 #import "kryon/widget_codec"
-#import "kryon/text_input_props"
+TextField :: #import "kryon/text_field";
 #import, file "protocol.zi";
 #import, file "node_types.zi";
 #import, file "node_codec.zi";
@@ -44,7 +44,7 @@ NodeContext :: struct {
     succeeded: bool
     key: s32
     // Typing for the text field that has focus, as app/1 apps receive it.
-    input: TextFieldInput
+    input: TextField.Input
     input_codec: WidgetTextFieldInputCodec
 }
 
@@ -194,7 +194,7 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
         return 1
     }
     if name == "AppFieldInputHost" && count == 0 {
-        input := ifx node.message.action == APP_FRAME then node.input else TextFieldInput.{}
+        input := ifx node.message.action == APP_FRAME then node.input else TextField.Input.{}
         result.* = WidgetEncodeTextFieldInput(input, *node.input_codec)
         return 1
     }

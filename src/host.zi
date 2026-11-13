@@ -17,8 +17,7 @@
 #import "kryon/geometry"
 #import "kryon/tree"
 #import "kryon/tree_input"
-#import "kryon/box_widget"
-#import "kryon/box_props"
+Box :: #import "kryon/box";
 #import "kryon/drawing_props"
 #import, file "game_hud.zi";
 #import, file "appearance.zi";
@@ -1497,7 +1496,7 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
             runtime.app.bounds = Rectangle.{guest_area.x, guest_area.y + 64.0, guest_area.width, guest_area.height - 64.0}
             runtime.legacy.frame.top += 64
             guest_area = runtime.app.bounds
-            unused Box(frame_session, BoxProps.{.key = cast(u64)49190,
+            unused Box.Draw(frame_session, Box.Props.{.key = cast(u64)49190,
                 .bounds = Rectangle.{home_bounds.x, home_bounds.y, home_bounds.width, 64.0},
                 .fill = ColorFromPacked(AppCoversPalette().background)})
         }

@@ -1,6 +1,0 @@
-// An aggregate import must remain usable even when a native consumer only
-// calls a narrow subset of widgets. This catches imported slot record types.
-#import "kryon/Widgets"
-
-#program_export
-Check :: () -> s32 { return 0 }

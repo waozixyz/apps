@@ -19,7 +19,6 @@
 #import "kryon/tree"
 #import "kryon/paint_queue"
 #import "kryon/widget_host"
-#import "kryon/text_input_props"
 #import, file "../src/protocol.zi";
 #import, file "../src/tree.zi";
 #import, file "../src/host.zi";

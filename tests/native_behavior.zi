@@ -22,10 +22,8 @@
 #import "kryon/input_protocol"
 #import "kryon/frame_snapshot"
 #import "kryon/widget_codec"
-#import "kryon/button_props"
-#import "kryon/scroll_widget"
-#import "kryon/scroll_props"
-#import "kryon/text_input_props"
+Scroll :: #import "kryon/scroll";
+TextField :: #import "kryon/text_field";
 #import, file "../src/controller.zi";
 #import, file "../src/protocol.zi";
 #import, file "../src/catalog.zi";
@@ -420,7 +418,7 @@ NativeDraw :: (quiet: bool = false, cards_only: bool = true) -> bool {
     native_controller.app.bounds = Rectangle.{0.0, 0.0, 480.0, 600.0}
     outer: bool
     if native_icon_mode {
-        group := Scroll(ui_session, ScrollProps.{.key = cast(u64)99, .bounds = Rectangle.{0.0, 0.0, 480.0, 88.0}, .content_height = 200})
+        group := Scroll.Draw(ui_session, Scroll.Props.{.key = cast(u64)99, .bounds = Rectangle.{0.0, 0.0, 480.0, 88.0}, .content_height = 200})
         if !group.opened { return false }
         outer = true
         native_controller.app.bounds = Rectangle.{group.content.x, group.content.y, group.content.width, 88.0}
@@ -563,11 +561,11 @@ NativeControllerCheck :: () -> s32 {
     if leaf < 0 || !TreeActivateAt(ui_session, leaf) || !NativeDraw() { return 77 }
     field := NativeLabel("Name", WidgetKindTextField)
     if field < 0 || !TreeFocusAt(ui_session, field) || !NativeDraw() || !NativeDraw() { return 78 }
-    native_controller.app.input = TextFieldInput.{.select_all = true}
+    native_controller.app.input = TextField.Input.{.select_all = true}
     if !NativeDraw() { return 79 }
-    native_controller.app.input = TextFieldInput.{.text = "Calm"}
+    native_controller.app.input = TextField.Input.{.text = "Calm"}
     if !NativeDraw() { return 80 }
-    native_controller.app.input = TextFieldInput.{}
+    native_controller.app.input = TextField.Input.{}
     if !NativeDraw() || !NativeClick("Save", WidgetKindButton) || !NativeDraw() || native_queued != 5 ||
     native_request.operation != APPS_PROPERTIES || TextUntilNul(native_request.id[:]) != "native.breathing" ||
     TextUntilNul(native_request.title[:]) != "Calm" || TextUntilNul(native_request.icon[:]) != "leaf" ||

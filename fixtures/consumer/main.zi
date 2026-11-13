@@ -3,7 +3,9 @@
 #import "apps/protocol"
 #import "apps/controller"
 Launcher :: #import "apps/launcher";
-UI :: #import "kryon/Widgets";
+KryonSession :: #import "kryon/session";
+Geometry :: #import "kryon/geometry";
+Drawing :: #import "kryon/drawing_props";
 #import "std/c_string"
 #import "std/bundle_host"
 Node :: #import "apps/node_types";
@@ -27,14 +29,14 @@ OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *
 }
 
 // Independent public imports must use the same Kryon package identity.
-TypedScreen :: (session: UI.Session, bounds: UI.Rectangle, fill: UI.Color) -> bool {
+TypedScreen :: (session: KryonSession.Session, bounds: Geometry.Rectangle, fill: Drawing.Color) -> bool {
     frame := Node.AppUiFrame.{.session = session}
     state: Launcher.AppLauncherState
     props := Launcher.AppLauncherProps.{.bounds = bounds, .scale = 1.0, .locale = "en"}
-    shared_fill: Launcher.Color = fill
+    shared_bounds: Geometry.Rectangle = props.bounds
     items: [1]Launcher.AppLauncherItem
     unused Launcher.AppLauncherScreen(frame.session, *state, props, items[:])
-    return shared_fill.a == 255
+    return fill.a == 255 && shared_bounds.width == bounds.width
 }
 
 #program_export
@@ -78,10 +80,10 @@ Check :: () -> s32 {
     if launcher.count != 1 || launcher.visible[0] != 2 || launcher.favorites != 0 { return 9 }
     if !Launcher.AppLauncherMatches("Écrire", "éC") || Launcher.AppLauncherMatches("Clock", "other") { return 10 }
     // Type-check TypedScreen above without linking a graphical test host.
-    frame := Node.AppUiFrame.{.session = UI.Session.{.slot = 3, .epoch = cast(u64)7}}
-    props := Launcher.AppLauncherProps.{.bounds = UI.Rectangle.{0.0, 0.0, 800.0, 600.0}}
-    fill: Launcher.Color = UI.Color.{1, 2, 3, 255}
+    frame := Node.AppUiFrame.{.session = KryonSession.Session.{.slot = 3, .epoch = cast(u64)7}}
+    props := Launcher.AppLauncherProps.{.bounds = Geometry.Rectangle.{0.0, 0.0, 800.0, 600.0}}
+    bounds: Geometry.Rectangle = props.bounds
     if frame.session.slot != 3 || frame.session.epoch != cast(u64)7 ||
-    props.bounds.width != 800.0 || fill.a != 255 { return 11 }
+    bounds.width != 800.0 { return 11 }
     return 0
 }

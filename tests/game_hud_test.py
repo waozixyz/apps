@@ -78,10 +78,10 @@ def main():
         '--entry', 'game_hud_behavior:Check', *args, '-o', bundle, ROOT / 'tests/game_hud_behavior.zi')
     assert run(toolchain / 'build/bin/zi2zx', 'run', '--vm', bundle).strip() == '0'
     print('PASS portable: same retained-tree behavior and bounds')
-    args = [arg for source, target in [('image_widget:ImageHostedHost', 'HudImage'),
-            ('button_widget:ButtonHostedHost', 'HudButton'), ('box_widget:BoxHostedHost', 'HudBox'),
+    args = [arg for source, target in [('image:ImageHostedHost', 'HudImage'),
+            ('button:ButtonHostedHost', 'HudButton'), ('box:BoxHostedHost', 'HudBox'),
             ('widget_palette:WidgetPaletteHostedHost', 'HudPalette'),
-            ('widget_palette:WidgetPaletteRestoreHostedHost', 'HudPaletteRestore'), ('text_widget:TextHostedHost', 'HudText')]
+            ('widget_palette:WidgetPaletteRestoreHostedHost', 'HudPaletteRestore'), ('text:TextHostedHost', 'HudText')]
             for arg in ('--bind', f'kryon/{source}=game_hud_hosted:{target}')]
     bundle = WORK / 'hosted.zx'
     run(toolchain / 'build/bin/zi2zx', 'bundle', '--module-path', toolchain / 'std', '--root', ROOT / 'tests', '--define', 'KRYON_HOSTED_UI',
