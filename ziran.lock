@@ -20,15 +20,6 @@
       "url": "https://github.com/libsdl-org/SDL.git"
     },
     {
-      "commit": "b08079641fcc4fbdf85ea009b7cb377708e96888",
-      "dependencies": {"audio": "pd258d453b63edc1f", "avif": "p872d871f84f2284f", "image_codec": "p69c0e968ae5735d9", "libaom": "p74ab3cb6eb3b86fa", "libavif": "p57c0272208aae8db", "libwebp": "p3b3c785a0e17e605", "raylib": "pcc7aa76725f2fb2f", "sdl3": "p16cd0434af3dff7b", "webp": "pa068bd09450b2a80"},
-      "dependency_refs": {"audio": "f5eed1e6c817997d51508f9c3c7b948a0bb4ad0b", "avif": "f84c162594e518cb306bfd0ce41783ad55b6c730", "image_codec": "360553150917f352e49e1beb78917370792ccaef", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199", "libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e", "sdl3": "829a65d769d935c4852f8159e964312c0957260a", "webp": "02145a00a1f0df2a111da04a75f3fef260883897"},
-      "id": "p1cc319768b9ba712",
-      "name": "kryon",
-      "ref": "b08079641fcc4fbdf85ea009b7cb377708e96888",
-      "url": "https://github.com/kryonlabs/kryon.git"
-    },
-    {
       "commit": "1844042d1ca751e62e61df7617dba19c98588339",
       "dependencies": {},
       "id": "p3b3c785a0e17e605",
@@ -100,6 +91,15 @@
       "url": "https://github.com/ziranlang/avif.git"
     },
     {
+      "commit": "3ac259c4c265e8124e4e47d3461ee1419dd4187a",
+      "dependencies": {"audio": "pd258d453b63edc1f", "avif": "p872d871f84f2284f", "image_codec": "p69c0e968ae5735d9", "libaom": "p74ab3cb6eb3b86fa", "libavif": "p57c0272208aae8db", "libwebp": "p3b3c785a0e17e605", "raylib": "pcc7aa76725f2fb2f", "sdl3": "p16cd0434af3dff7b", "webp": "pa068bd09450b2a80"},
+      "dependency_refs": {"audio": "f5eed1e6c817997d51508f9c3c7b948a0bb4ad0b", "avif": "f84c162594e518cb306bfd0ce41783ad55b6c730", "image_codec": "360553150917f352e49e1beb78917370792ccaef", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199", "libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "raylib": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e", "sdl3": "829a65d769d935c4852f8159e964312c0957260a", "webp": "02145a00a1f0df2a111da04a75f3fef260883897"},
+      "id": "p8bbda1e96c8bc790",
+      "name": "kryon",
+      "ref": "3ac259c4c265e8124e4e47d3461ee1419dd4187a",
+      "url": "https://github.com/kryonlabs/kryon.git"
+    },
+    {
       "commit": "e77d81dab791c13bf1c4e5d9a7160c403be9bbe0",
       "dependencies": {},
       "id": "p983c695d118b6109",
@@ -163,8 +163,8 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p1cc319768b9ba712"},
-    "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "b08079641fcc4fbdf85ea009b7cb377708e96888"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p8bbda1e96c8bc790"},
+    "dependency_refs": {"crypto": "master", "daochi_client": "970d5e44b1702158cb16469892da6ff50f142427", "kryon": "3ac259c4c265e8124e4e47d3461ee1419dd4187a"},
     "name": "Apps"
   },
   "toolchain": {
