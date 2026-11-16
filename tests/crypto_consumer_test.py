@@ -23,23 +23,36 @@ def main():
     for name in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"):
         os.environ.pop(name, None)
     mapping_rows = (ROOT / "build/.ziran/module-map.tsv").read_text().splitlines()
-    lines = ["P\troot\t" + str(CONSUMER), "M\troot\tmain\t" + str(CONSUMER / "main.zi")]
+    raster_host = ROOT / "tests/game_hud_host.zi"
+    lines = ["P\troot\t" + str(CONSUMER),
+             "M\troot\tmain\t" + str(CONSUMER / "main.zi"),
+             "M\troot\tgame_hud_host\t" + str(raster_host)]
     package = "p0000000000000001"
     crypto_id = next(row.split("\t")[3] for row in mapping_rows if row.startswith("D\troot\tcrypto/sha256\t"))
     old_crypto = next(row.split("\t")[2] for row in mapping_rows if row.startswith("P\t" + crypto_id + "\t"))
+    # Keep the resolved Daochi identity and its dependency edges when testing
+    # another source root; the same file cannot be a second package module.
+    dao_id = next(row.split("\t")[3] for row in mapping_rows
+                  if row.startswith("D\troot\tdaochi_client/crypto\t"))
+    old_dao = next(row.split("\t")[2] for row in mapping_rows
+                   if row.startswith("P\t" + dao_id + "\t"))
+    sources = [(old_crypto, args.crypto_source.resolve()),
+               (old_dao, args.daochi_source.resolve())]
     for row in mapping_rows:
         fields = row.split("\t")
         if len(fields) > 1 and fields[1] == "root":
             fields[1] = package
-        fields = [str(args.crypto_source.resolve()) + field[len(old_crypto):] if field == old_crypto or field.startswith(old_crypto + "/") else field for field in fields]
+        for old, source in sources:
+            fields = [str(source) + field[len(old):]
+                      if field == old or field.startswith(old + "/") else field
+                      for field in fields]
         lines.append("\t".join(fields))
+        if len(fields) > 2 and fields[0] == "D" and fields[1] == package:
+            consumer_edge = fields.copy()
+            consumer_edge[1] = "root"
+            lines.append("\t".join(consumer_edge))
     for name, filename in tomllib.loads((ROOT / "ziran.toml").read_text())["exports"].items():
         lines.append(f"D\troot\tapps/{name}\t{package}\t{Path(filename).stem}")
-    lines.append(f"D\troot\tcrypto/sha256\t{crypto_id}\tsha256")
-    dao_id = "p0000000000000002"
-    lines += [f"P\t{dao_id}\t{args.daochi_source.resolve()}",
-              f"M\t{dao_id}\tcrypto\t{args.daochi_source.resolve() / 'crypto.zi'}",
-              f"D\troot\tdaochi_client/crypto\t{dao_id}\tcrypto"]
     WORK.mkdir(parents=True, exist_ok=True)
     mapping = WORK / "module-map.tsv"
     mapping.write_text("\n".join(lines) + "\n")
@@ -47,7 +60,7 @@ def main():
     output = WORK / "c"
     subprocess.run([str(toolchain / "build/bin/zi2c"), "--prune-stale", "--no-main", "--entry", "main:Check",
                     "--module-path", str(toolchain / "std"), "--root", str(CONSUMER), "-o", str(output),
-                    str(CONSUMER / "main.zi")], cwd=ROOT,
+                    str(CONSUMER / "main.zi"), str(raster_host)], cwd=ROOT,
                    env=os.environ | {"ZIRAN_PACKAGE_MAP": str(mapping)}, check=True)
     (output / "entry.c").write_text('#include "main.h"\nint main(void) { return Check(); }\n')
     includes = [arg for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for arg in ("-iquote", str(path))]
