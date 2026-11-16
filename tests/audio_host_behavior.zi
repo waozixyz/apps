@@ -27,7 +27,7 @@ Node :: #import "node_types";
 #import "kryon/media_audio"
 #import "kryon/media_audio_host"
 #if #defined(APPS_AUDIO_NATIVE_TEST) {
-    #import "kryon/media_audio_raylib"
+    #import "kryon/media_audio_desktop"
 }
 using HostValueKind;
 using FrameStatus;
@@ -85,7 +85,7 @@ AudioDummy :: (voice: *MediaAudioVoice, command: MediaAudioCommand, bytes: strin
 }
 AudioInstall :: () {
     #if #defined(APPS_AUDIO_NATIVE_TEST) {
-        MediaAudioUseRaylib()
+        MediaAudioUseDesktop()
     } else {
         MediaAudioUseProvider(AudioDummy)
     }

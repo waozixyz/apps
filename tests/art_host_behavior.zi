@@ -15,7 +15,9 @@
 #import "kryon/hosted_app"
 #import "kryon/hosted_values"
 #import "kryon/file_download"
-#import "art_decode"
+#import "kryon/image_pixels"
+#import "std/image"
+#import "std/vec"
 transfer: FileDownload;
 requests: s32;
 bundle_calls: s32;
@@ -23,8 +25,6 @@ libc :: #system_library "libc";
 PreparationTestBegin :: () #foreign libc;
 PreparationTestYield :: () #foreign libc;
 PreparationTestNow :: () -> float64 #foreign libc;
-art_raylib :: #system_library "raylib";
-ArtUnloadImage :: (image: RaylibGlyphImage) #foreign art_raylib "UnloadImage";
 rejected: s32;
 cached: string;
 ArtBundle :: (context: *void, parent: *AppNode, entry: *AppEntry) -> HostedAsset {
@@ -93,12 +93,14 @@ ArtCheck :: () -> s32 {
         PreparationTestYield()
     }
     if !preview.found || requests != 4 { return 7 }
-    // Decode through Kryon's actual native CPU decoder, then inspect pixel data.
-    image := RaylibDecodePixels(preview.data, ".png")
-    if image.data == null || image.width != 1 || image.height != 1 || image.format != 4 { return 8 }
-    pixel := cast(*u8)image.data
-    correct := pixel[0] == 40 && pixel[1] == 160 && pixel[2] == 100
-    ArtUnloadImage(image)
+    // Decode the recovered bytes through Kryon's actual desktop CPU decoder,
+    // which reads a file, then inspect its straight RGBA pixel data.
+    decoded := FixtureEnvironment("APPS_ART_PREVIEW")
+    if !WriteEntireFile(decoded, preview.data) { return 8 }
+    image := LoadImagePixels(decoded)
+    if image.width != 1 || image.height != 1 || image.pixels.count != 4 { VecFree(image.pixels); return 8 }
+    correct := image.pixels[0] == 40 && image.pixels[1] == 160 && image.pixels[2] == 100 && image.pixels[3] == 255
+    VecFree(image.pixels)
     if !correct { return 9 }
     FileDownloadRelease(*transfer)
     if !SlimStop(*host) { return 10 }

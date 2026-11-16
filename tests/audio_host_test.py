@@ -64,14 +64,6 @@ def main():
         os.environ['APPS_AUDIO_' + kind + '_SHA256'] = native.digest(path)
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran'], cwd=ROOT, text=True).strip())
     kryon = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'kryon'], cwd=ROOT, text=True).strip())
-    raylib = Path(os.environ['RAYLIB_A'])
-    # Use Raylib's actual decoder/mixer with miniaudio's paced null backend.
-    # ALSA null consumes without pacing and cannot verify a playback clock.
-    audio_source = raylib.parent / 'source/raudio.c'
-    null_audio = WORK / 'null-audio.o'
-    run(os.environ.get('CC', 'cc'), '-O1', '-ffunction-sections', '-fdata-sections',
-        '-DMA_ENABLE_ONLY_SPECIFIC_BACKENDS', '-DMA_ENABLE_NULL',
-        '-I' + str(audio_source.parent), '-c', audio_source, '-o', null_audio)
     # Like consumer_test.py, extend the actual resolved package map only for
     # test entry modules outside the package's published module roots.
     mapping = WORK / 'module-map.tsv'
@@ -92,7 +84,9 @@ def main():
         includes = [arg for p in [output, *sorted(output.rglob('*'))] if p.is_dir() for arg in ('-iquote', str(p))]
         libs = []
         if actual:
-            libs = [str(null_audio), str(raylib), *subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'libdrm', 'gbm', 'egl', 'glesv2', 'opus'], text=True).split(), '-ldl']
+            # Kryon's desktop mixer pulls through its SDL sink; SDL's dummy
+            # driver paces that pull like a device clock and opens no device.
+            libs = subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'opus'], text=True).split()
         executable = WORK / 'test'
         run(os.environ.get('CC', 'cc'), '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
             '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
@@ -110,7 +104,7 @@ def main():
         if result.returncode:
             print((result.stdout + result.stderr)[-6000:])
             result.check_returncode()
-        print('Apps audio: ' + ('actual Raylib/null device' if actual else 'dummy/no provider') + ' passed')
+        print('Apps audio: ' + ('actual desktop mixer/SDL dummy device' if actual else 'dummy/no provider') + ' passed')
     print('Apps audio package: ' + str(kryon))
 
 

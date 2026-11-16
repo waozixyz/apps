@@ -151,7 +151,7 @@ position. Legacy Media services retain their existing dispatch and permission
 policy.
 
 The native consumer installs its provider once on its owning thread with
-`MediaAudioUseRaylib()` from `kryon/media_audio_raylib`. Without a provider,
+`MediaAudioUseDesktop()` from `kryon/media_audio_desktop`. Without a provider,
 authorized calls return `Unsupported`; device/browser results retain Kryon's
 `Unavailable`/`Suspended` semantics. Apps supplies each actual `HostedApp.audio`
 owner and `AppHostAudioRead` to `WidgetHostAudioCall`, using the active node's
@@ -280,7 +280,7 @@ verifies public package imports and launcher search/grouping.
   copy, one transfer at a time and waiting 1 s, doubling to 60 s, between attempts.
   `python3 tests/art_host_test.py /path/to/libziran.a` serves a real HTTP failure,
   then decodes the recovered art's pixels without a display.
-- `RAYLIB_A=/path/to/libraylib.a python3 tests/audio_host_test.py /path/to/libziran.a`
-  exercises real hosted guests with dummy/no-provider and private null-device
-  Raylib hosts. Run `tests/native_fixture.py`, `tests/consumer_test.py` and
+- `python3 tests/audio_host_test.py /path/to/libziran.a`
+  exercises real hosted guests with dummy/no-provider hosts and Kryon's desktop
+  mixer on SDL's private dummy device. Run `tests/native_fixture.py`, `tests/consumer_test.py` and
   `tests/tree_test.sh` with the same resolved compiler/runtime graph too.

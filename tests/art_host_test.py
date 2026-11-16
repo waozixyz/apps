@@ -5,7 +5,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import shlex
 import subprocess
 import sys
 import threading
@@ -48,14 +47,12 @@ def main():
     (assets / 'preview.png').unlink()
     (assets / 'apps/apps.zx').unlink()
     native.bundle('collection', root, assets)
-    toolchain, kryon, raylib = [Path(subprocess.check_output(
-        [native.ZIRAN, 'pkg', 'path', name], cwd=ROOT, text=True).strip())
-        for name in ('ziran', 'kryon', 'raylib')]
+    toolchain = Path(subprocess.check_output(
+        [native.ZIRAN, 'pkg', 'path', 'ziran'], cwd=ROOT, text=True).strip())
     mapping = WORK / 'module-map.tsv'
     lines = (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines()
     lines += ['M\troot\tnative_behavior\t' + str(ROOT / 'tests/native_behavior.zi'),
-              'M\troot\tart_host_behavior\t' + str(ROOT / 'tests/art_host_behavior.zi'),
-              'D\troot\tart_decode\t' + kryon.name + '\traylib_image_decode']
+              'M\troot\tart_host_behavior\t' + str(ROOT / 'tests/art_host_behavior.zi')]
     mapping.write_text('\n'.join(lines) + '\n')
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     output = WORK / 'c'
@@ -66,26 +63,15 @@ def main():
         'int main(void) { int r=ArtCheck(); if(r) fprintf(stderr,"Apps art test %d failed\\n",r); return r?1:0; }\n')
     includes = [arg for p in [output, *sorted(output.rglob('*'))] if p.is_dir() for arg in ('-iquote', str(p))]
     cc = os.environ.get('CC', 'cc')
-    # Only Raylib's CPU image decoder is linked; no window or graphics context exists.
-    support = WORK / 'raylib_support.c'
-    support.write_text('#include <stdlib.h>\n'
-        'void TraceLog(int level, const char *text, ...) { (void)level; (void)text; }\n'
-        'void *MemAlloc(unsigned int size) { return calloc(size, 1); }\n'
-        'void *MemRealloc(void *data, unsigned int size) { return realloc(data, size); }\n'
-        'void MemFree(void *data) { free(data); }\n'
-        'const char *rlGetPixelFormatName(unsigned int format) { (void)format; return ""; }\n')
-    decoder = WORK / 'rtextures.o'
-    run(cc, '-O1', '-ffunction-sections', '-fdata-sections', '-I' + str(raylib / 'src'),
-        '-c', raylib / 'src/rtextures.c', '-o', decoder)
+    # Kryon's desktop decoder loads the system GdkPixbuf on first use; no
+    # window or graphics context exists.
     executable = WORK / 'test'
-    webp_libs = shlex.split(subprocess.check_output(
-        ['pkg-config', '--libs', 'libwebpdemux', 'libwebp'], text=True))
     run(cc, '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
         '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
-        ROOT / 'tests/preparation_host.c', support, sys.argv[1], decoder,
+        ROOT / 'tests/preparation_host.c', sys.argv[1],
         '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
-        *webp_libs, '-lm', '-lpthread', '-o', executable)
+        '-ldl', '-lm', '-lpthread', '-o', executable)
     class Handler(http.server.BaseHTTPRequestHandler):
         calls = 0
         def do_GET(self):
@@ -107,6 +93,7 @@ def main():
     thread.start()
     env = dict(os.environ, APPS_ART_URL=f'http://127.0.0.1:{server.server_port}/art.zx',
                APPS_ART_DESTINATION=str(WORK / 'download.zx'),
+               APPS_ART_PREVIEW=str(WORK / 'preview.png'),
                APPS_FIXTURE_SLIM_ROOT_BUNDLE=str(root), APPS_FIXTURE_SLIM_ROOT_SHA256=native.digest(root),
                APPS_FIXTURE_UI_BUNDLE=str(controller), APPS_FIXTURE_HARNESS_SHA256=native.digest(controller))
     try:
