@@ -2,8 +2,11 @@
 """Sign, check and publish the Daochi releases of apps the node offers.
 
 The node serves each app as signed release v2 metadata beside its immutable
-ZX portable executable. ZX hosts ask the node with format=zx; hosts released
-before the ZX format keep their .zib releases through 2027-10-23. Inbe and Arcade publish their node apps with this tool, and Inbe's
+ZX portable executable. ZX hosts ask the node with format=zx and the ZX
+revision they run; hosts released before the ZX format keep their .zib
+releases through 2027-10-23. A release may also carry a signed WebAssembly
+variant lowered from its .zx, which web hosts ask for with format=wasm.
+Inbe and Arcade publish their node apps with this tool, and Inbe's
 node receiver imports it to check every release it accepts. Each owning
 project keeps its own version ledger, built bundles and publisher pins:
 apps/versions.json, build/node-apps and apps/publishers.json in the working
@@ -18,6 +21,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import sys
 import tarfile
 import tempfile
 from urllib.error import HTTPError
@@ -35,13 +39,33 @@ EXACT_NODE_APP_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:\.[a-z][a-z0-9]
 BUNDLED_IDS = {"inbe", "inbe.habits", "inbe.practices", "inbe.lists", "inbe.diary", "inbe.lumi",
                "inbe.leaderboard"}
 VERSION = re.compile(r"(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\.(?:0|[1-9][0-9]{0,8})\Z")
-# The node keeps each app's newest ten releases in its history, so a device
-# on an older host still finds one built for it; going back offers the
-# newest three of them that still run on the device.
+# The node's history lists each app's newest ten releases and the newest of
+# every compatibility group, so a device on an older host still finds one
+# built for it; going back offers the newest three of them that still run on
+# the device. The node reads at most HISTORY_LIMIT entries.
 RETAINED_RELEASES = 10
+HISTORY_LIMIT = 64
 # Payload signatures and the suffixes the node stores them under: ZX portable
 # executables, and legacy bundles of hosts released before the ZX format.
 SUFFIXES = ((b"ZX\0\0", ".zx"), (b"ZIB\0", ".zib"))
+# A web host's variant: the WebAssembly module (version 1) Ziran lowers from
+# the release's own .zx, archived as release-SEQUENCE.wasm.json.
+WASM_SIGNATURE = b"\0asm\x01\0\0\0"
+WASM_SUFFIX = ".wasm"
+
+
+def zx_revision(data):
+    """The executable revision a ZX header names (the u32 after its magic), or 0."""
+    if len(data) < 8 or not data.startswith(b"ZX\0\0"):
+        return 0
+    return int.from_bytes(data[4:8], "little")
+
+
+def same_release(variant, value):
+    """Whether two descriptors sign the same release, whatever artifact each names."""
+    def fields(release):
+        return {field: item for field, item in release.items() if field not in ("artifacts", "signature")}
+    return fields(variant) == fields(value)
 
 
 def payload_suffix(data):
@@ -58,19 +82,64 @@ def stored_payload(directory, value):
     return directory / (digest + ".zx")
 
 
-def retained_releases(directory, releases):
-    """The newest release in each payload format, then the newest others.
+def stored_revision(directory, value):
+    """The ZX revision of a release's stored payload; 0 for a legacy .zib."""
+    payload = stored_payload(directory, value)
+    if payload.suffix != ".zx":
+        return 0
+    with payload.open("rb") as source:
+        return zx_revision(source.read(8))
 
-    Hosts released before the ZX format keep their last .zib release while
-    newer hosts move on.
+
+def wasm_variant_path(directory, value):
+    return directory / f"release-{value['sequence']}{WASM_SUFFIX}.json"
+
+
+def stored_wasm_variant(directory, value, app_id, publishers):
+    """The release's signed WebAssembly variant on the node, or None."""
+    path = wasm_variant_path(directory, value)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 65536:
+        return None
+    try:
+        variant = json.loads(path.read_bytes())
+        validate_release(variant, app_id, publishers)
+    except (ValueError, KeyError, TypeError):
+        return None
+    module = directory / (variant["artifacts"][0]["sha256"] + WASM_SUFFIX)
+    if not same_release(variant, value) or not module.is_file():
+        return None
+    return variant
+
+
+def compatibility_groups(directory, value, app_id, publishers):
+    """The groups of hosts that run a release.
+
+    A host runs releases only in its own payload format and ZX revision, for
+    its own module interface and a host interface it covers. Web hosts run a
+    release's WebAssembly variant, a format of its own.
+    """
+    found = stored_payload(directory, value).suffix
+    interfaces = (stored_revision(directory, value), value["host_api"], value["module_api"])
+    groups = [(found, *interfaces)]
+    if found == ".zx" and stored_wasm_variant(directory, value, app_id, publishers) is not None:
+        groups.append((WASM_SUFFIX, *interfaces))
+    return groups
+
+
+def retained_releases(directory, releases, app_id, publishers):
+    """The newest release of every compatibility group, then the newest others.
+
+    Keeping the newest of every group keeps a release for every host that
+    could run one, so hosts released before a new format, ZX revision or
+    interface keep their last release while newer hosts move on.
     """
     releases = sorted(releases, key=lambda value: value["sequence"], reverse=True)
     kept = []
-    formats = set()
+    groups = set()
     for value in releases:
-        found = stored_payload(directory, value).suffix
-        if found not in formats and len(kept) < RETAINED_RELEASES:
-            formats.add(found)
+        found = set(compatibility_groups(directory, value, app_id, publishers)) - groups
+        if found and len(kept) < HISTORY_LIMIT:
+            groups.update(found)
             kept.append(value)
     for value in releases:
         if len(kept) >= RETAINED_RELEASES:
@@ -164,7 +233,7 @@ def validate_release(value, app_id, publishers):
     if not isinstance(artifact, dict) or set(artifact) != {"variant", "sha256", "size"} or \
             artifact["variant"] != "module" or not isinstance(artifact["sha256"], str) or \
             not re.fullmatch(r"[0-9a-f]{64}", artifact["sha256"]) or \
-            type(artifact["size"]) is not int or not 8 <= artifact["size"] <= 64 * 1024 * 1024:
+            type(artifact["size"]) is not int or not 8 <= artifact["size"] <= PACKAGE_MAXIMUM_BYTES:
         raise ValueError("invalid module artifact")
     dependencies = value["dependencies"]
     # Inbe's root depends on each app it bundles; every other app on none.
@@ -180,7 +249,7 @@ def validate_release(value, app_id, publishers):
                 dependency["app_id"] != expected_id or not isinstance(dependency["version"], str) or \
                 not VERSION.fullmatch(dependency["version"]) or not isinstance(dependency["sha256"], str) or \
                 not re.fullmatch(r"[0-9a-f]{64}", dependency["sha256"]) or \
-                type(dependency["size"]) is not int or not 8 <= dependency["size"] <= 64 * 1024 * 1024:
+                type(dependency["size"]) is not int or not 8 <= dependency["size"] <= PACKAGE_MAXIMUM_BYTES:
             raise ValueError("invalid dependency descriptor")
     pin = trusted_pin(publishers, value["key_id"], app_id)
     if pin is None:
@@ -195,11 +264,11 @@ def validate_release(value, app_id, publishers):
 
 
 def write_history(directory, app_id, publishers):
-    """Lists up to ten releases, newest first, in history-v2.json.
+    """Lists the retained releases, newest first, in history-v2.json.
 
-    Every release stays archived. The history names the newest ones the node
+    Every release stays archived. The history names the newest ten the node
     still trusts and still has the payload for, always including the newest
-    release in each payload format.
+    release of each format, ZX revision and interface.
     """
     releases = []
     for path in directory.glob("release-*.json"):
@@ -215,7 +284,7 @@ def write_history(directory, app_id, publishers):
             releases.append(value)
     if not releases:
         return
-    history = dict(versions=retained_releases(directory, releases))
+    history = dict(versions=retained_releases(directory, releases, app_id, publishers))
     atomic_write(directory / "history-v2.json", (json.dumps(history, separators=(",", ":")) + "\n").encode())
 
 
@@ -250,6 +319,16 @@ def upload(archive, target, remote_store):
                        stdin=stream, check=True)
 
 
+def check_zx_revision(data, revision, name):
+    """A ledger that names its hosts' ZX revision publishes only payloads of it."""
+    if revision is None:
+        return
+    if type(revision) is not int or not 1 <= revision <= 65535:
+        raise ValueError(f"invalid zx_revision for {name}")
+    if zx_revision(data) != revision:
+        raise ValueError(f"{name}.zx is ZX revision {zx_revision(data)}, but its hosts run {revision}")
+
+
 def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_directory, publishers=()):
     """The signed release of NAME.zx in bundle_directory from its ledger entry.
 
@@ -262,9 +341,8 @@ def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_direc
         raise ValueError(f"{name} is not an app the node offers")
     if not VERSION.fullmatch(component["version"]) or not 0 < component["sequence"] <= 2**31 - 1:
         raise ValueError(f"invalid {name} version or sequence")
-    data = (bundle_directory / f"{name}.zx").read_bytes()
-    if not data.startswith(b"ZX\0\0") or not 8 <= len(data) <= 64 * 1024 * 1024:
-        raise ValueError(f"invalid {name} portable executable")
+    data = read_bundle(bundle_directory / f"{name}.zx")
+    check_zx_revision(data, component.get("zx_revision", versions.get("zx_revision")), name)
     value = dict(app_id=component["id"], sequence=component["sequence"], version=component["version"],
                  runtime="kryon-app-v1", host_api=component.get("host_api", versions["host_api"]),
                  module_api=versions["module_api"], data_schema=0, key_id=key_id,
@@ -282,6 +360,31 @@ def node_app_release(name, key, key_id, beta=False, *, ledger_path, bundle_direc
 # names it, so each game gets a lookup: this same release with that game as
 # its module. It is never a latest or archived release.
 GAME_LIMIT = 32
+PACKAGE_MAXIMUM_BYTES = 2**63 - 2
+
+
+def read_bundle(path, signature=b"ZX\0\0"):
+    length = path.stat().st_size
+    if not 8 <= length <= min(PACKAGE_MAXIMUM_BYTES, sys.maxsize - 1):
+        raise ValueError(f"invalid portable executable size: {path}")
+    with path.open('rb') as source:
+        data = source.read(length + 1)
+    if len(data) != length or not data.startswith(signature):
+        raise ValueError(f"invalid portable executable: {path}")
+    return data
+
+
+def verify_payload(response, artifact):
+    if type(artifact['size']) is not int or not 8 <= artifact['size'] <= PACKAGE_MAXIMUM_BYTES:
+        return False
+    received = 0
+    digest = sha256()
+    while block := response.read(65536):
+        received += len(block)
+        if received > artifact['size']:
+            return False
+        digest.update(block)
+    return received == artifact['size'] and digest.hexdigest() == artifact['sha256']
 
 
 def node_app_games(value, key, bundle_directory, name):
@@ -289,9 +392,9 @@ def node_app_games(value, key, bundle_directory, name):
     directory = bundle_directory / f"{name}.games"
     games = []
     for path in sorted(directory.glob("*.zx")) if directory.is_dir() else []:
-        data = path.read_bytes()
+        data = read_bundle(path)
         digest = sha256(data).hexdigest()
-        if path.name != digest + ".zx" or not data.startswith(b"ZX\0\0") or not 8 <= len(data) <= 64 * 1024 * 1024:
+        if path.name != digest + ".zx":
             raise ValueError(f"invalid {name} game payload {path.name}")
         lookup = {field: item for field, item in value.items() if field != "signature"}
         lookup["artifacts"] = [dict(variant="module", sha256=digest, size=len(data))]
@@ -300,6 +403,23 @@ def node_app_games(value, key, bundle_directory, name):
     if len(games) > GAME_LIMIT:
         raise ValueError(f"{name} names more than {GAME_LIMIT} games")
     return games
+
+
+def node_app_wasm(value, key, bundle_directory, name):
+    """The signed WebAssembly variant of NAME's release from NAME.wasm, or None.
+
+    Ziran's wasm target lowers NAME.zx into NAME.wasm beside it. The variant
+    is the same release with that module as its artifact, signed by the same
+    key, so web hosts run the same program without lowering it themselves.
+    """
+    path = bundle_directory / f"{name}{WASM_SUFFIX}"
+    if not path.is_file():
+        return None
+    data = read_bundle(path, WASM_SIGNATURE)
+    variant = {field: item for field, item in value.items() if field != "signature"}
+    variant["artifacts"] = [dict(variant="module", sha256=sha256(data).hexdigest(), size=len(data))]
+    variant["signature"] = key.sign(signing_message(variant)).hex()
+    return variant, data, (json.dumps(variant, separators=(",", ":")) + "\n").encode()
 
 
 def game_lookups(directory, value):
@@ -330,17 +450,20 @@ def stage_node_app(store, name, key_path, key_id, publishers_path, beta=False, *
     games = node_app_games(value, key, bundle_directory, name)
     for lookup, _ in games:
         validate_release(lookup, value["app_id"], publishers)
+    wasm = node_app_wasm(value, key, bundle_directory, name)
+    if wasm is not None:
+        validate_release(wasm[0], value["app_id"], publishers)
     directory = store / value["app_id"]
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     encoded = (json.dumps(value, separators=(",", ":")) + "\n").encode()
     with (directory / ".publish.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        write_node_app(directory, value, encoded, data, publishers, games)
+        write_node_app(directory, value, encoded, data, publishers, games, wasm)
     return value
 
 
-def write_node_app(directory, value, encoded, data, publishers, games=()):
-    """Publishes one release of an app the node offers, and its games, into its directory."""
+def write_node_app(directory, value, encoded, data, publishers, games=(), wasm=None):
+    """Publishes one release of an app the node offers, its games and WebAssembly variant."""
     current = directory / "latest-v2.json"
     if current.exists():
         previous = json.loads(current.read_bytes())
@@ -356,6 +479,14 @@ def write_node_app(directory, value, encoded, data, publishers, games=()):
         raise ValueError("immutable payload does not match its hash")
     if archive.exists() and archive.read_bytes() != encoded:
         raise ValueError("release sequence is already occupied")
+    if wasm is not None:
+        variant, module, encoded_variant = wasm
+        stored_module = directory / (variant["artifacts"][0]["sha256"] + WASM_SUFFIX)
+        variant_archive = wasm_variant_path(directory, value)
+        if stored_module.exists() and stored_module.read_bytes() != module:
+            raise ValueError("immutable WebAssembly module does not match its hash")
+        if variant_archive.exists() and variant_archive.read_bytes() != encoded_variant:
+            raise ValueError("the release already has another WebAssembly variant")
     for lookup, game in games:
         stored = directory / (lookup["artifacts"][0]["sha256"] + ".zx")
         if stored.exists() and stored.read_bytes() != game:
@@ -364,11 +495,42 @@ def write_node_app(directory, value, encoded, data, publishers, games=()):
         # An unchanged game keeps its bytes; its lookup names the newest release.
         atomic_write(stored.with_name(stored.name + ".release-v2.json"),
                      (json.dumps(lookup, separators=(",", ":")) + "\n").encode())
+    if wasm is not None:
+        # Before the release itself, so a host that finds it finds its variant.
+        atomic_write(stored_module, module)
+        atomic_write(stored_module.with_name(stored_module.name + ".release-v2.json"), encoded_variant)
+        atomic_write(variant_archive, encoded_variant)
     atomic_write(payload, data)
     atomic_write(payload.with_name(payload.name + ".release-v2.json"), encoded)
     atomic_write(archive, encoded)
     atomic_write(current, encoded)
     write_history(directory, value["app_id"], publishers)
+
+
+def import_wasm_variant(entries, publishers, app_id, value, expected):
+    """The archive's signed WebAssembly variant of the release, or None.
+
+    It must sign this same release, name exactly the module beside it, and
+    accompany a ZX release: it is lowered from that .zx.
+    """
+    archived = f"{app_id}/release-{value['sequence']}{WASM_SUFFIX}.json"
+    if archived not in entries:
+        return None
+    encoded = entries[archived]
+    if len(encoded) > 65536:
+        raise ValueError("oversized WebAssembly variant")
+    variant = json.loads(encoded)
+    validate_release(variant, app_id, publishers)
+    module = variant["artifacts"][0]
+    file = f"{app_id}/{module['sha256']}{WASM_SUFFIX}"
+    data = entries.get(file, b"")
+    if not same_release(variant, value) or entries.get(file + ".release-v2.json") != encoded or \
+            f"{app_id}/{value['artifacts'][0]['sha256']}.zx" not in entries or \
+            len(data) != module["size"] or sha256(data).hexdigest() != module["sha256"] or \
+            not data.startswith(WASM_SIGNATURE):
+        raise ValueError("WebAssembly variant does not match this release")
+    expected.update((archived, file, file + ".release-v2.json"))
+    return variant, data, encoded
 
 
 def import_node_app(entries, store, publishers, app_id):
@@ -414,13 +576,14 @@ def import_node_app(entries, store, publishers, app_id):
             raise ValueError("game lookup does not match this release")
         expected.update((name, file))
         games.append((lookup, game_bytes))
+    wasm = import_wasm_variant(entries, publishers, app_id, value, expected)
     if len(games) > GAME_LIMIT or set(entries) != expected:
         raise ValueError("archive contains unreferenced content")
     directory = store / app_id
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (directory / ".publish.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        write_node_app(directory, value, encoded, data, publishers, games)
+        write_node_app(directory, value, encoded, data, publishers, games, wasm)
 
 
 def publish_node_app(store, name, target, remote_store, app_id=None):
@@ -435,10 +598,15 @@ def publish_node_app(store, name, target, remote_store, app_id=None):
         value = json.loads((directory / "latest-v2.json").read_bytes())
         payload = stored_payload(directory, value).name
         games = [lookup["artifacts"][0]["sha256"] + ".zx" for lookup in game_lookups(directory, value)]
+        wasm = []
+        if wasm_variant_path(directory, value).is_file():
+            variant = json.loads(wasm_variant_path(directory, value).read_bytes())
+            module = variant["artifacts"][0]["sha256"] + WASM_SUFFIX
+            wasm = [wasm_variant_path(directory, value).name, module, module + ".release-v2.json"]
         with tarfile.open(archive, "w") as tar:
             for filename in ("latest-v2.json", payload, payload + ".release-v2.json",
                              f"release-{value['sequence']}.json",
-                             *(name for game in games for name in (game, game + ".release-v2.json"))):
+                             *(name for game in games for name in (game, game + ".release-v2.json")), *wasm):
                 path = directory / filename
                 tar.add(path, arcname=str(path.relative_to(store)), recursive=False)
         upload(archive, target, remote_store)
@@ -457,17 +625,30 @@ def verify_node_app(store, name, origin, open_url=open_public_url, *, app_id=Non
         raise ValueError(f"{app_id}: public release metadata differs from the signed publication")
     artifact = expected["artifacts"][0]
     with open_url(route + "/" + payload, timeout=30) as response:
-        data = response.read(artifact["size"] + 1)
-    if len(data) != artifact["size"] or sha256(data).hexdigest() != artifact["sha256"]:
+        verified = verify_payload(response, artifact)
+    if not verified:
         raise ValueError(f"{app_id}: public package hash or size differs from the signed publication")
     lookups = game_lookups(store / app_id, expected)
     for lookup in lookups:
         game = lookup["artifacts"][0]
         with open_url(route + "/" + game["sha256"] + ".zx", timeout=60) as response:
-            data = response.read(game["size"] + 1)
-        if len(data) != game["size"] or sha256(data).hexdigest() != game["sha256"]:
+            verified = verify_payload(response, game)
+        if not verified:
             raise ValueError(f"{app_id}: a public game differs from the signed publication")
-    print(f"Verified the public release of {app_id}" + (f" and its {len(lookups)} games" if lookups else ""))
+    variant_path = wasm_variant_path(store / app_id, expected)
+    if variant_path.is_file():
+        variant = json.loads(variant_path.read_bytes())
+        with open_url(route + "/latest?bucket=0&format=wasm", timeout=30) as response:
+            encoded = response.read(65537)
+        if len(encoded) > 65536 or json.loads(encoded) != variant:
+            raise ValueError(f"{app_id}: public WebAssembly metadata differs from the signed publication")
+        module = variant["artifacts"][0]
+        with open_url(route + "/" + module["sha256"] + WASM_SUFFIX, timeout=60) as response:
+            verified = verify_payload(response, module)
+        if not verified:
+            raise ValueError(f"{app_id}: the public WebAssembly module differs from the signed publication")
+    print(f"Verified the public release of {app_id}" + (f" and its {len(lookups)} games" if lookups else "") +
+          (" and its WebAssembly variant" if variant_path.is_file() else ""))
 
 
 def registered_apps(origin, open_url=open_public_url):

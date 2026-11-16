@@ -29,26 +29,82 @@ class NodeAppHistoryTest(unittest.TestCase):
                                                    serialization.PublicFormat.Raw).hex()
         self.publishers = [dict(key_id="test", public_key=public, app_ids=[], app_prefixes=["inbe."])]
 
-    def release(self, sequence, key=None, signature=b"ZX\0\0"):
+    def release(self, sequence, key=None, signature=b"ZX\0\0", host_api=2):
         data = signature + b"photos-" + str(sequence).encode()
         value = dict(app_id="inbe.photos", sequence=sequence, version=f"1.0.{sequence}",
-                     runtime="kryon-app-v1", host_api=2, module_api=2, data_schema=0, key_id="test",
+                     runtime="kryon-app-v1", host_api=host_api, module_api=2, data_schema=0, key_id="test",
                      artifacts=[dict(variant="module", sha256=sha256(data).hexdigest(), size=len(data))],
                      dependencies=[])
         value["signature"] = (key or self.key).sign(release.signing_message(value)).hex()
         value["channel"] = "beta"
         return value, data
 
-    def publish(self, value, data, suffix=None):
+    def publish(self, value, data, suffix=None, wasm=None):
         encoded = json.dumps(value).encode()
         payload = value["artifacts"][0]["sha256"] + (suffix or release.payload_suffix(data))
         entries = {"inbe.photos/latest-v2.json": encoded, f"inbe.photos/{payload}": data,
                    f"inbe.photos/{payload}.release-v2.json": encoded,
                    f"inbe.photos/release-{value['sequence']}.json": encoded}
+        if wasm is not None:
+            entries.update(self.wasm_entries(value, wasm))
         release.import_node_app(entries, self.store, self.publishers, "inbe.photos")
+
+    def wasm_entries(self, value, module, key=None):
+        """The archive entries of a release's signed WebAssembly variant."""
+        variant = {field: item for field, item in value.items() if field != "signature"}
+        variant["artifacts"] = [dict(variant="module", sha256=sha256(module).hexdigest(), size=len(module))]
+        variant["signature"] = (key or self.key).sign(release.signing_message(variant)).hex()
+        encoded = json.dumps(variant).encode()
+        name = "inbe.photos/" + variant["artifacts"][0]["sha256"] + ".wasm"
+        return {f"inbe.photos/release-{value['sequence']}.wasm.json": encoded, name: module,
+                name + ".release-v2.json": encoded}
+
+    @staticmethod
+    def revision(number):
+        return b"ZX\0\0" + number.to_bytes(4, "little")
 
     def history(self):
         return json.loads((self.store / "inbe.photos" / "history-v2.json").read_bytes())["versions"]
+
+    def test_signed_artifact_sizes_use_checked_integer_range(self):
+        for size in (64 * 1024 * 1024 + 1, release.PACKAGE_MAXIMUM_BYTES):
+            value, _ = self.release(1)
+            value['artifacts'][0]['size'] = size
+            value['signature'] = self.key.sign(release.signing_message(value)).hex()
+            release.validate_release(value, 'inbe.photos', self.publishers)
+        for size in (False, 7, 2**63 - 1, 2**64, 12.5):
+            value, _ = self.release(1)
+            value['artifacts'][0]['size'] = size
+            value['signature'] = self.key.sign(release.signing_message(value)).hex()
+            with self.subTest(size=size), self.assertRaises(ValueError):
+                release.validate_release(value, 'inbe.photos', self.publishers)
+
+    def test_public_payload_verification_streams_and_rejects_damage(self):
+        data = b'ZX\0\0' + b'payload' * 20000
+        descriptor = dict(size=len(data), sha256=sha256(data).hexdigest())
+
+        class Chunked(BytesIO):
+            def read(self, size=-1):
+                if not 0 < size <= 65536:
+                    raise AssertionError('Unbounded payload read')
+                return super().read(size)
+
+        self.assertTrue(release.verify_payload(Chunked(data), descriptor))
+        for damaged in (data[:-1], data + b'x', data[:-1] + b'x'):
+            self.assertFalse(release.verify_payload(Chunked(damaged), descriptor))
+        for size in (False, 7, 2**63):
+            self.assertFalse(release.verify_payload(Chunked(data), descriptor | dict(size=size)))
+
+    def test_local_payload_reads_require_exact_checked_size(self):
+        path = self.directory / 'app.zx'
+        path.write_bytes(b'ZX\0\0payload')
+        self.assertEqual(release.read_bundle(path), path.read_bytes())
+        path.write_bytes(b'not an executable')
+        with self.assertRaises(ValueError):
+            release.read_bundle(path)
+        path.write_bytes(b'ZX')
+        with self.assertRaises(ValueError):
+            release.read_bundle(path)
 
     def test_node_keeps_the_newest_ten_releases(self):
         values = []
@@ -82,6 +138,59 @@ class NodeAppHistoryTest(unittest.TestCase):
         self.assertTrue((directory / (legacy["artifacts"][0]["sha256"] + ".zib")).is_file())
         latest = json.loads((directory / "latest-v2.json").read_bytes())
         self.assertTrue((directory / (latest["artifacts"][0]["sha256"] + ".zx")).is_file())
+
+    def test_history_keeps_the_newest_release_of_every_revision_and_interface(self):
+        # Released hosts run ZX revision 26 on host interface 43; hosts from
+        # interface 44 run revision 28, and only one release has a web variant.
+        released, data = self.release(1, signature=self.revision(26), host_api=43)
+        self.publish(released, data)
+        web, data = self.release(2, signature=self.revision(28), host_api=44)
+        self.publish(web, data, wasm=b"\0asm\x01\0\0\0photos-2")
+        for sequence in range(3, 16):
+            self.publish(*self.release(sequence, signature=self.revision(28), host_api=44))
+        self.assertEqual([value["sequence"] for value in self.history()], [15, 14, 13, 12, 11, 10, 9, 8, 2, 1])
+        directory = self.store / "inbe.photos"
+        self.assertEqual(len(list(directory.glob("release-*.json"))), 16)
+        self.assertTrue((directory / "release-2.wasm.json").is_file())
+        # A release mistakenly built with revision 28 for interface 43 is its
+        # own group; it never displaces the released hosts' last release.
+        self.publish(*self.release(16, signature=self.revision(28), host_api=43))
+        self.assertEqual([value["sequence"] for value in self.history()], [16, 15, 14, 13, 12, 11, 10, 9, 2, 1])
+
+    def test_history_never_exceeds_what_the_node_reads(self):
+        for sequence in range(1, release.HISTORY_LIMIT + 3):
+            self.publish(*self.release(sequence, signature=self.revision(28), host_api=sequence))
+        history = self.history()
+        self.assertEqual(len(history), release.HISTORY_LIMIT)
+        self.assertEqual(history[0]["sequence"], release.HISTORY_LIMIT + 2)
+
+    def test_a_web_variant_must_sign_this_release_and_its_module(self):
+        value, data = self.release(1, signature=self.revision(28))
+        module = b"\0asm\x01\0\0\0photos-1"
+        encoded = json.dumps(value).encode()
+        payload = value["artifacts"][0]["sha256"] + ".zx"
+        entries = {"inbe.photos/latest-v2.json": encoded, f"inbe.photos/{payload}": data,
+                   f"inbe.photos/{payload}.release-v2.json": encoded, "inbe.photos/release-1.json": encoded}
+        other, _ = self.release(1, signature=self.revision(28), host_api=3)
+        damaged = self.wasm_entries(value, module)
+        name = next(name for name in damaged if name.endswith(".wasm"))
+        damaged[name] = b"\0asm\x01\0\0\0photos-X"
+        for variant in (self.wasm_entries(value, module, key=Ed25519PrivateKey.generate()),
+                        self.wasm_entries(other, module), damaged,
+                        self.wasm_entries(value, b"ZX\0\0not webassembly")):
+            with self.subTest(variant=sorted(variant)), self.assertRaises(ValueError):
+                release.import_node_app(entries | variant, self.directory / "refused", self.publishers,
+                                        "inbe.photos")
+        self.assertFalse((self.directory / "refused").exists())
+        # A variant without its release's .zx has nothing it was lowered from.
+        legacy, legacy_data = self.release(2, signature=b"ZIB\0")
+        with self.assertRaises(ValueError):
+            self.publish(legacy, legacy_data, wasm=module)
+        self.publish(value, data, wasm=module)
+        # A sequence keeps the one variant it was published with.
+        with self.assertRaisesRegex(ValueError, "another WebAssembly variant"):
+            self.publish(value, data, wasm=module + b"!")
+        self.publish(value, data, wasm=module)
 
     def test_payload_must_match_its_name(self):
         value, data = self.release(1)
@@ -124,6 +233,83 @@ class NodeAppHistoryTest(unittest.TestCase):
                                       open_url=open_url)
         self.assertEqual(published, ["photos"])
         self.assertEqual(stage.call_args.args[1], "photos")
+
+    def test_the_ledger_zx_revision_must_match_each_payload(self):
+        bundles = self.directory / "node-apps"
+        bundles.mkdir()
+        ledger = self.directory / "versions.json"
+        entry = dict(id="inbe.photos", title="Photos", version="1.0.1", sequence=1)
+        for revision, ledger_value, component_value, accepted in (
+                (28, 28, None, True), (26, 28, None, False), (28, None, None, True),
+                (26, 28, 26, True), (28, 28, 26, False), (28, "28", None, False), (28, 0, None, False)):
+            (bundles / "photos.zx").write_bytes(self.revision(revision) + b"photos")
+            versions = dict(host_api=44, module_api=2, node_apps=dict(photos=dict(entry)))
+            if ledger_value is not None:
+                versions["zx_revision"] = ledger_value
+            if component_value is not None:
+                versions["node_apps"]["photos"]["zx_revision"] = component_value
+            ledger.write_text(json.dumps(versions))
+            with self.subTest(revision=revision, ledger=ledger_value, component=component_value):
+                if accepted:
+                    release.node_app_release("photos", self.key, "test", ledger_path=ledger, bundle_directory=bundles)
+                else:
+                    with self.assertRaises(ValueError):
+                        release.node_app_release("photos", self.key, "test", ledger_path=ledger,
+                                                 bundle_directory=bundles)
+
+    def test_a_release_publishes_its_signed_webassembly_variant(self):
+        import tarfile
+        bundles = self.directory / "build"
+        bundles.mkdir()
+        (bundles / "photos.zx").write_bytes(self.revision(28) + b"photos")
+        module = b"\0asm\x01\0\0\0photos lowered"
+        (bundles / "photos.wasm").write_bytes(module)
+        ledger = self.directory / "versions.json"
+        ledger.write_text(json.dumps(dict(host_api=44, module_api=2, zx_revision=28, node_apps=dict(
+            photos=dict(id="inbe.photos", title="Photos", version="1.0.1", sequence=1, beta=True)))))
+        key_path = self.directory / "key.pem"
+        key_path.write_bytes(self.key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                                    serialization.NoEncryption()))
+        publishers_path = self.directory / "publishers.json"
+        publishers_path.write_text(json.dumps(self.publishers))
+        staged = self.directory / "staged"
+        value = release.stage_node_app(staged, "photos", key_path, "test", publishers_path,
+                                       ledger_path=ledger, bundle_directory=bundles)
+        uploaded = {}
+
+        def upload(archive, target, remote_store):
+            with tarfile.open(archive) as tar:
+                uploaded.update({member.name: tar.extractfile(member).read() for member in tar.getmembers()})
+        with patch.object(release, "upload", upload):
+            release.publish_node_app(staged, "photos", "node", "/store")
+        self.assertEqual(len(uploaded), 7)
+        release.import_node_app(uploaded, self.store, self.publishers, "inbe.photos")
+        node = self.store / "inbe.photos"
+        variant = json.loads((node / "release-1.wasm.json").read_bytes())
+        release.validate_release(variant, "inbe.photos", self.publishers)
+        self.assertTrue(release.same_release(variant, value))
+        self.assertEqual(variant["channel"], "beta")
+        self.assertEqual(variant["artifacts"][0], dict(variant="module", sha256=sha256(module).hexdigest(),
+                                                       size=len(module)))
+        self.assertEqual((node / (variant["artifacts"][0]["sha256"] + ".wasm")).read_bytes(), module)
+        # The release and its history still name the .zx; web hosts ask for the variant.
+        self.assertEqual(json.loads((node / "latest-v2.json").read_bytes()), value)
+        self.assertEqual([entry["artifacts"] for entry in self.history()], [value["artifacts"]])
+
+        def open_url(url, timeout):
+            name = url.rsplit("/", 1)[1]
+            if name.startswith("latest"):
+                name = "release-1.wasm.json" if name.endswith("format=wasm") else "latest-v2.json"
+            return BytesIO((node / name).read_bytes())
+        release.verify_node_app(staged, "photos", "https://node.test", open_url)
+        (node / (variant["artifacts"][0]["sha256"] + ".wasm")).write_bytes(module[:-1] + b"!")
+        with self.assertRaises(ValueError):
+            release.verify_node_app(staged, "photos", "https://node.test", open_url)
+        # A file that is not a WebAssembly module never signs.
+        (bundles / "photos.wasm").write_bytes(b"ZX\0\0photos")
+        with self.assertRaises(ValueError):
+            release.stage_node_app(self.directory / "other", "photos", key_path, "test", publishers_path,
+                                   ledger_path=ledger, bundle_directory=bundles)
 
     def test_ledger_beta_apps_are_signed_for_the_beta_channel(self):
         bundles = self.directory / "node-apps"

@@ -17,6 +17,9 @@ Release :: #import "daochi_client/release";
 
 APP_REMOTE_METADATA_LIMIT :: 65536
 APP_REMOTE_CATALOG_LIMIT :: 262144
+// The ZX executable revision hosts built with this toolchain run. The node
+// offers only collections whose .zx header has it.
+APP_REMOTE_ZX_REVISION :: 28
 
 AppRemoteSource :: struct {
     origin: [512]u8
@@ -215,8 +218,9 @@ AppRemoteCatalogRefresh :: (remote: *AppRemoteCatalog) -> bool {
     if remote == null || remote.files == null || !remote.allowed || remote.stage != 0 ||
     remote.previous_bytes != "" { return false }
     query: Vec(u8)
-    BuilderPrint(*query, "latest?host_api=%&module_api=%&bucket=99&format=zx",
-        remote.source.host_api, remote.source.module_api)
+    BuilderPrint(*query, "latest?host_api=%&oldest_host_api=%&module_api=%&bucket=99&format=zx&zx=%",
+        remote.source.host_api, remote.source.oldest_host_api, remote.source.module_api,
+        APP_REMOTE_ZX_REVISION)
     suffix := BuilderFinish(query)
     defer { AppFileFree(suffix) }
     remote.failed = false

@@ -228,6 +228,19 @@ verifies public package imports and launcher search/grouping.
   with a valid newer release then queue an update automatically; declined or
   unanswered consent exposes and queues no update.
 
+- Releases reach only hosts that can run them. The publisher refuses a
+  payload whose ZX header revision differs from the ledger's `zx_revision`
+  (top level or per app). `apps/remote_catalog` asks the node with its
+  `oldest_host_api` and ZX revision (`zx=28`), so it is offered only
+  collections of that revision. The node's history keeps the newest release
+  of every payload format, ZX revision, `host_api` and `module_api` besides
+  the newest ten, and every archived release stays on the node.
+- A node app may also publish `NAME.wasm`, the WebAssembly module Ziran lowers
+  from `NAME.zx`, beside it. It is signed as the same release with that module
+  as its artifact (`release-SEQUENCE.wasm.json`), uploaded and checked by the
+  node's receiver with the release, and served to web hosts that ask with
+  `format=wasm`.
+
 - The node-app publisher accepts an exact reverse-domain id such as
   `xyz.waozi.wurm` when a publisher pin lists it in `node_app_ids`. The ledger
   name must be the id's last part, and only the pin that lists the id may sign

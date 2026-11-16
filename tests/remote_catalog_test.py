@@ -175,8 +175,9 @@ def main():
                 state['errors'].append('Unexpected artifact path: ' + parsed.path)
                 self.send_error(404)
                 return
-            if latest and parse_qs(parsed.query) != dict(host_api=['41'], module_api=['1'],
-                                                       bucket=['99'], format=['zx']):
+            if latest and parse_qs(parsed.query) != dict(host_api=['41'], oldest_host_api=['9'],
+                                                       module_api=['1'], bucket=['99'], format=['zx'],
+                                                       zx=['28']):
                 state['errors'].append('Wrong compatibility query')
             response = json.dumps(state['metadata']).encode() if latest else state['payload']
             if state['hold'] == ('metadata' if latest else 'payload'):

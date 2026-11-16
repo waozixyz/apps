@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Offer each host only node releases it can run: the publisher checks each payload's ZX revision against the ledger, the remote catalog names its revision and oldest host interface, and the node's history keeps the newest release of every format, ZX revision and interface. Publish an optional signed WebAssembly variant of a node app for web hosts.
+
+- Validate signed package sizes against checked integer ranges instead of a universal 64 MiB limit, and verify public payloads incrementally without weakening signatures or exact digests.
+
 - Run add-ons on Ziran's one-format ZX: an add-on imports its base's modules and carries that code in its own bundle. `shared_code` and code-library loading are removed, and catalogs that name `shared_code` are rejected. Dependencies remain for resource links and shared records, and a running base's verified bundle is still leased once. Build with Ziran 768495fc and Kryon 0dea8bc2.
 
 - Build with Ziran 0e91eb43 (program format 62) and Kryon 99c934a0 (staged swipes, correction caret and image sizing); hosts on host_api 43 load the new controller.
