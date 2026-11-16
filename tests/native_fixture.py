@@ -39,15 +39,13 @@ def child(identifier, path, protocol, expected, asset='assets/child.zx'):
                 protocol=protocol, expected_id=expected, version='1', sha256=digest(path))
 
 
-def bundle(source, path, assets=None, library=None, hosted_ui=False):
+def bundle(source, path, assets=None, hosted_ui=False):
     arguments = [ZIRAN, 'bundle', '--project', *LOCK_FLAGS, '--root', str(ROOT / 'fixtures'),
                  '--entry', source + ':Main', '-o', str(path)]
     if hosted_ui:
         arguments += ['--define', 'KRYON_HOSTED_UI']
     if assets:
         arguments += ['--asset-dir', 'assets=' + str(assets)]
-    if library:
-        arguments += ['--library', str(library)]
     run(*arguments, str(ROOT / 'fixtures' / (source + '.zi')))
 
 
@@ -116,10 +114,11 @@ def main():
     bundle('collection', dependency_root, stage('dependency-stage', 'fixture.dependencies',
         [child('fixture.node', node, 'node/2', 'node', 'assets/node.zx'), editor],
         {'assets/node.zx': node, 'assets/editor.zx': leaf}, controller))
+    # The add-on imports its base's code module; its own bundle carries it.
     thin = WORK / 'counter-addon.zx'
-    bundle('counter_addon', thin, library=leaf)
+    bundle('counter_addon', thin)
     thin_entry = child('fixture.addon', thin, 'app/1', 'counter-addon', 'assets/addon.zx')
-    thin_entry.update(dependencies=['fixture.counter'], shared_code=True)
+    thin_entry.update(dependencies=['fixture.counter'])
     thin_root = WORK / 'thin-root.zx'
     thin_base = child('fixture.counter', leaf, 'app/1', 'counter')
     thin_base['shared_records'] = ['local.campaign']
@@ -234,7 +233,6 @@ def main():
         *shlex.split(os.environ.get('CFLAGS', '')),
         *includes, *map(str, sorted(output.rglob('*.c'))), str(ROOT / 'tests/preparation_host.c'),
         sys.argv[1], '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
-        '-Wl,--wrap=BundleOpenBytesWithLibraries',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
         '-lm', *platform_flags, '-o', str(executable))
     os.environ['APPS_FIXTURE_UI_BUNDLE'] = runtime_path(controller)

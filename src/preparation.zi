@@ -21,31 +21,22 @@ APP_PREPARATION_THREADS :: !#defined(PLATFORM_WEB)
     }
 }
 
-AppPreparationLibrary :: struct {
+// A sibling package whose packed resources an add-on links. An add-on's
+// code is its own: it imports its base's modules and the linker builds them
+// into its bundle.
+AppPreparationDependency :: struct {
     bytes: string
     entry: *AppEntry
     bundle: *void
-    // Optional host lease on an already verified/opened library. The host
+    // Optional host lease on a running sibling's verified bundle. The host
     // retains its owner and byte charge until transfer or cancellation.
     // Preparation still hashes the exact source; it never closes this handle.
     owner: *void
 }
 
-AppPreparationImports :: struct {
-    shared_code: bool
-    dependency_count: s32
-    dependencies: [APP_DEPENDENCY_LIMIT][128]u8
-}
-
-AppPreparationImportsFor :: (entry: *AppEntry) -> AppPreparationImports {
-    return AppPreparationImports.{.shared_code = entry.shared_code,
-        .dependency_count = entry.dependency_count, .dependencies = entry.dependencies}
-}
-
-AppPreparationLibraries :: struct {
-    items: [32]AppPreparationLibrary
+AppPreparationDependencies :: struct {
+    items: [32]AppPreparationDependency
     count: s32
-    root: AppPreparationImports
 }
 
 AppPreparation :: struct {
@@ -63,7 +54,7 @@ AppPreparation :: struct {
     supplied_controller: string
     ready: bool
     valid: bool
-    libraries: AppPreparationLibraries
+    dependencies: AppPreparationDependencies
     #if APP_PREPARATION_THREADS {
         thread: Thread
     }
@@ -73,8 +64,8 @@ preparation_c :: #system_library "c";
 AppPreparationAllocate :: (size: usize) -> *void #foreign preparation_c "malloc";
 AppPreparationFree :: (memory: *void) #foreign preparation_c "free";
 
-AppPreparationAsset :: (bundle: *void, path: string, own_only: bool = false) -> string {
-    count := ifx own_only then BundleOwnAssets(bundle) else BundleAssets(bundle)
+AppPreparationAsset :: (bundle: *void, path: string) -> string {
+    count := BundleAssets(bundle)
     index: u64 = 0
     while index < count {
         if TextFromCString(BundleAssetPath(bundle, index)) == path {
@@ -95,29 +86,6 @@ AppPreparationOpen :: (bytes: string) -> *void {
     return OpenBundleBytes(descriptor.data, cast(u64)bytes.count)
 }
 
-// Library code is supplied only by the exact siblings named in the signed
-// catalog. Each dependency is opened after its own dependencies.
-AppPreparationOpenWithLibraries :: (bytes: string, entry: *AppPreparationImports,
-    libraries: *AppPreparationLibraries, available: s32) -> *void {
-    if !entry.shared_code {
-        return AppPreparationOpen(bytes)
-    }
-    handles: [32]*void
-    for index: cast(s32)0..entry.dependency_count - 1 {
-        for previous: cast(s32)0..available - 1 {
-            item := libraries.items[previous]
-            if TextUntilNul(item.entry.id[:]) == TextUntilNul(entry.dependencies[index][:]) {
-                handles[index] = item.bundle
-                break
-            }
-        }
-        if handles[index] == null { return null }
-    }
-    descriptor := cast(*TextDescriptor)(*bytes)
-    return OpenBundleBytesWithLibraries(descriptor.data, cast(u64)bytes.count,
-        *handles[0], cast(u64)entry.dependency_count)
-}
-
 AppPreparationRun :: (argument: *void) {
     preparation := cast(*AppPreparation)argument
     actual: [65]u8
@@ -125,23 +93,18 @@ AppPreparationRun :: (argument: *void) {
     if TextUntilNul(actual[:]) != TextUntilNul(preparation.digest[:]) {
         return
     }
-    for index: cast(s32)0..preparation.libraries.count - 1 {
-        item := *preparation.libraries.items[index]
+    for index: cast(s32)0..preparation.dependencies.count - 1 {
+        item := *preparation.dependencies.items[index]
         AppPreparationHash(item.bytes, actual[:])
         if TextUntilNul(actual[:]) != TextUntilNul(item.entry.sha256[:]) { return }
-        if item.owner == null {
-            imports := AppPreparationImportsFor(item.entry)
-            item.bundle = AppPreparationOpenWithLibraries(item.bytes, *imports,
-                *preparation.libraries, index)
-        }
+        if item.owner == null { item.bundle = AppPreparationOpen(item.bytes) }
         if item.bundle == null { return }
     }
-    preparation.bundle = AppPreparationOpenWithLibraries(preparation.bytes,
-        *preparation.libraries.root, *preparation.libraries, preparation.libraries.count)
+    preparation.bundle = AppPreparationOpen(preparation.bytes)
     if preparation.bundle == null {
         return
     }
-    manifest := AppPreparationAsset(preparation.bundle, APPS_CATALOG_ASSET, true)
+    manifest := AppPreparationAsset(preparation.bundle, APPS_CATALOG_ASSET)
     if manifest.count == 0 {
         preparation.valid = true
         return
@@ -173,7 +136,7 @@ AppPreparationRun :: (argument: *void) {
 // collection names a harness it does not pack; the caller keeps it unchanged.
 AppPrepare :: (bytes: string, digest: string, id: string,
     byte_limit: s64 = APP_PREPARATION_BYTE_LIMIT,
-    libraries: *AppPreparationLibraries = null, controller: string = "") -> *AppPreparation {
+    dependencies: *AppPreparationDependencies = null, controller: string = "") -> *AppPreparation {
     if byte_limit < 0 || byte_limit > APP_PREPARATION_BYTE_LIMIT ||
     bytes.count < 8 || bytes.count > byte_limit - 65536 - cast(s64)size_of(AppNode) ||
     !AppDigestValid(digest) || !AppIdValid(id) {
@@ -187,14 +150,14 @@ AppPrepare :: (bytes: string, digest: string, id: string,
     preparation.bytes = bytes
     preparation.byte_limit = byte_limit
     preparation.supplied_controller = controller
-    if libraries != null {
-        if libraries.count < 0 || libraries.count > 32 {
+    if dependencies != null {
+        if dependencies.count < 0 || dependencies.count > 32 {
             AppPreparationFree(cast(*void)preparation)
             return null
         }
         charge := bytes.count + 65536 + cast(s64)size_of(AppNode)
-        for index: cast(s32)0..libraries.count - 1 {
-            item := libraries.items[index]
+        for index: cast(s32)0..dependencies.count - 1 {
+            item := dependencies.items[index]
             if item.entry == null || item.bytes.count < 8 ||
             (item.owner != null && item.bundle == null) ||
             (item.owner == null && item.bytes.count > byte_limit - charge - 65536) {
@@ -203,7 +166,7 @@ AppPrepare :: (bytes: string, digest: string, id: string,
             }
             if item.owner == null { charge += item.bytes.count + 65536 }
         }
-        preparation.libraries = libraries.*
+        preparation.dependencies = dependencies.*
     }
     unused CopyCString(digest, preparation.digest[:])
     unused CopyCString(id, preparation.id[:])
@@ -266,9 +229,9 @@ AppPreparationClose :: (preparation: *AppPreparation) -> bool {
     }
     CloseBundle(preparation.bundle)
     CloseBundle(preparation.controller)
-    for index: cast(s32)0..preparation.libraries.count - 1 {
-        if preparation.libraries.items[index].owner == null {
-            CloseBundle(preparation.libraries.items[index].bundle)
+    for index: cast(s32)0..preparation.dependencies.count - 1 {
+        if preparation.dependencies.items[index].owner == null {
+            CloseBundle(preparation.dependencies.items[index].bundle)
         }
     }
     AppPreparationFree(cast(*void)preparation)

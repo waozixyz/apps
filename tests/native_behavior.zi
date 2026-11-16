@@ -1552,9 +1552,9 @@ BundleOwnershipCheck :: () -> s32 {
     !PreparationNavigationWait(*host, root_handle) { return 1312 }
     runtime = AppHostActiveRuntime(*host)
     if runtime.dependency_count != 1 || runtime.dependency_owners[0] != base_runtime ||
-    base_runtime.library_borrows != 1 || !AppHostBorrowsBundle(*host, base[4:24]) ||
+    base_runtime.dependency_leases != 1 || !AppHostBorrowsBundle(*host, base[4:24]) ||
     AppHostBorrowsBundle(*host, duplicate) { return 1313 }
-    // Navigation-inactive and even retired libraries remain borrowed by the
+    // Navigation-inactive and even retired dependencies remain borrowed by the
     // live add-on. Collection cannot release their storage or original charge.
     AppTreeDrop(*host.tree, base_handle)
     AppHostCollect(*host)
@@ -1634,7 +1634,7 @@ DependencyCodeCheck :: () -> s32 {
     defer { AppFileFree(bytes) }
     live := PreparationTestLive()
     platform := AppPlatform.{.host_api = TEST_HOST_API, .allows = Allows, .call = Call, .widgets = Widgets, .save = Save, .state = State}
-    for corrupt: cast(s32)0..2 {
+    for corrupt: cast(s32)0..1 {
         host: AppHost
         if !AppHostStart(*host, bytes, "fixture.test", "fixture.thin", "collection",
             FixtureEnvironment("APPS_FIXTURE_THIN_ROOT_SHA256"), "account-a", platform,
@@ -1644,7 +1644,6 @@ DependencyCodeCheck :: () -> s32 {
             base := AppCatalogAt(*root.catalog, 0)
             base.sha256[0] = ifx base.sha256[0] == #char "a" then #char "b" else #char "a"
         }
-        if corrupt == 2 { AppCatalogAt(*root.catalog, 1).shared_code = false }
         unused Command(*host, "{\"v\":1,\"op\":\"open\",\"id\":\"fixture.addon\"}")
         deadline := PreparationTestNow() + 10.0
         while AppTreeNode(*host.tree, host.tree.active) == root && PreparationTestNow() < deadline {
@@ -1950,6 +1949,7 @@ DependenciesCheck :: () -> s32 {
     if !DependencyCatalog(*parent.catalog) { return 120 }
     defer { AppCatalogClear(*parent.catalog) }
     if DependencyCatalog(*parent.catalog, ",\"dependencies\":[\"editor\"]") || parent.catalog.count != 2 { return 121 }
+    // Bundle libraries are gone: a catalog naming the retired key is rejected.
     if DependencyCatalog(*parent.catalog, ",\"shared_code\":true") { return 141 }
     if DependencyCatalog(*parent.catalog, "", "missing") || parent.catalog.count != 2 { return 122 }
     if DependencyCatalog(*parent.catalog, "", "game", "assets/other/sprites/") ||

@@ -157,14 +157,15 @@ AppRuntime :: struct {
     dependency_entries: [32]*AppEntry
     dependency_apps: [32]HostedApp
     dependency_owners: [32]*AppRuntime
-    // Exact immutable sources retained by each opened or leased library.
+    // Exact immutable sources retained by each opened or leased dependency.
     dependency_sources: [32]string
     // Exact immutable source identity only; never dereferenced after open.
     source_data: *u8
     source_bytes: s64
-    // Leases keep this runtime and its original aggregate byte charge alive
-    // through workers, linked children, retirement and renderer collection.
-    library_borrows: s32
+    // Dependent add-ons lease this runtime's verified bundle for its packed
+    // resources. Leases keep it and its original aggregate byte charge alive
+    // through workers, dependents, retirement and renderer collection.
+    dependency_leases: s32
     // The catalog this controller last received and its revision. A
     // controller that already holds it is told so instead of parsing it
     // again in the VM on every frame.
@@ -631,7 +632,7 @@ AppHostAudioRead :: (context: *void, path: string) -> string {
     // Same verified bundle/dependency links as images, without downloaded art
     // or host filenames. Packed bytes remain immutable until AppHostCollect;
     // Kryon's provider copies/owns them before this borrow can be reused.
-    asset := AppHostResource(runtime, *runtime.node.entry, path, 0, true)
+    asset := AppHostResource(runtime, *runtime.node.entry, path, 0)
     // Kryon bounds this borrowed view to 8 MiB before decoding/copying it.
     return ifx asset.found then asset.data else ""
 }
@@ -701,17 +702,12 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
         }
     }
     if !controller && preparation != null {
-        if !AppHostTakePreparedLibraries(runtime, preparation) {
+        if !AppHostTakePreparedDependencies(runtime, preparation) {
             HostedAppClose(opened)
-            AppHostCloseLibraries(runtime)
+            AppHostCloseDependencies(runtime)
             free(runtime)
             return null
         }
-    }
-    // A thin child must come through the worker that verified its libraries.
-    if node.entry.shared_code && preparation == null {
-        free(runtime)
-        return null
     }
     ready: bool
     if protocol == APPS_NODE_PROTOCOL {
@@ -734,7 +730,7 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
     }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
-        AppHostCloseLibraries(runtime)
+        AppHostCloseDependencies(runtime)
         free(runtime)
         return null
     }
@@ -956,9 +952,9 @@ AppHostClearPreparation :: (host: *AppHost) -> bool {
     // Release opaque host leases only once the worker stopped borrowing.
     // ClosePreparation skips leased handles; their runtime remains the owner.
     if host.preparation != null {
-        for index: cast(s32)0..host.preparation.libraries.count - 1 {
-            owner := cast(*AppRuntime)host.preparation.libraries.items[index].owner
-            if owner != null { owner.library_borrows -= 1 }
+        for index: cast(s32)0..host.preparation.dependencies.count - 1 {
+            owner := cast(*AppRuntime)host.preparation.dependencies.items[index].owner
+            if owner != null { owner.dependency_leases -= 1 }
         }
     }
     if !AppPreparationClose(host.preparation) {
@@ -982,8 +978,8 @@ AppHostCollectPreparation :: (host: *AppHost) {
 
 // A signed sibling entry, account and exact source must still match the
 // running program. Do not match by digest alone or reuse retired/foreign
-// runtimes. Leaf programs need no reconciliation of linked dependency graphs.
-AppHostLibraryOwner :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, bytes: string) -> *AppRuntime {
+// runtimes. Only a dependency-free sibling's bundle is leased.
+AppHostDependencyOwner :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, bytes: string) -> *AppRuntime {
     if entry.dependency_count != 0 || parent.account_epoch != host.tree.account_epoch ||
     TextUntilNul(parent.account[:]) != TextUntilNul(host.tree.account[:]) { return null }
     source := cast(*TextDescriptor)(*bytes)
@@ -998,8 +994,7 @@ AppHostLibraryOwner :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, byte
         TextUntilNul(node.entry.sha256[:]) != TextUntilNul(entry.sha256[:]) ||
         TextUntilNul(node.entry.expected_id[:]) != TextUntilNul(entry.expected_id[:]) ||
         TextUntilNul(node.entry.package_id[:]) != TextUntilNul(entry.package_id[:]) ||
-        node.entry.protocol != entry.protocol || node.entry.dependency_count != 0 ||
-        node.entry.shared_code != entry.shared_code { continue }
+        node.entry.protocol != entry.protocol || node.entry.dependency_count != 0 { continue }
         runtime := cast(*AppRuntime)node.runtime
         if runtime.host == host && runtime.node == node && !runtime.retired && !runtime.controller &&
         runtime.dependency_count == 0 && runtime.source_data == source.data && runtime.source_bytes == bytes.count &&
@@ -1008,8 +1003,8 @@ AppHostLibraryOwner :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, byte
     return null
 }
 
-AppHostPrepareLibraries :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
-    libraries: *AppPreparationLibraries, depth: s32) -> bool {
+AppHostPrepareDependencies :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
+    dependencies: *AppPreparationDependencies, depth: s32) -> bool {
     if depth > 32 { return false }
     owner := cast(*AppRuntime)parent.runtime
     for index: cast(s32)0..entry.dependency_count - 1 {
@@ -1017,36 +1012,36 @@ AppHostPrepareLibraries :: (host: *AppHost, parent: *AppNode, entry: *AppEntry,
             AppCatalogFind(*parent.catalog, TextUntilNul(entry.dependencies[index][:])))
         if dependency == null { return false }
         known: bool
-        for previous: cast(s32)0..libraries.count - 1 {
-            known = known || libraries.items[previous].entry == dependency
+        for previous: cast(s32)0..dependencies.count - 1 {
+            known = known || dependencies.items[previous].entry == dependency
         }
         if known { continue }
-        if !AppHostPrepareLibraries(host, parent, dependency, libraries, depth + 1) ||
-        libraries.count >= 32 { return false }
+        if !AppHostPrepareDependencies(host, parent, dependency, dependencies, depth + 1) ||
+        dependencies.count >= 32 { return false }
         packed: bool
         resource := AppHostChildBundle(host, owner, parent, dependency, *packed)
         if !resource.found { return false }
-        libraries.items[libraries.count] = AppPreparationLibrary.{
+        dependencies.items[dependencies.count] = AppPreparationDependency.{
             .bytes = resource.data, .entry = dependency}
-        // Reuse only a dependency-free sibling's exact verified program.
-        // More complex linked graphs keep their existing separate ownership.
-        library_owner := AppHostLibraryOwner(host, parent, dependency, resource.data)
-        if library_owner != null {
-            libraries.items[libraries.count].owner = cast(*void)library_owner
-            libraries.items[libraries.count].bundle = AppContextRuntime(*library_owner.app).bundle
+        // Reuse only a dependency-free sibling's exact verified bundle.
+        // Deeper graphs keep their existing separate ownership.
+        dependency_owner := AppHostDependencyOwner(host, parent, dependency, resource.data)
+        if dependency_owner != null {
+            dependencies.items[dependencies.count].owner = cast(*void)dependency_owner
+            dependencies.items[dependencies.count].bundle = AppContextRuntime(*dependency_owner.app).bundle
         }
-        libraries.count += 1
+        dependencies.count += 1
     }
     return true
 }
 
-AppHostPreparedLibrariesCurrent :: (host: *AppHost, parent: *AppNode, preparation: *AppPreparation) -> bool {
-    for index: cast(s32)0..preparation.libraries.count - 1 {
-        item := preparation.libraries.items[index]
+AppHostPreparedDependenciesCurrent :: (host: *AppHost, parent: *AppNode, preparation: *AppPreparation) -> bool {
+    for index: cast(s32)0..preparation.dependencies.count - 1 {
+        item := preparation.dependencies.items[index]
         if item.owner == null { continue }
         packed: bool
         resource := AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, item.entry, *packed)
-        if !resource.found || AppHostLibraryOwner(host, parent, item.entry, resource.data) != cast(*AppRuntime)item.owner {
+        if !resource.found || AppHostDependencyOwner(host, parent, item.entry, resource.data) != cast(*AppRuntime)item.owner {
             return false
         }
     }
@@ -1095,7 +1090,7 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
         if !AppPreparationReady(host.preparation) {
             return 0
         }
-        if !host.preparation.valid || !AppHostPreparedLibrariesCurrent(host, parent, host.preparation) {
+        if !host.preparation.valid || !AppHostPreparedDependenciesCurrent(host, parent, host.preparation) {
             unused AppHostClearPreparation(host)
             return -1
         }
@@ -1109,18 +1104,18 @@ AppHostPrepareChild :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
     if !resource.found || charge > host.tree.byte_limit - host.tree.bytes - host.retired_bytes {
         return -1
     }
-    libraries := AppPreparationLibraries.{.root = AppPreparationImportsFor(entry)}
-    if !AppHostPrepareLibraries(host, parent, entry, *libraries, 0) { return -1 }
-    for index: cast(s32)0..libraries.count - 1 {
-        library_owner := cast(*AppRuntime)libraries.items[index].owner
-        if library_owner != null { library_owner.library_borrows += 1 }
+    dependencies: AppPreparationDependencies
+    if !AppHostPrepareDependencies(host, parent, entry, *dependencies, 0) { return -1 }
+    for index: cast(s32)0..dependencies.count - 1 {
+        dependency_owner := cast(*AppRuntime)dependencies.items[index].owner
+        if dependency_owner != null { dependency_owner.dependency_leases += 1 }
     }
     preparation := AppPrepare(resource.data, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]),
-        host.tree.byte_limit - host.tree.bytes - host.retired_bytes, *libraries)
+        host.tree.byte_limit - host.tree.bytes - host.retired_bytes, *dependencies)
     if preparation == null {
-        for index: cast(s32)0..libraries.count - 1 {
-            library_owner := cast(*AppRuntime)libraries.items[index].owner
-            if library_owner != null { library_owner.library_borrows -= 1 }
+        for index: cast(s32)0..dependencies.count - 1 {
+            dependency_owner := cast(*AppRuntime)dependencies.items[index].owner
+            if dependency_owner != null { dependency_owner.dependency_leases -= 1 }
         }
         return -1
     }
@@ -1409,7 +1404,7 @@ AppHostOpen :: (context: *void, parent: *AppNode, entry: *AppEntry, candidate: *
             unused AppHostClearPreparation(host)
         }
     }
-    if preparation != null && !AppHostPreparedLibrariesCurrent(host, parent, preparation) { return false }
+    if preparation != null && !AppHostPreparedDependenciesCurrent(host, parent, preparation) { return false }
     if !resource.found || (preparation == null && (ifx packed
         then !AppHostAssetMatches(parent, bundle, resource.data, TextUntilNul(entry.sha256[:]))
         else !AppHostBytesMatch(resource.data, TextUntilNul(entry.sha256[:])))) { return false }
@@ -1683,8 +1678,8 @@ AppHostBorrowsBundle :: (host: *AppHost, bytes: string) -> bool {
     if preparation != null {
         if AppHostBundleContainsSource(bytes, preparation.bytes) ||
         AppHostBundleContainsSource(bytes, preparation.supplied_controller) { return true }
-        for index: cast(s32)0..preparation.libraries.count - 1 {
-            if AppHostBundleContainsSource(bytes, preparation.libraries.items[index].bytes) { return true }
+        for index: cast(s32)0..preparation.dependencies.count - 1 {
+            if AppHostBundleContainsSource(bytes, preparation.dependencies.items[index].bytes) { return true }
         }
     }
     return false
@@ -1705,7 +1700,7 @@ AppHostCollect :: (host: *AppHost) {
       progress := false
       while runtime != null {
         next := runtime.next_retired
-        if runtime.busy || runtime.library_borrows > 0 || (runtime.frontend != null && runtime.frontend.busy) ||
+        if runtime.busy || runtime.dependency_leases > 0 || (runtime.frontend != null && runtime.frontend.busy) ||
         (host.preparation != null && host.preparation_owner == runtime) {
             runtime.next_retired = retained
             retained = runtime
@@ -1719,7 +1714,7 @@ AppHostCollect :: (host: *AppHost) {
             free(runtime.frontend)
         }
         HostedAppClose(AppContextRuntime(*runtime.app))
-        AppHostCloseLibraries(runtime)
+        AppHostCloseDependencies(runtime)
         if runtime.art_open { HostedAppClose(*runtime.art) }
         AppFileFree(runtime.catalog)
         free(runtime)
@@ -1820,11 +1815,6 @@ AppHostStart :: (host: *AppHost, bytes: string, authority: string, id: string,
     }
     catalog_ready := !manifest.found || (AppCatalogRead(manifest.data, id, *root.catalog) &&
         AppHostController(host, root, runtime, preparation))
-    item := root.catalog.children
-    while item != null {
-        if item.entry.shared_code { provider.prepare = AppHostPrepareChild }
-        item = item.next
-    }
     if !catalog_ready ||
     !AppTreeStart(*host.tree, root, account, provider) {
         AppHostClose(cast(*void)host, root)
@@ -1993,9 +1983,9 @@ AppHostInstallPlan :: (host: *AppHost, parent: *AppNode, entry: *AppEntry, plan:
     return true
 }
 
-AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparation) -> bool {
-    for index: cast(s32)0..preparation.libraries.count - 1 {
-        item := *preparation.libraries.items[index]
+AppHostTakePreparedDependencies :: (runtime: *AppRuntime, preparation: *AppPreparation) -> bool {
+    for index: cast(s32)0..preparation.dependencies.count - 1 {
+        item := *preparation.dependencies.items[index]
         opened := runtime.dependency_count
         if item.bundle == null || item.entry == null || opened >= 32 { return false }
         runtime.dependency_apps[opened].bundle = item.bundle
@@ -2016,13 +2006,12 @@ AppHostTakePreparedLibraries :: (runtime: *AppRuntime, preparation: *AppPreparat
     return true
 }
 
-// Close the child bundle first: it retains linked library handles itself.
 // A leased HostedApp is just an asset view, never another instance or owner.
-AppHostCloseLibraries :: (runtime: *AppRuntime) {
+AppHostCloseDependencies :: (runtime: *AppRuntime) {
     for index: cast(s32)0..runtime.dependency_count - 1 {
         owner := runtime.dependency_owners[index]
         if owner != null {
-            owner.library_borrows -= 1
+            owner.dependency_leases -= 1
             runtime.dependency_owners[index] = null
             runtime.dependency_apps[index] = HostedApp.{}
         } else { HostedAppClose(*runtime.dependency_apps[index]) }
@@ -2064,8 +2053,7 @@ AppHostDependenciesOpen :: (runtime: *AppRuntime, parent: *AppNode, entry: *AppE
     return true
 }
 
-AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth: s32,
-    own_only: bool = false) -> HostedAsset {
+AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth: s32) -> HostedAsset {
     if depth > 32 { return HostedAsset.{} }
     app: *HostedApp
     if entry == *runtime.node.entry { app = AppContextRuntime(*runtime.app) }
@@ -2075,17 +2063,7 @@ AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth:
         }
     }
     if app == null { return HostedAsset.{} }
-    // Audio must not turn a code library's inherited table into a resource
-    // grant. Preserve the indexed image/legacy reader's existing behavior.
-    own := !own_only || BundleOwnAssets(app.bundle) == BundleAssets(app.bundle)
-    if !own {
-        index: u64 = 0
-        while index < BundleOwnAssets(app.bundle) {
-            own = own || TextFromCString(BundleAssetPath(app.bundle, index)) == path
-            index += 1
-        }
-    }
-    resource := ifx own then HostedAppAsset(app, path) else HostedAsset.{}
+    resource := HostedAppAsset(app, path)
     if resource.found {
         if entry != *runtime.node.entry && resource.data.count > 16777216 { return HostedAsset.{} }
         return resource
@@ -2104,7 +2082,7 @@ AppHostResource :: (runtime: *AppRuntime, entry: *AppEntry, path: string, depth:
         BuilderPrint(*target, "%", TextUntilNul(link.source[:]))
         BuilderPrint(*target, "%", path[prefix.count:])
         resolved := BuilderFinish(target)
-        result := AppHostResource(runtime, dependency, resolved, depth + 1, own_only)
+        result := AppHostResource(runtime, dependency, resolved, depth + 1)
         AppFileFree(resolved)
         return result
     }

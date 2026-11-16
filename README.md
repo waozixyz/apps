@@ -84,7 +84,7 @@ behind their existing download consent.
 Keep returned bundle bytes immutable while `AppHostBorrowsBundle(host, bytes)`
 returns true. Call it on the owning thread between host calls, after rendering
 has consumed queued paint and `AppHostCollect` has run. It includes live and
-dormant nodes, frontends, separate art, linked/resource dependencies, retired
+dormant nodes, frontends, separate art, leased/resource dependencies, retired
 runtimes and unfinished or canceled preparation inputs. It compares actual
 source storage, including overlapping packed slices, never hashes or selected
 navigation. Check every host sharing the allocation and any provider-owned
@@ -95,13 +95,15 @@ Installation lists every missing package and its total size, and skips
 dependencies already on the device. Read-only `resources` links reuse explicit
 asset paths from those verified packages. Missing dependencies, cycles,
 altered payloads and paths outside the declared app namespaces are rejected.
-An add-on with `shared_code: true` also links its declared dependencies as
-portable code libraries. Build it with Ziran's `--library` option against
-those exact payloads; the base package uses `--retain` for additional entry
-points the add-on needs. Verification happens on the preparation worker,
-before guest code runs. Each instance keeps its own mutable state. Libraries'
-assets remain behind the same explicit resource links, and their bytes count
-toward the collection's memory limit.
+An add-on that reuses its base's code imports the base's modules like any
+other Ziran code; the linker builds the reachable code into the add-on's own
+`.zx`. There are no shared code bundles. The add-on's `dependencies` are then
+only for resource links and shared records. Dependencies are verified on the
+preparation worker, before guest code runs. When the base is already running,
+the add-on leases that exact verified bundle instead of opening a second copy,
+so the base's bytes are counted once toward the collection's memory limit.
+Each instance keeps its own mutable state. Catalogs that still name the
+retired `shared_code` key are rejected.
 
 A base app may export a few flat saved-record names in `shared_records`.
 Only a direct, verified dependent in that signed catalog may read them through
@@ -110,7 +112,7 @@ The reply contains `status` (`done`, `missing`, `rejected` or `unavailable`)
 and `text` for a successful read. The host keeps the current account and
 authority, applies its ordinary storage policy and bounds replies to 64 KiB.
 This grants no writes, no undeclared records and no access through a mere
-dependency declaration. Code libraries still keep independent mutable state.
+dependency declaration.
 
 A portable node/2 app may request `kryon/frame_snapshot` and call
 `CaptureFrameInput` during its frame. Apps forwards that exact hosted capability
@@ -153,9 +155,9 @@ The native consumer installs its provider once on its owning thread with
 authorized calls return `Unsupported`; device/browser results retain Kryon's
 `Unavailable`/`Suspended` semantics. Apps supplies each actual `HostedApp.audio`
 owner and `AppHostAudioRead` to `WidgetHostAudioCall`, using the active node's
-verified bundle and explicit catalog resource links. Inherited code-library
-assets alone grant no audio reads. Paths cannot name host files or network
-URLs; Kryon bounds each asset to 8 MiB and each owner to 16 independent voices.
+verified bundle and explicit catalog resource links. Paths cannot name host
+files or network URLs; Kryon bounds each asset to 8 MiB and each owner to 16
+independent voices.
 The packed borrow lasts until `AppHostCollect`; providers own decoded/copied
 bytes before later reuse. Nodes sharing an outer Session keep separate voices
 and readers. The permission gate applies to the full MediaAudio capability,

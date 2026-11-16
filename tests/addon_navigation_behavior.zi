@@ -205,42 +205,42 @@ NavLargeCheck :: () -> s32 {
     base_entry := AppCatalogAt(*root.catalog, 0)
     entry := AppCatalogAt(*root.catalog, 1)
     if host.tree.byte_limit != 67108864 || host.tree.bytes < base.count ||
-    AppHostLibraryOwner(*host, root, base_entry, base) != runtime { return 202 }
+    AppHostDependencyOwner(*host, root, base_entry, base) != runtime { return 202 }
     // Reuse never follows digest alone, another source allocation, account,
     // authority, protocol, expected identity or a changed signed digest.
     copy, copy_found := ReadEntireFile("work/arcade-addon/large-base.zx")
-    if !copy_found || AppHostLibraryOwner(*host, root, base_entry, copy) != null { return 203 }
+    if !copy_found || AppHostDependencyOwner(*host, root, base_entry, copy) != null { return 203 }
     AppFileFree(copy)
     authority := runtime.node.identity.authority
     unused CopyCString("foreign.authority", runtime.node.identity.authority[:])
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 204 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 204 }
     runtime.node.identity.authority = authority
     host.tree.account_epoch += 1
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 205 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 205 }
     host.tree.account_epoch -= 1
     unused CopyCString("account-b", host.tree.account[:])
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 206 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 206 }
     unused CopyCString("account-a", host.tree.account[:])
     saved_entry := base_entry.*
     base_entry.sha256[0] = ifx base_entry.sha256[0] == #char "a" then #char "b" else #char "a"
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 207 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 207 }
     base_entry.* = saved_entry
     base_entry.protocol = APPS_NODE_PROTOCOL
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 208 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 208 }
     base_entry.* = saved_entry
     unused CopyCString("foreign", base_entry.expected_id[:])
-    if AppHostLibraryOwner(*host, root, base_entry, base) != null { return 209 }
+    if AppHostDependencyOwner(*host, root, base_entry, base) != null { return 209 }
     base_entry.* = saved_entry
     // Without a verified existing owner this really exceeds the same cap.
-    libraries := AppPreparationLibraries.{.root = AppPreparationImportsFor(entry), .count = 1}
-    libraries.items[0] = AppPreparationLibrary.{.bytes = base, .entry = base_entry}
+    dependencies := AppPreparationDependencies.{.count = 1}
+    dependencies.items[0] = AppPreparationDependency.{.bytes = base, .entry = base_entry}
     remaining := host.tree.byte_limit - host.tree.bytes - host.retired_bytes
-    if AppPrepare(addon, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]), remaining, *libraries) != null { return 210 }
+    if AppPrepare(addon, TextUntilNul(entry.sha256[:]), TextUntilNul(entry.id[:]), remaining, *dependencies) != null { return 210 }
     host.tree.provider.prepare = AppHostPrepareChild
     before := host.tree.bytes
     if AppHostPrepareChild(cast(*void)(*host), root, entry, 0) != 0 ||
-    host.preparation == null || runtime.library_borrows != 1 ||
-    host.preparation.libraries.items[0].bundle != AppContextRuntime(*runtime.app).bundle { return 211 }
+    host.preparation == null || runtime.dependency_leases != 1 ||
+    host.preparation.dependencies.items[0].bundle != AppContextRuntime(*runtime.app).bundle { return 211 }
     // Cancellation waits for the worker and releases the lease once.
     AppHostCancelChild(*host)
     if !NavDrain(*host) { return 212 }
@@ -248,7 +248,7 @@ NavLargeCheck :: () -> s32 {
     while host.preparation != null && MonotonicMilliseconds() < deadline {
         AppHostCollect(*host); unused SleepMilliseconds(1)
     }
-    if host.preparation != null || runtime.library_borrows != 0 || host.tree.bytes != before { return 213 }
+    if host.preparation != null || runtime.dependency_leases != 0 || host.tree.bytes != before { return 213 }
     // A changed account during preparation invalidates reuse and cannot open.
     unused NavAttempt(*host, "fixture.addon")
     if !AppTreeDrain(*host.tree) || host.preparation == null { return 214 }
@@ -259,11 +259,11 @@ NavLargeCheck :: () -> s32 {
         AppHostCollect(*host); unused SleepMilliseconds(1)
     }
     host.tree.account_epoch -= 1
-    if runtime.library_borrows != 0 { return 216 }
+    if runtime.dependency_leases != 0 { return 216 }
     unused NavAttempt(*host, "fixture.addon")
     if !NavDrain(*host) || !NavActiveIs(*host, "fixture.addon") { return 217 }
     editor := AppHostActiveRuntime(*host)
-    if runtime.library_borrows != 1 { return 228 }
+    if runtime.dependency_leases != 1 { return 228 }
     if editor.dependency_owners[0] != runtime { return 229 }
     if editor.node.bytes >= 2000000 { return 230 }
     if host.tree.bytes > host.tree.byte_limit { return 231 }
@@ -273,7 +273,7 @@ NavLargeCheck :: () -> s32 {
     AppHostAsset(editor.node, "assets/counter-addon/large.bin").found { return 219 }
     if AppHostBack(*host) != 1 || !AppHandleEqual(game, host.tree.active) { return 220 }
     AppHostCollect(*host)
-    if runtime.library_borrows != 0 || host.tree.bytes != before { return 221 }
+    if runtime.dependency_leases != 0 || host.tree.bytes != before { return 221 }
     unused NavAttempt(*host, "fixture.addon")
     if !NavDrain(*host) || !NavActiveIs(*host, "fixture.addon") { return 222 }
     editor = AppHostActiveRuntime(*host)
@@ -282,7 +282,7 @@ NavLargeCheck :: () -> s32 {
     AppTreeClearReturn(editor.node)
     AppTreeDrop(*host.tree, game)
     AppHostCollect(*host)
-    if !runtime.retired || runtime.library_borrows != 1 || host.retired_bytes < base.count ||
+    if !runtime.retired || runtime.dependency_leases != 1 || host.retired_bytes < base.count ||
     host.tree.bytes + host.retired_bytes > host.tree.byte_limit ||
     !AppHostAsset(editor.node, "assets/counter-addon/shared.bin").found || !Draw(*host, 480, 640, false) { return 223 }
     if !NavStop(*host) || host.retired != null { return 224 }

@@ -1,6 +1,6 @@
 #import "kryon/app_context"
 #import "kryon/app_protocol"
-#import, file "counter_library.zi";
+#import, file "counter_step.zi";
 
 #program_export
 Main :: () -> s32 {

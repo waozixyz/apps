@@ -74,9 +74,9 @@ def main():
     args = [arg for source, target in bindings.items() for arg in
             ('--bind', f'kryon/{source}=game_hud_host:{target}')]
     bundle = WORK / 'tree.zx'
-    run(toolchain / 'build/bin/zi2zx', 'bundle', '--module-path', toolchain / 'std', '--root', ROOT / 'tests',
+    run(toolchain / 'build/bin/zi2zx', '--module-path', toolchain / 'std', '--root', ROOT / 'tests',
         '--entry', 'game_hud_behavior:Check', *args, '-o', bundle, ROOT / 'tests/game_hud_behavior.zi')
-    assert run(toolchain / 'build/bin/zi2zx', 'run', '--vm', bundle).strip() == '0'
+    assert run(toolchain / 'build/bin/zi2zx', 'run', '--backend', 'engine', bundle).strip() == '0'
     print('PASS portable: same retained-tree behavior and bounds')
     args = [arg for source, target in [('image:ImageHostedHost', 'HudImage'),
             ('button:ButtonHostedHost', 'HudButton'), ('box:BoxHostedHost', 'HudBox'),
@@ -84,9 +84,9 @@ def main():
             ('widget_palette:WidgetPaletteRestoreHostedHost', 'HudPaletteRestore'), ('text:TextHostedHost', 'HudText')]
             for arg in ('--bind', f'kryon/{source}=game_hud_hosted:{target}')]
     bundle = WORK / 'hosted.zx'
-    run(toolchain / 'build/bin/zi2zx', 'bundle', '--module-path', toolchain / 'std', '--root', ROOT / 'tests', '--define', 'KRYON_HOSTED_UI',
+    run(toolchain / 'build/bin/zi2zx', '--module-path', toolchain / 'std', '--root', ROOT / 'tests', '--define', 'KRYON_HOSTED_UI',
         '--entry', 'game_hud_hosted:Check', *args, '-o', bundle, ROOT / 'tests/game_hud_hosted.zi')
-    assert run(toolchain / 'build/bin/zi2zx', 'run', '--vm', bundle).strip() == '0'
+    assert run(toolchain / 'build/bin/zi2zx', 'run', '--backend', 'engine', bundle).strip() == '0'
     print('PASS hosted portable: images, invisible translated actions, amount, default/custom asset paths and results')
     print('PASS assets: transparent WebP thumbnails <=256px; package export and translations')
     os.environ.pop('ZIRAN_PACKAGE_MAP')

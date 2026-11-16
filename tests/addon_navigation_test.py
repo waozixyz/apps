@@ -68,7 +68,8 @@ def main():
     (WORK / 'controller.sha256').write_text(hashlib.sha256(controller.read_bytes()).hexdigest())
     # Arcade's downloaded game is about 50 MB and its thin editor about 1 MB.
     # Keep the collection small; pack a real large asset in a verified base,
-    # and compile a real linked guest against it. No inflated accounting mocks.
+    # and an add-on that builds the base's code into itself. No inflated
+    # accounting mocks.
     native.WORK = WORK
     large_assets = WORK / 'large-assets'
     (large_assets / 'counter').mkdir(parents=True, exist_ok=True)
@@ -83,13 +84,13 @@ def main():
     large_base = WORK / 'large-base.zx'
     large_addon = WORK / 'large-addon.zx'
     native.bundle('counter', large_base, large_assets)
-    native.bundle('counter_addon', large_addon, addon_assets, library=large_base)
+    native.bundle('counter_addon', large_addon, addon_assets)
     with large_base.open('rb') as stream:
         large_digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     large_entries = [dict(id='fixture.counter', title='fixture.counter', bundle='assets/child.zx',
                           protocol='app/1', expected_id='counter', version='1', sha256=large_digest),
                      native.child('fixture.addon', large_addon, 'app/1', 'counter-addon', 'assets/addon.zx')]
-    large_entries[1].update(dependencies=['fixture.counter'], shared_code=True,
+    large_entries[1].update(dependencies=['fixture.counter'],
         cover=dict(portrait='assets/preview.png', action='internal'),
         resources=[dict(dependency='fixture.counter', path='assets/counter-addon/shared.bin', source='assets/counter/shared.bin'),
                    dict(dependency='fixture.counter', path='assets/counter-addon/large.bin', source='assets/counter/large.bin')])
@@ -114,7 +115,7 @@ def main():
         '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
         runtime, '-Wl,--gc-sections', '-lm', '-lpthread', '-o', WORK / 'test')
     run(WORK / 'test')
-    print('PASS add-on navigation: app/1 + node/2, consent/Back, stale authorization/account; 50 MB shared-code base opens under 64 MiB, exact-source leases, cancellation and retired resource lifetime')
+    print('PASS add-on navigation: app/1 + node/2, consent/Back, stale authorization/account; 50 MB base leased by its add-on under 64 MiB, exact-source leases, cancellation and retired resource lifetime')
     after = {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in sources}
     if before != after:
         raise RuntimeError('Apps production source changed during the local test')

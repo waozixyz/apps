@@ -83,7 +83,7 @@ def main():
     run(cc, '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
         '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
         ROOT / 'tests/preparation_host.c', support, sys.argv[1], decoder,
-        '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes', '-Wl,--wrap=BundleOpenBytesWithLibraries',
+        '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
         '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
         *webp_libs, '-lm', '-lpthread', '-o', executable)
     class Handler(http.server.BaseHTTPRequestHandler):

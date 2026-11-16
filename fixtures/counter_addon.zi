@@ -1,6 +1,8 @@
 #import "kryon/app_context"
 #import "kryon/app_protocol"
-#import, file "counter_library.zi";
+// The add-on reuses its base's code by importing the same module; the linker
+// builds that code into this bundle.
+#import, file "counter_step.zi";
 
 #program_export
 Main :: () -> s32 {

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Run add-ons on Ziran's one-format ZX: an add-on imports its base's modules and carries that code in its own bundle. `shared_code` and code-library loading are removed, and catalogs that name `shared_code` are rejected. Dependencies remain for resource links and shared records, and a running base's verified bundle is still leased once. Build with Ziran 768495fc and Kryon 0dea8bc2.
+
 - Build with Ziran 0e91eb43 (program format 62) and Kryon 99c934a0 (staged swipes, correction caret and image sizing); hosts on host_api 43 load the new controller.
 
 - Expose exact retained bundle ownership and restore verified disk-cached children only when opened, so hosts can bound resident package memory safely.

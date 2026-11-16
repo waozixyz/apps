@@ -52,10 +52,6 @@ def main():
             args += ['--define', 'APPS_AUDIO_CONTEXT_FIXTURE']
         run(*args, ROOT / 'fixtures' / (source + '.zi'))
         paths[kind] = path
-    paths['LIBRARY'] = WORK / 'library.zx'
-    native.bundle('counter', paths['LIBRARY'], WORK / 'node/assets')
-    paths['THIN'] = WORK / 'thin.zx'
-    native.bundle('counter_addon', paths['THIN'], library=paths['LIBRARY'])
     donor = native.child('fixture.audio.donor', paths['DONOR'], 'node/2', 'audio', 'assets/donor.zx')
     child = native.child('fixture.audio.child', paths['CHILD'], 'node/2', 'audio', 'assets/child.zx')
     child.update(dependencies=['fixture.audio.donor'], resources=[dict(dependency='fixture.audio.donor',
@@ -96,12 +92,12 @@ def main():
         includes = [arg for p in [output, *sorted(output.rglob('*'))] if p.is_dir() for arg in ('-iquote', str(p))]
         libs = []
         if actual:
-            libs = [str(null_audio), str(raylib), *subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'libdrm', 'gbm', 'egl', 'glesv2'], text=True).split(), '-ldl']
+            libs = [str(null_audio), str(raylib), *subprocess.check_output(['pkg-config', '--libs', 'sdl2', 'libdrm', 'gbm', 'egl', 'glesv2', 'opus'], text=True).split(), '-ldl']
         executable = WORK / 'test'
         run(os.environ.get('CC', 'cc'), '-std=c11', '-O1', '-ffunction-sections', '-fdata-sections',
             '-I' + str(toolchain / 'include'), *includes, *sorted(output.rglob('*.c')),
             ROOT / 'tests/preparation_host.c', sys.argv[1], *libs,
-            '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes', '-Wl,--wrap=BundleOpenBytesWithLibraries',
+            '-Wl,--gc-sections', '-Wl,--wrap=BundleOpenBytes',
             '-Wl,--wrap=BundleInstantiate', '-Wl,--wrap=BundleInstanceRun', '-Wl,--wrap=BundleClose',
             '-lm', '-lpthread', '-o', executable)
         config = WORK / 'alsa.conf'

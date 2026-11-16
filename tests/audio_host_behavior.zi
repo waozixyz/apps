@@ -131,28 +131,6 @@ AudioAccept :: (context: *void) -> bool {
 }
 AudioReject :: (context: *void) -> bool { return false }
 
-AudioInheritedCheck :: () -> bool {
-    library_bytes, library_found := ReadEntireFile(FixtureEnvironment("APPS_AUDIO_LIBRARY_BUNDLE"))
-    thin_bytes, thin_found := ReadEntireFile(FixtureEnvironment("APPS_AUDIO_THIN_BUNDLE"))
-    if !library_found || !thin_found { return false }
-    defer { AppFileFree(library_bytes); AppFileFree(thin_bytes) }
-    library: HostedApp
-    if !HostedAppOpen(*library, library_bytes) { return false }
-    defer { HostedAppClose(*library) }
-    libraries: [1]*void = .[library.bundle]
-    descriptor := cast(*TextDescriptor)(*thin_bytes)
-    runtime: AppRuntime
-    runtime.app.app.bundle = OpenBundleBytesWithLibraries(descriptor.data, cast(u64)thin_bytes.count, *libraries[0], cast(u64)1)
-    defer { HostedAppClose(*runtime.app.app) }
-    node: AppNode
-    runtime.node = *node
-    // A real thin program with zero own assets must finish the ownership
-    // scan and cannot turn inherited library bytes into an audio grant.
-    return runtime.app.app.bundle != null && BundleOwnAssets(runtime.app.app.bundle) == cast(u64)0 &&
-        HostedAppAsset(*runtime.app.app, "assets/audio/tone.wav").found &&
-        !AppHostResource(*runtime, *node.entry, "assets/audio/tone.wav", 0, true).found
-}
-
 // Use the module the real source bundle actually imports, including package
 // identity. Exercise inactive/foreign/unknown/malformed calls without a VM trap.
 AudioBoundary :: (runtime: *AppRuntime) -> s32 {
@@ -210,7 +188,6 @@ AudioBoundary :: (runtime: *AppRuntime) -> s32 {
 #program_export
 AudioCheck :: () -> s32 {
     AudioTestBegin()
-    if !AudioInheritedCheck() { return 700 }
     ui_session = SessionOpen()
     first: AppHost
     if !AudioOpen(*first, "NODE", APPS_NODE_PROTOCOL, "fixture.audio", "audio") { return 701 }

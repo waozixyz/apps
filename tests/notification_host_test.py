@@ -51,7 +51,7 @@ def main():
                 '--entry', 'notification_guest:Main', *defines, '-o', ir,
                 ROOT / 'fixtures/notification_guest.zi')
             saved = WORK / f'{game}-{protocol}-saved.zx'
-            run(toolchain / 'build/bin/zi2zx', 'bundle', '--root', ir, '--module-path', ir,
+            run(toolchain / 'build/bin/zi2zx', '--root', ir, '--module-path', ir,
                 '--entry', 'notification_guest:Main', '--asset-dir', 'assets=' + str(assets.parent),
                 '-o', saved, ir / 'notification_guest.zir')
             if path.read_bytes() != saved.read_bytes():
