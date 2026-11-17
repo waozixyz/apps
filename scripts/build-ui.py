@@ -29,7 +29,10 @@ subprocess.run([str(args.compiler.resolve()), 'bundle', '--project', *flags,
                 '--root', str(ROOT / 'ui'), '--entry', entry, '--define', 'KRYON_HOSTED_UI',
                 '-o', str(WORK / 'apps.zx'), str(ROOT / 'ui/apps.zi')], cwd=project, check=True)
 with (WORK / 'apps.zx').open('rb') as stream:
-    digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+    digest_state = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest_state.update(chunk)
+    digest = digest_state.hexdigest()
 (WORK / 'apps.sha256').write_text(digest + '\n')
 (WORK / 'manifest.json').write_text(json.dumps(dict(id='apps', protocol='app/1', sha256=digest), indent=2) + '\n')
 print(f'Built shared Apps UI and trusted digest in {WORK}')
