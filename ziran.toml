@@ -4,7 +4,7 @@ module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "d17c7aa1e093066ef03f307a45f6966dd9b29d4b"
+ref = "ebd19223fa18432066f5dfa53124640eea36fa94"
 
 [exports]
 game_hud = "src/game_hud.zi"
@@ -25,7 +25,7 @@ node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "f123e8ba3e3a9d77e059004564f0189558d4f652"
+ref = "9052a642a0de97e160bcdfd952d0766d0f4737fc"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
