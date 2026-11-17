@@ -1,4 +1,4 @@
-"""Link actual Apps and DaochiClient against an explicit canonical Crypto source.
+"""Link actual Apps and Mesh Client against an explicit canonical Crypto source.
 
 No package checkout, generated-code patch or consumer lock edit is involved.
 The independent fixture uses real package-qualified imports on retained IR55.
@@ -18,7 +18,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runtime", type=Path)
     parser.add_argument("--crypto-source", type=Path, required=True)
-    parser.add_argument("--daochi-source", type=Path, required=True)
+    parser.add_argument("--mesh-source", type=Path, required=True)
     args = parser.parse_args()
     for name in ("DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS"):
         os.environ.pop(name, None)
@@ -30,14 +30,14 @@ def main():
     package = "p0000000000000001"
     crypto_id = next(row.split("\t")[3] for row in mapping_rows if row.startswith("D\troot\tcrypto/sha256\t"))
     old_crypto = next(row.split("\t")[2] for row in mapping_rows if row.startswith("P\t" + crypto_id + "\t"))
-    # Keep the resolved Daochi identity and its dependency edges when testing
+    # Keep the resolved Mesh identity and its dependency edges when testing
     # another source root; the same file cannot be a second package module.
-    dao_id = next(row.split("\t")[3] for row in mapping_rows
-                  if row.startswith("D\troot\tdaochi_client/crypto\t"))
-    old_dao = next(row.split("\t")[2] for row in mapping_rows
-                   if row.startswith("P\t" + dao_id + "\t"))
+    mesh_id = next(row.split("\t")[3] for row in mapping_rows
+                  if row.startswith("D\troot\tmesh_client/crypto\t"))
+    old_mesh = next(row.split("\t")[2] for row in mapping_rows
+                   if row.startswith("P\t" + mesh_id + "\t"))
     sources = [(old_crypto, args.crypto_source.resolve()),
-               (old_dao, args.daochi_source.resolve())]
+               (old_mesh, args.mesh_source.resolve())]
     for row in mapping_rows:
         fields = row.split("\t")
         if len(fields) > 1 and fields[1] == "root":
@@ -68,7 +68,7 @@ def main():
                     "-I" + str(toolchain / "include"), *includes, *map(str, sorted(output.rglob("*.c"))),
                     str(args.runtime.resolve()), "-Wl,--gc-sections", "-lm", "-lpthread", "-o", str(WORK / "test")], check=True)
     subprocess.run([str(WORK / "test")], check=True)
-    print("IR55 external Apps + DaochiClient + Crypto native link and unchanged SHA256/hex/HMAC APIs passed")
+    print("IR55 external Apps + Mesh Client + Crypto native link and unchanged SHA256/hex/HMAC APIs passed")
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@
 #import "kryon/http_transfer"
 #import "catalog"
 #import "protocol"
-Release :: #import "daochi_client/release";
+Release :: #import "mesh_client/release";
 
 APP_REMOTE_METADATA_LIMIT :: 65536
 APP_REMOTE_CATALOG_LIMIT :: 262144
@@ -35,7 +35,7 @@ AppRemoteSource :: struct {
 AppRemoteCatalog :: struct {
     source: AppRemoteSource
     files: *AppFiles
-    verify: Release.DaochiReleaseVerify
+    verify: Release.MeshReleaseVerify
     allowed: bool
     failed: bool
     changed: bool
@@ -46,14 +46,14 @@ AppRemoteCatalog :: struct {
     response: [APP_REMOTE_METADATA_LIMIT + 1]u8
     allocation: *u8
     pending_metadata: string
-    pending_release: Release.DaochiRelease
+    pending_release: Release.MeshRelease
     metadata: string
     bytes: string
-    release: Release.DaochiRelease
+    release: Release.MeshRelease
     // Retained until the consumer stops using its previous root collection.
     previous_metadata: string
     previous_bytes: string
-    previous_release: Release.DaochiRelease
+    previous_release: Release.MeshRelease
 }
 
 remote_memory :: #system_library "c";
@@ -81,12 +81,12 @@ AppRemoteOriginValid :: (origin: string) -> bool {
 
 AppRemoteSourceValid :: (source: *AppRemoteSource) -> bool {
     return source != null && AppRemoteOriginValid(TextUntilNul(source.origin[:])) &&
-        Release.DaochiIdentifierValid(TextUntilNul(source.app_id[:])) &&
-        Release.DaochiIdentifierValid(TextUntilNul(source.key_id[:])) &&
-        Release.DaochiHashValid(TextUntilNul(source.public_key[:])) &&
-        source.oldest_host_api > 0 && source.oldest_host_api <= source.host_api &&
-        source.host_api <= 65535 && source.module_api > 0 && source.module_api <= 65535 &&
-        source.minimum_sequence >= 0 && source.minimum_sequence <= 2147483647
+    Release.MeshIdentifierValid(TextUntilNul(source.app_id[:])) &&
+    Release.MeshIdentifierValid(TextUntilNul(source.key_id[:])) &&
+    Release.MeshHashValid(TextUntilNul(source.public_key[:])) &&
+    source.oldest_host_api > 0 && source.oldest_host_api <= source.host_api &&
+    source.host_api <= 65535 && source.module_api > 0 && source.module_api <= 65535 &&
+    source.minimum_sequence >= 0 && source.minimum_sequence <= 2147483647
 }
 
 AppRemoteSourceRead :: (json: string, at: s32, source: *AppRemoteSource) -> bool {
@@ -100,13 +100,13 @@ AppRemoteSourceRead :: (json: string, at: s32, source: *AppRemoteSource) -> bool
         if cast(float64)source.minimum_sequence != number.value { return false }
     }
     return AppsReadText(json, at, "origin", source.origin[:]) &&
-        AppsReadText(json, at, "app_id", source.app_id[:]) &&
-        AppsReadText(json, at, "key_id", source.key_id[:]) &&
-        AppsReadText(json, at, "public_key", source.public_key[:]) && AppRemoteSourceValid(source)
+    AppsReadText(json, at, "app_id", source.app_id[:]) &&
+    AppsReadText(json, at, "key_id", source.key_id[:]) &&
+    AppsReadText(json, at, "public_key", source.public_key[:]) && AppRemoteSourceValid(source)
 }
 
-AppRemoteParse :: (remote: *AppRemoteCatalog, metadata: string) -> Release.DaochiRelease {
-    signed := Release.DaochiParseRelease(metadata, TextUntilNul(remote.source.public_key[:]),
+AppRemoteParse :: (remote: *AppRemoteCatalog, metadata: string) -> Release.MeshRelease {
+    signed := Release.MeshParseRelease(metadata, TextUntilNul(remote.source.public_key[:]),
         67108864, remote.verify)
     if !signed.valid || TextUntilNul(signed.app_id[:]) != TextUntilNul(remote.source.app_id[:]) ||
     TextUntilNul(signed.key_id[:]) != TextUntilNul(remote.source.key_id[:]) ||
@@ -115,7 +115,7 @@ AppRemoteParse :: (remote: *AppRemoteCatalog, metadata: string) -> Release.Daoch
     signed.module_api != remote.source.module_api || signed.data_schema != 0 ||
     signed.dependency_count != 0 || signed.sequence < remote.source.minimum_sequence ||
     signed.artifacts[0].size > APP_REMOTE_CATALOG_LIMIT {
-        return Release.DaochiRelease.{}
+        return Release.MeshRelease.{}
     }
     return signed
 }
@@ -132,16 +132,16 @@ AppRemoteRead :: (files: *AppFiles, name: string, maximum: s64) -> string {
     return AppFileRead(files, name)
 }
 
-AppRemotePayloadName :: (release: *Release.DaochiRelease) -> string {
+AppRemotePayloadName :: (release: *Release.MeshRelease) -> string {
     name: Vec(u8)
     BuilderPrint(*name, "%.zx", TextUntilNul(release.artifacts[0].sha256[:]))
     return BuilderFinish(name)
 }
 
 AppRemoteCollectionValid :: (remote: *AppRemoteCatalog, bytes: string,
-    release: *Release.DaochiRelease) -> bool {
+    release: *Release.MeshRelease) -> bool {
     if !release.valid || bytes.count != release.artifacts[0].size ||
-    !Release.DaochiSha256Matches(bytes, TextUntilNul(release.artifacts[0].sha256[:])) { return false }
+    !Release.MeshSha256Matches(bytes, TextUntilNul(release.artifacts[0].sha256[:])) { return false }
     opened: HostedApp
     if !HostedAppOpen(*opened, bytes) { return false }
     defer { HostedAppClose(*opened) }
@@ -154,7 +154,7 @@ AppRemoteCollectionValid :: (remote: *AppRemoteCatalog, bytes: string,
 // No network request is made here. Invalid cache bytes remain unexecuted.
 // The AppFiles namespace belongs to this one configured collection.
 AppRemoteCatalogOpen :: (remote: *AppRemoteCatalog, source: AppRemoteSource,
-    files: *AppFiles, verify: Release.DaochiReleaseVerify) -> bool {
+    files: *AppFiles, verify: Release.MeshReleaseVerify) -> bool {
     if remote == null || remote.files != null || files == null || verify == null ||
     !AppRemoteSourceValid(*source) { return false }
     remote.source = source
@@ -184,7 +184,7 @@ AppRemoteCancelTransfer :: (remote: *AppRemoteCatalog) {
     if remote.allocation != null { AppRemoteFree(remote.allocation); remote.allocation = null }
     AppFileFree(remote.pending_metadata)
     remote.pending_metadata = ""
-    remote.pending_release = Release.DaochiRelease.{}
+    remote.pending_release = Release.MeshRelease.{}
     remote.stage = 0
 }
 
@@ -237,7 +237,7 @@ AppRemoteFail :: (remote: *AppRemoteCatalog) {
     remote.failed = true
 }
 
-AppRemoteAccept :: (remote: *AppRemoteCatalog, release: Release.DaochiRelease,
+AppRemoteAccept :: (remote: *AppRemoteCatalog, release: Release.MeshRelease,
     metadata: string, bytes: string) -> bool {
     name := AppRemotePayloadName(*release)
     defer { AppFileFree(name) }
@@ -271,7 +271,7 @@ AppRemoteCatalogPump :: (remote: *AppRemoteCatalog) {
         signed := AppRemoteParse(remote, metadata)
         if !signed.valid || (remote.ready && (signed.sequence < remote.release.sequence ||
             (signed.sequence == remote.release.sequence &&
-             TextUntilNul(signed.artifacts[0].sha256[:]) != TextUntilNul(remote.release.artifacts[0].sha256[:])))) {
+            TextUntilNul(signed.artifacts[0].sha256[:]) != TextUntilNul(remote.release.artifacts[0].sha256[:])))) {
             AppFileFree(metadata)
             AppRemoteFail(remote)
             return
@@ -320,7 +320,7 @@ AppRemoteCatalogCollect :: (remote: *AppRemoteCatalog) {
     AppFileFree(remote.previous_bytes)
     remote.previous_metadata = ""
     remote.previous_bytes = ""
-    remote.previous_release = Release.DaochiRelease.{}
+    remote.previous_release = Release.MeshRelease.{}
     remote.changed = false
     AppRemotePruneCache(remote)
 }
@@ -347,7 +347,7 @@ AppRemotePruneCache :: (remote: *AppRemoteCatalog) {
         if !entry.valid { break }
         name := TextUntilNul(entry.name[:])
         if (entry.kind != .Regular && entry.kind != .Unknown) || name.count != 67 ||
-        name[64:] != ".zx" || !Release.DaochiHashValid(name[:64]) ||
+        name[64:] != ".zx" || !Release.MeshHashValid(name[:64]) ||
         name[:64] == current_hash || (fallback.valid && name[:64] == previous_hash) { continue }
         // AppFiles validates every component and refuses symbolic links.
         path := AppFilePath(remote.files, name, false)
@@ -366,7 +366,7 @@ AppRemoteCatalogRestore :: (remote: *AppRemoteCatalog) -> bool {
     remote.release = remote.previous_release
     remote.previous_metadata = ""
     remote.previous_bytes = ""
-    remote.previous_release = Release.DaochiRelease.{}
+    remote.previous_release = Release.MeshRelease.{}
     remote.changed = false
     remote.failed = true
     return restored

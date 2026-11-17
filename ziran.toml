@@ -31,6 +31,6 @@ ref = "3f72441949d4e16094834fa9220e5d7fa77a0ac0"
 git = "https://github.com/ziranlang/crypto.git"
 ref = "master"
 
-[dependencies.daochi_client]
-git = "https://github.com/ziranlang/daochi-client.git"
-ref = "970d5e44b1702158cb16469892da6ff50f142427"
+[dependencies.mesh_client]
+git = "https://github.com/ziranlang/mesh-client.git"
+ref = "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"

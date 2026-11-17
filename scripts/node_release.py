@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sign, check and publish the Daochi releases of apps the node offers.
+"""Sign, check and publish the Mesh releases of apps the node offers.
 
 The node serves each app as signed release v2 metadata beside its immutable
 ZX portable executable. ZX hosts ask the node with format=zx and the ZX
@@ -591,7 +591,7 @@ def publish_node_app(store, name, target, remote_store, app_id=None):
     if not re.fullmatch(r"[a-zA-Z0-9_.@-]+", target) or target.startswith("-"):
         raise ValueError("invalid SSH target")
     if not remote_store.startswith("/") or "\n" in remote_store:
-        raise ValueError("Daochi package store must be an absolute path")
+        raise ValueError("Mesh package store must be an absolute path")
     with tempfile.TemporaryDirectory(prefix="inbe-upload-") as staging:
         archive = Path(staging) / "packages.tar"
         directory = store / (app_id or "inbe." + name)
