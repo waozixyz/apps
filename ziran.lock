@@ -135,12 +135,12 @@
       "url": "https://github.com/ziranlang/crypto.git"
     },
     {
-      "commit": "b5a61b37df7f08e2bdfc4e5d859fab607b29dbc3",
+      "commit": "6816ed78665e10525a3a0a7a43e182f2fa51a0ac",
       "dependencies": {"audio": "p59deb49c7f103127", "avif": "pb203529d803e73a4", "image_codec": "p69c0e968ae5735d9", "libaom": "p74ab3cb6eb3b86fa", "libavif": "p57c0272208aae8db", "libwebp": "p3b3c785a0e17e605", "sdl3": "p16cd0434af3dff7b", "webp": "p2af20e0c835b1c63"},
       "dependency_refs": {"audio": "1b2f35b7b39df6fb9af7a52324b4b7cf18e98df2", "avif": "2611e727e226a2af22dfb7f10bf224bd2f1a3d30", "image_codec": "360553150917f352e49e1beb78917370792ccaef", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199", "libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "sdl3": "829a65d769d935c4852f8159e964312c0957260a", "webp": "ec6ed304767e10c125ab2820f3b01d6fd773e147"},
-      "id": "pdde921b858943a93",
+      "id": "pd19aad4bd0cc7753",
       "name": "kryon",
-      "ref": "b5a61b37df7f08e2bdfc4e5d859fab607b29dbc3",
+      "ref": "6816ed78665e10525a3a0a7a43e182f2fa51a0ac",
       "url": "https://github.com/kryonlabs/kryon.git"
     },
     {
@@ -154,13 +154,13 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "pdde921b858943a93", "mesh_client": "p8204ae87a845c1c3"},
-    "dependency_refs": {"crypto": "master", "kryon": "b5a61b37df7f08e2bdfc4e5d859fab607b29dbc3", "mesh_client": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"},
+    "dependencies": {"crypto": "pc23fbf455e97614d", "kryon": "pd19aad4bd0cc7753", "mesh_client": "p8204ae87a845c1c3"},
+    "dependency_refs": {"crypto": "master", "kryon": "6816ed78665e10525a3a0a7a43e182f2fa51a0ac", "mesh_client": "c1ac6095d01bcfdd4c5ae49c4636aaf9a0303449"},
     "name": "Apps"
   },
   "toolchain": {
-    "commit": "7fbc8152b0ab18b641a73d16d93ccda1e1c7f863",
-    "ref": "7fbc8152b0ab18b641a73d16d93ccda1e1c7f863",
+    "commit": "0c4465a461df0bba473cf249ed30e60d94a6d364",
+    "ref": "0c4465a461df0bba473cf249ed30e60d94a6d364",
     "url": "https://github.com/ziranlang/ziran.git"
   }
 }
