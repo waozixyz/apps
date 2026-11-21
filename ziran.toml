@@ -3,8 +3,8 @@ name = "Apps"
 module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
-git = "https://github.com/ziranlang/ziran.git"
-ref = "9432a110709c4a4f72c4f732fcfc368e15213a54"
+git = "https://git.waozi.xyz/ziranlang/ziran.git"
+ref = "3432c0ca263e855cd6d1627d1e42e70749f5aa0b"
 
 [exports]
 game_hud = "src/game_hud.zi"
@@ -24,8 +24,8 @@ node_app = "src/node_app.zi"
 node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]
-git = "https://github.com/kryonlabs/kryon.git"
-ref = "43e6ea3d76ded207e2be93ff82b2a609c3cfeb91"
+git = "https://git.waozi.xyz/kryonlabs/kryon.git"
+ref = "894f1bc6b7a0fb0e9db6f668fe20f76581f61736"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
