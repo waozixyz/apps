@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-- Build with Ziran 8133bd41 and Kryon a04a3ba1, the Kryon source Breeze, Apps, Entity, Plot, Game2D and CSS share.
+- Build with Ziran 8133bd41 and Kryon d97c19e8, the Kryon source Breeze, Apps, Entity, Plot, Game2D and CSS share.
 - Use Mesh release APIs and package imports without changing signed release messages or cached catalog formats.
 
 - Offer each host only node releases it can run: the publisher checks each payload's ZX revision against the ledger, the remote catalog names its revision and oldest host interface, and the node's history keeps the newest release of every format, ZX revision and interface. Publish an optional signed WebAssembly variant of a node app for web hosts.
