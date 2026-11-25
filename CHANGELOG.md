@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Pin Ziran ba28d7c0 and Kryon ad43e92a so applications share the fixed GPU skinning and native program entry paths.
+
 - Build with Ziran 8133bd41 and Kryon d97c19e8, the Kryon source Breeze, Apps, Entity, Plot, Game2D and CSS share.
 - Use Mesh release APIs and package imports without changing signed release messages or cached catalog formats.
 
