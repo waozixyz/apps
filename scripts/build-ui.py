@@ -21,7 +21,7 @@ if project != ROOT:
     identity = lock['root']['dependencies']['apps']
     if next(item for item in lock['packages'] if item['id'] == identity)['name'] != 'Apps':
         parser.error('consumer apps dependency must be Apps')
-    entry = identity + '_apps:Main'
+    entry = 'apps__apps:Main'
 WORK.mkdir(parents=True, exist_ok=True)
 subprocess.run([sys.executable, str(ROOT / 'scripts/generate-ui-locales.py'), '--check'], cwd=ROOT, check=True)
 flags = [] if (project / 'ziran.local.toml').exists() else ['--locked']
