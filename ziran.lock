@@ -91,12 +91,12 @@
       "url": "https://github.com/xiph/opus.git"
     },
     {
-      "commit": "6e05a1033974b83d229c5f2f5d47a4cfbde05399",
+      "commit": "c119af2ba62cee92adb0f2e0b8e1676a1c42e15d",
       "dependencies": {"audio": "waozi_xyz_ziranlang_audio_b5c6b56b7117", "avif": "waozi_xyz_ziranlang_avif_6ff696d436b6", "image_codec": "waozi_xyz_ziranlang_image_codec_3017f0d1cc56", "libaom": "src_aomedia_googlesource_com_aom_b141d9c45db2", "libavif": "src_github_com_AOMediaCodec_libavif_1aadfad932c9", "libwebp": "src_github_com_webmproject_libwebp_1844042d1ca7", "sdl3": "src_github_com_libsdl_org_SDL_829a65d769d9", "webp": "waozi_xyz_ziranlang_webp_4b9a61d32460"},
       "dependency_refs": {"audio": "b5c6b56b71172c4361ae01e3afdd2118bdac0975", "avif": "6ff696d436b6b4f142eb1e3ecf210de7adfa048f", "image_codec": "3017f0d1cc56975aa29c600a1f55a62e1193cf7b", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199", "libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "sdl3": "829a65d769d935c4852f8159e964312c0957260a", "webp": "4b9a61d32460d481624fe0f83996a7de50327dfe"},
-      "id": "waozi_xyz_kryonlabs_kryon_6e05a1033974",
+      "id": "waozi_xyz_kryonlabs_kryon_c119af2ba62c",
       "name": "kryon",
-      "ref": "6e05a1033974b83d229c5f2f5d47a4cfbde05399",
+      "ref": "c119af2ba62cee92adb0f2e0b8e1676a1c42e15d",
       "url": "https://git.waozi.xyz/kryonlabs/kryon.git"
     },
     {
@@ -154,8 +154,8 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "github_com_ziranlang_crypto_944826f70779", "kryon": "waozi_xyz_kryonlabs_kryon_6e05a1033974", "mesh_client": "waozi_xyz_ziranlang_mesh_client_d99d9e980206"},
-    "dependency_refs": {"crypto": "master", "kryon": "6e05a1033974b83d229c5f2f5d47a4cfbde05399", "mesh_client": "d99d9e9802061f726773a0f89d15ec4ed3366957"},
+    "dependencies": {"crypto": "github_com_ziranlang_crypto_944826f70779", "kryon": "waozi_xyz_kryonlabs_kryon_c119af2ba62c", "mesh_client": "waozi_xyz_ziranlang_mesh_client_d99d9e980206"},
+    "dependency_refs": {"crypto": "master", "kryon": "c119af2ba62cee92adb0f2e0b8e1676a1c42e15d", "mesh_client": "d99d9e9802061f726773a0f89d15ec4ed3366957"},
     "name": "Apps"
   },
   "toolchain": {
