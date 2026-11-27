@@ -2,18 +2,18 @@
   "format": 1,
   "packages": [
     {
-      "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
+      "commit": "b650c1444b99a672d78b5c1a54f7026b345c1dfe",
       "dependencies": {},
-      "id": "github_com_ziranlang_crypto_944826f70779",
+      "id": "github_com_ziranlang_crypto_b650c1444b99",
       "name": "crypto",
       "ref": "master",
       "url": "https://github.com/ziranlang/crypto.git"
     },
     {
-      "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
-      "dependencies": {"liboqs": "src_github_com_open_quantum_safe_liboqs_e77d81dab791"},
+      "commit": "19b736af4942b46f07167ae80dbd04cb30bf2995",
+      "dependencies": {"liboqs": "src_github_com_open_quantum_safe_liboqs_3ad27a398f00"},
       "dependency_refs": {"liboqs": "main"},
-      "id": "github_com_ziranlang_oqs_22d2ddbdc236",
+      "id": "github_com_ziranlang_oqs_19b736af4942",
       "name": "Oqs",
       "ref": "master",
       "url": "https://github.com/ziranlang/oqs.git"
@@ -55,9 +55,9 @@
       "url": "https://github.com/libsndfile/libsamplerate.git"
     },
     {
-      "commit": "e77d81dab791c13bf1c4e5d9a7160c403be9bbe0",
+      "commit": "3ad27a398f00c7066585aca4c5d2f210991f119b",
       "dependencies": {},
-      "id": "src_github_com_open_quantum_safe_liboqs_e77d81dab791",
+      "id": "src_github_com_open_quantum_safe_liboqs_3ad27a398f00",
       "name": "liboqs",
       "ref": "main",
       "source": true,
@@ -91,12 +91,12 @@
       "url": "https://github.com/xiph/opus.git"
     },
     {
-      "commit": "c31a57b47c6cad20f60c94ec28676c4fca201573",
+      "commit": "3fc33496121382cc31a53a8c3178e0f2c90977fb",
       "dependencies": {"audio": "waozi_xyz_ziranlang_audio_b5c6b56b7117", "avif": "waozi_xyz_ziranlang_avif_6ff696d436b6", "image_codec": "waozi_xyz_ziranlang_image_codec_3017f0d1cc56", "libaom": "src_aomedia_googlesource_com_aom_b141d9c45db2", "libavif": "src_github_com_AOMediaCodec_libavif_1aadfad932c9", "libwebp": "src_github_com_webmproject_libwebp_1844042d1ca7", "sdl3": "src_github_com_libsdl_org_SDL_829a65d769d9", "webp": "waozi_xyz_ziranlang_webp_4b9a61d32460"},
       "dependency_refs": {"audio": "b5c6b56b71172c4361ae01e3afdd2118bdac0975", "avif": "6ff696d436b6b4f142eb1e3ecf210de7adfa048f", "image_codec": "3017f0d1cc56975aa29c600a1f55a62e1193cf7b", "libaom": "b141d9c45db236335351c8a4b2a14b3ade27c937", "libavif": "1aadfad932c98c069a1204261b1856f81f3bc199", "libwebp": "1844042d1ca751e62e61df7617dba19c98588339", "sdl3": "829a65d769d935c4852f8159e964312c0957260a", "webp": "4b9a61d32460d481624fe0f83996a7de50327dfe"},
-      "id": "waozi_xyz_kryonlabs_kryon_c31a57b47c6c",
+      "id": "waozi_xyz_kryonlabs_kryon_3fc334961213",
       "name": "kryon",
-      "ref": "c31a57b47c6cad20f60c94ec28676c4fca201573",
+      "ref": "3fc33496121382cc31a53a8c3178e0f2c90977fb",
       "url": "https://git.waozi.xyz/kryonlabs/kryon.git"
     },
     {
@@ -136,7 +136,7 @@
     },
     {
       "commit": "d99d9e9802061f726773a0f89d15ec4ed3366957",
-      "dependencies": {"crypto": "github_com_ziranlang_crypto_944826f70779", "oqs": "github_com_ziranlang_oqs_22d2ddbdc236"},
+      "dependencies": {"crypto": "github_com_ziranlang_crypto_b650c1444b99", "oqs": "github_com_ziranlang_oqs_19b736af4942"},
       "dependency_refs": {"crypto": "master", "oqs": "master"},
       "id": "waozi_xyz_ziranlang_mesh_client_d99d9e980206",
       "name": "mesh_client",
@@ -154,8 +154,8 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "github_com_ziranlang_crypto_944826f70779", "kryon": "waozi_xyz_kryonlabs_kryon_c31a57b47c6c", "mesh_client": "waozi_xyz_ziranlang_mesh_client_d99d9e980206"},
-    "dependency_refs": {"crypto": "master", "kryon": "c31a57b47c6cad20f60c94ec28676c4fca201573", "mesh_client": "d99d9e9802061f726773a0f89d15ec4ed3366957"},
+    "dependencies": {"crypto": "github_com_ziranlang_crypto_b650c1444b99", "kryon": "waozi_xyz_kryonlabs_kryon_3fc334961213", "mesh_client": "waozi_xyz_ziranlang_mesh_client_d99d9e980206"},
+    "dependency_refs": {"crypto": "b650c1444b99a672d78b5c1a54f7026b345c1dfe", "kryon": "3fc33496121382cc31a53a8c3178e0f2c90977fb", "mesh_client": "d99d9e9802061f726773a0f89d15ec4ed3366957"},
     "name": "Apps"
   },
   "toolchain": {

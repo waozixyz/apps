@@ -25,11 +25,11 @@ node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]
 git = "https://git.waozi.xyz/kryonlabs/kryon.git"
-ref = "c31a57b47c6cad20f60c94ec28676c4fca201573"
+ref = "3fc33496121382cc31a53a8c3178e0f2c90977fb"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
-ref = "master"
+ref = "b650c1444b99a672d78b5c1a54f7026b345c1dfe"
 
 [dependencies.mesh_client]
 git = "https://git.waozi.xyz/ziranlang/mesh-client.git"
