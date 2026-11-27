@@ -1,3 +1,4 @@
+#import "game_hud_ui"
 // Shared painted game actions. The caller owns translations, balance and routes.
 #import "kryon/session"
 #import "kryon/geometry"
@@ -25,52 +26,13 @@ AppGameHudProps :: struct {
 // The caller positions the bounds at the top right of its game viewport.
 #program_export
 AppGameHud :: (session: Session, props: AppGameHudProps) -> s32 {
-    area := props.bounds
-    if area.width <= 0.0 || area.height <= 0.0 { return 0 }
+    if props.bounds.width <= 0.0 || props.bounds.height <= 0.0 { return 0 }
     unused WidgetPaletteUse(session, WidgetPalette.{.background = 0x111316ff,
-        .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
-        .selected_text = 0xffeec1ff, .border = 0x66522bff, .danger = 0xdc655bff,
-        .warning = 0xdeb56dff, .success = 0x79b18bff})
+            .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
+            .selected_text = 0xffeec1ff, .border = 0x66522bff, .danger = 0xdc655bff,
+            .warning = 0xdeb56dff, .success = 0x79b18bff})
     defer { unused WidgetPaletteRestore(session) }
-    if area.height > 64.0 { area.height = 64.0 }
-    pad := area.height * 0.12
-    if pad > area.width * 0.04 { pad = area.width * 0.04 }
-    size := area.height - pad * 2.0
-    if size > area.width * 0.22 { size = area.width * 0.22 }
-    bevel := pad * 0.25
-    unused Box.Draw(session, Box.Props.{.key = props.key + 5, .bounds = area,
-        .fill = Color.{222, 188, 109, 255}, .fill_bottom = Color.{84, 57, 26, 255},
-        .has_fill_bottom = true, .border = Color.{239, 211, 146, 255}, .radius = area.height * 0.2})
-    unused Box.Draw(session, Box.Props.{.key = props.key + 6,
-        .bounds = Rectangle.{area.x + bevel, area.y + bevel, area.width - bevel * 2.0, area.height - bevel * 2.0},
-        .fill = Color.{42, 39, 34, 255}, .fill_bottom = Color.{17, 19, 22, 255},
-        .has_fill_bottom = true, .border = Color.{102, 78, 43, 255}, .radius = area.height * 0.18})
-    profile := Rectangle.{area.x + area.width - pad - size, area.y + (area.height - size) / 2.0, size, size}
-    unused Box.Draw(session, Box.Props.{.key = props.key + 7,
-        .bounds = Rectangle.{profile.x - bevel, profile.y - bevel, size + bevel * 2.0, size + bevel * 2.0},
-        .fill = Color.{173, 132, 62, 255}, .border = Color.{238, 209, 142, 255}, .radius = size / 2.0 + bevel})
-    Image.Draw(session, Image.Props.{.key = props.key + 1, .bounds = profile,
-        .asset_path = ifx props.profile_image.count > 0 then props.profile_image else "assets/hud/profile.webp",
-        .preview_path = "assets/hud/profile.webp",
-        .fit = Image.ImageFit.ImageFitContain, .smooth = true, .radius = size / 2.0})
-    profile_action := Button.Draw(session, Button.Props.{.key = props.key, .bounds = profile,
-        .label = props.profile_label, .invisible = true, .circle = true})
-    jewel := Rectangle.{area.x + pad, profile.y, size, size}
-    Image.Draw(session, Image.Props.{.key = props.key + 3, .bounds = jewel,
-        .asset_path = ifx props.dew_image.count > 0 then props.dew_image else "assets/hud/dew.webp",
-        .preview_path = "assets/hud/dew.webp",
-        .fit = Image.ImageFit.ImageFitContain, .smooth = true})
-    text_x := jewel.x + size + pad * 0.5
-    Text.Draw(session, Text.Props.{.key = props.key + 4,
-        .bounds = Rectangle.{text_x, area.y, profile.x - pad - text_x, area.height},
-        .text = props.dew_text, .size = 18,
-        .vertical_align = TextAlign.TextAlignCenter, .wrap = Text.Wrap.TextWrapEllipsis})
-    dew_action := Button.Draw(session, Button.Props.{.key = props.key + 2,
-        .bounds = Rectangle.{area.x, area.y, profile.x - pad * 0.5 - area.x, area.height},
-        .label = props.dew_label, .invisible = true})
-    if profile_action != 0 { return 1 }
-    if dew_action != 0 { return 2 }
-    return 0
+    return AppGameHudView(session, props)
 }
 
 // Optional host navigation. Standalone games simply do not compose this.
@@ -83,10 +45,8 @@ AppGameHomeProps :: struct {
 #program_export
 AppGameHome :: (session: Session, props: AppGameHomeProps) -> bool {
     unused WidgetPaletteUse(session, WidgetPalette.{.background = 0x111316ff,
-        .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
-        .selected_text = 0xffeec1ff, .border = 0x66522bff})
+            .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
+            .selected_text = 0xffeec1ff, .border = 0x66522bff})
     defer { unused WidgetPaletteRestore(session) }
-    return Button.Draw(session, Button.Props.{.key = props.key, .bounds = props.bounds,
-        .label = props.label, .icon_shape = "S1.8rr:M3 11L12 3L21 11M5 10V21H10V15H14V21H19V10",
-        .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0
+    return AppGameHomeView(session, props)
 }
