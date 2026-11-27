@@ -25,7 +25,7 @@ node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]
 git = "https://git.waozi.xyz/kryonlabs/kryon.git"
-ref = "3fc33496121382cc31a53a8c3178e0f2c90977fb"
+ref = "7fc37d6861e42ffb2d075c460fd31080b9c3234a"
 
 [dependencies.crypto]
 git = "https://github.com/ziranlang/crypto.git"
