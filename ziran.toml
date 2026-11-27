@@ -4,7 +4,7 @@ module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
 git = "https://git.waozi.xyz/ziranlang/ziran.git"
-ref = "bb0323cef6c7b144eeea5ad1670ccf7a3fbde253"
+ref = "edd7f35a93d2d7e9824c27c8bab34fb0a0302fc3"
 
 [exports]
 game_hud = "src/game_hud.zi"
