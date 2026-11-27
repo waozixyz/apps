@@ -30,18 +30,26 @@ class ControllerBuildTest(unittest.TestCase):
             def invoke(command, **kwargs):
                 if 'bundle' in command:
                     (output / 'apps.zx').write_bytes(b'controller-test-output')
+            read_text = Path.read_text
+            def read_map(path, *args, **kwargs):
+                if path == cwd / 'build/.ziran/module-map.tsv':
+                    package = 'controller' if cwd == consumer else 'root'
+                    return f'M\t{package}\tapps\t{ROOT / "ui/apps.zi"}\n'
+                return read_text(path, *args, **kwargs)
             for extra, cwd, entry, selected in [
                 (['--project', str(consumer), '--compiler', str(compiler)],
-                 consumer, 'pconsumer_apps:Main', compiler),
+                 consumer, 'controller__apps:Main', compiler),
                 ([], ROOT, 'apps:Main', ROOT / 'scripts/ziran.sh')]:
                 with patch.object(sys, 'argv', ['build-ui', '--output', str(output), *extra]), \
-                     patch('subprocess.run', side_effect=invoke) as calls:
+                     patch('subprocess.run', side_effect=invoke) as calls, \
+                     patch.object(Path, 'read_text', read_map):
                     runpy.run_path(str(ROOT / 'scripts/build-ui.py'), run_name='__main__')
                 command = calls.call_args_list[-1].args[0]
                 self.assertEqual(calls.call_args_list[-1].kwargs['cwd'], cwd)
                 self.assertEqual(command[0], str(selected))
                 self.assertEqual(command[command.index('--entry') + 1], entry)
                 self.assertIn('--project', command)
+                self.assertEqual(calls.call_args_list[-2].args[0][1], 'check')
                 self.assertEqual((output / 'apps.sha256').read_text().strip(),
                                  json.loads((output / 'manifest.json').read_text())['sha256'])
 

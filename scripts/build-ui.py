@@ -15,16 +15,27 @@ parser.add_argument('--compiler', type=Path, default=ROOT / 'scripts/ziran.sh', 
 args = parser.parse_args()
 WORK = args.output.resolve()
 project = args.project.resolve()
-entry = 'apps:Main'
 if project != ROOT:
     lock = json.loads((project / 'ziran.lock').read_text())
     identity = lock['root']['dependencies']['apps']
     if next(item for item in lock['packages'] if item['id'] == identity)['name'] != 'Apps':
         parser.error('consumer apps dependency must be Apps')
-    entry = f'{identity}_apps:Main'
 WORK.mkdir(parents=True, exist_ok=True)
 subprocess.run([sys.executable, str(ROOT / 'scripts/generate-ui-locales.py'), '--check'], cwd=ROOT, check=True)
 flags = [] if (project / 'ziran.local.toml').exists() else ['--locked']
+source = ROOT / 'ui/apps.zi'
+# Lock identities select revisions; generated module names use dependency
+# aliases. Ask the selected compiler to resolve the actual source first.
+subprocess.run([str(args.compiler.resolve()), 'check', '--project', *flags,
+                '--root', str(ROOT / 'ui'), str(source)], cwd=project, check=True)
+modules = []
+for line in (project / 'build/.ziran/module-map.tsv').read_text().splitlines():
+    fields = line.split('\t')
+    if len(fields) == 4 and fields[0] == 'M' and Path(fields[3]).resolve() == source:
+        modules.append(fields[2] if fields[1] == 'root' else f'{fields[1]}__{fields[2]}')
+if len(modules) != 1:
+    parser.error('controller source must have one identity in the selected package graph')
+entry = modules[0] + ':Main'
 subprocess.run([str(args.compiler.resolve()), 'bundle', '--project', *flags,
                 '--root', str(ROOT / 'ui'), '--entry', entry, '--define', 'KRYON_HOSTED_UI',
                 '-o', str(WORK / 'apps.zx'), str(ROOT / 'ui/apps.zi')], cwd=project, check=True)

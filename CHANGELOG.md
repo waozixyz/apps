@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Resolve the shared controller entry from the selected compiler graph so consumer builds use dependency aliases instead of lock identities.
+
 - Share published Kryon 7fc37d68 with app hosts so locked controller builds resolve the same renderer.
 
 - Build the shared controller with published Ziran edd7f35a and its current ZX 29 program format.
