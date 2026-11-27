@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Share published Kryon 7fc37d68 with app hosts so locked controller builds resolve the same renderer.
+
 - Build the shared controller with published Ziran edd7f35a and its current ZX 29 program format.
 
 - Pin Ziran ba28d7c0 and Kryon 6a41ba74 so applications share the fixed GPU skinning, native entry, web scene compilation and hosted package naming paths.
