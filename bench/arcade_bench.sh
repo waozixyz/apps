@@ -12,7 +12,7 @@ library=${1:-$toolchain/build/libziran.a}
 work=$root/build/arcade-bench
 bundle=${BENCH_BUNDLE:-$root/../arcade/build/arcade.zx}
 mkdir -p "$work"
-scripts/ziran.sh build --project $flags --target=c --no-main --entry arcade_bench:Main \
+ziran build --project $flags --target=c --no-main --entry arcade_bench:Main \
     --root bench -o "$work/c" bench/arcade_bench.zi
 cat > "$work/main.c" <<'C'
 #define _POSIX_C_SOURCE 199309L

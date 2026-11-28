@@ -1,3 +1,4 @@
+#import "native_behavior_ui"
 #import "std/vec"
 #import "std/file"
 #import "std/byte_text_linux"
@@ -416,19 +417,9 @@ NativeDraw :: (quiet: bool = false, cards_only: bool = true) -> bool {
     BeginFrame(ui_session, cast(u64)6, Rectangle.{0.0, 0.0, 480.0, 600.0})
     native_controller.app.session = ui_session
     native_controller.app.bounds = Rectangle.{0.0, 0.0, 480.0, 600.0}
-    outer: bool
-    if native_icon_mode {
-        group := Scroll.Draw(ui_session, Scroll.Props.{.key = cast(u64)99, .bounds = Rectangle.{0.0, 0.0, 480.0, 88.0}, .content_height = 200})
-        if !group.opened { return false }
-        outer = true
-        native_controller.app.bounds = Rectangle.{group.content.x, group.content.y, group.content.width, 88.0}
-    }
     native_controller.app.scale = 1.0
     native_controller.app.font = 18
-    WidgetHostBegin(ui_session, NativeImage)
-    ran := AppControllerRun(*native_controller, APP_FRAME, quiet)
-    WidgetHostEnd()
-    if outer { End(ui_session) }
+    ran := NativeDrawView(ui_session, native_icon_mode, quiet)
     if EndFrame(ui_session) != cast(FrameStatus)FrameOk || native_bad { return false }
     return ran && (!cards_only || (native_tiles == 1 && native_actions == 2))
 }
@@ -632,12 +623,12 @@ NativeControllerCheck :: () -> s32 {
     if !NativeLoadCatalog("cover-buy") || !NativeDraw(false, false) || NativeLabel("Buy", WidgetKindButton) < 0 { return 648 }
     covered = native_queued
     if !NativeClick("Buy", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 ||
-        native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" ||
-        NativeLabel("Download size: 4.1 kB") >= 0 { return 649 }
+    native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" ||
+    NativeLabel("Download size: 4.1 kB") >= 0 { return 649 }
     if !NativeLoadCatalog("cover-buy-de") || !NativeDraw(false, false) || NativeLabel("Kaufen", WidgetKindButton) < 0 { return 650 }
     covered = native_queued
     if !NativeClick("Kaufen", WidgetKindButton) || !NativeDraw(false, false) || native_queued != covered + 1 ||
-        native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 651 }
+    native_request.operation != APPS_INSTALL || TextUntilNul(native_request.id[:]) != "native.clock" { return 651 }
     if !NativeLoadCatalog("cover-buy-denied") || !NativeDraw(false, false) { return 652 }
     covered = native_queued
     unused NativeClick("Buy", WidgetKindButton)
@@ -2077,7 +2068,7 @@ Check :: () -> s32 {
     catalog_text := AppArgumentText(catalog_reply)
     presentation := FieldAt(catalog_text, 0, "presentation")
     if ReadNumber(catalog_text, FieldAt(catalog_text, presentation, "cover_logo_width")).value != 180.0 ||
-        ReadNumber(catalog_text, FieldAt(catalog_text, presentation, "cover_logo_top")).value != 116.0 { return 201 }
+    ReadNumber(catalog_text, FieldAt(catalog_text, presentation, "cover_logo_top")).value != 116.0 { return 201 }
     children := FieldAt(catalog_text, 0, "children")
     first := Space(catalog_text, children + 1)
     // This host has not opted into content fetching, so the catalog hides
@@ -2251,4 +2242,11 @@ ControllerCheck :: () -> s32 {
     if !SessionValid(ui_session) { return 50 }
     defer { SessionClose(ui_session) }
     return NativeControllerCheck()
+}
+
+NativeDrawContents :: (quiet: bool) -> bool {
+    WidgetHostBegin(ui_session, NativeImage)
+    ran := AppControllerRun(*native_controller, APP_FRAME, quiet)
+    WidgetHostEnd()
+    return ran
 }

@@ -28,17 +28,6 @@ OpenEffect :: (context: *void, account: string, locator: *AppLocator, request: *
     return ifx account == "account-a" && request.operation == APPS_OPEN then APP_OPEN_HANDLED else APP_OPEN_REJECTED
 }
 
-// Independent public imports must use the same Kryon package identity.
-TypedScreen :: (session: KryonSession.Session, bounds: Geometry.Rectangle, fill: Drawing.Color) -> bool {
-    frame := Node.AppUiFrame.{.session = session}
-    state: Launcher.AppLauncherState
-    props := Launcher.AppLauncherProps.{.bounds = bounds, .scale = 1.0, .locale = "en"}
-    shared_bounds: Geometry.Rectangle = props.bounds
-    items: [1]Launcher.AppLauncherItem
-    unused Launcher.AppLauncherScreen(frame.session, *state, props, items[:])
-    return fill.a == 255 && shared_bounds.width == bounds.width
-}
-
 #program_export
 Check :: () -> s32 {
     platform := AppPlatform.{.host_api = 41, .state = State, .version_effect = VersionEffect, .open_effect = OpenEffect,
@@ -79,7 +68,7 @@ Check :: () -> s32 {
     Launcher.AppLauncherFilter(*launcher, items[:])
     if launcher.count != 1 || launcher.visible[0] != 2 || launcher.favorites != 0 { return 9 }
     if !Launcher.AppLauncherMatches("Écrire", "éC") || Launcher.AppLauncherMatches("Clock", "other") { return 10 }
-    // Type-check TypedScreen above without linking a graphical test host.
+    // The accompanying screen.tsx checks composition without linking a GUI.
     frame := Node.AppUiFrame.{.session = KryonSession.Session.{.slot = 3, .epoch = cast(u64)7}}
     props := Launcher.AppLauncherProps.{.bounds = Geometry.Rectangle.{0.0, 0.0, 800.0, 600.0}}
     bounds: Geometry.Rectangle = props.bounds

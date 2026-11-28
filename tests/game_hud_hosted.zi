@@ -1,4 +1,5 @@
 #import "game_hud"
+#import "game_hud_ui"
 #import "kryon/session"
 #import "kryon/geometry"
 Box :: #import "kryon/box";
@@ -51,7 +52,7 @@ Check :: () -> s32 {
         if buttons[0].bounds.width != images[0].bounds.width || buttons[1].bounds.x > images[1].bounds.x { return 5 }
     }
     if !boxes[0].has_fill_bottom || !boxes[1].has_fill_bottom || !buttons[0].circle ||
-        amount.bounds.x <= images[1].bounds.x || amount.bounds.x + amount.bounds.width >= images[0].bounds.x { return 8 }
+    amount.bounds.x <= images[1].bounds.x || amount.bounds.x + amount.bounds.width >= images[0].bounds.x { return 8 }
     if palette_text != cast(u32)0xffeec1ff || restores != 3 { return 9 }
     props.profile_image = "assets/account.webp"; props.dew_image = "assets/currency.webp"
     image_count = 0; button_count = 0; box_count = 0

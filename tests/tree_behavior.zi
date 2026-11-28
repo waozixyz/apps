@@ -365,13 +365,29 @@ Check :: () -> s32 {
     AppBundlePathValid("/assets/child.zx") || AppBundlePathValid("assets/%2e%2e/child.zx") ||
     AppBundlePathValid("assets//child.zx") { return 3 }
     if !AppPreviewPathValid("assets/previews/chess.png") || !AppPreviewPathValid("assets/card.webp") ||
+    !AppPreviewPathValid("assets/apps/icons/diary.avif") ||
     AppPreviewPathValid("https://example.test/chess.png") || AppPreviewPathValid("assets/../chess.png") ||
     AppPreviewPathValid("assets/%2e%2e/chess.jpg") || AppPreviewPathValid("assets//chess.jpeg") ||
-    AppPreviewPathValid("assets/chess.zx") || AppAssetPathValid("assets/..") { return 30 }
+    AppPreviewPathValid("assets/chess.zx") || AppPreviewPathValid("assets/icon.avif.zx") ||
+    AppPreviewPathValid("assets/../icon.avif") || AppPreviewPathValid("assets/%2e%2e/icon.avif") ||
+    AppPreviewPathValid("assets//icon.avif") || AppPreviewPathValid("https://example.test/icon.avif") ||
+    AppPreviewPathValid("assets/icon.avif?query") || AppAssetPathValid("assets/..") { return 30 }
     if !AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}", *request) || request.operation != 10 { return 40 }
     if AppsReadRequest("{\"v\":1,\"op\":\"rollback\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"open\",\"id\":\"inbe.chess\",\"version\":\"2.0\"}", *request) ||
     AppsReadRequest("{\"v\":1,\"op\":\"update\",\"id\":\"inbe.chess\",\"version\":\"2.0\",\"sha256\":\"bad\"}", *request) { return 41 }
+    avif_catalog: AppCatalog
+    if !AppCatalogRead("{\"schema\":1,\"id\":\"avif-test\",\"title\":\"AVIF test\",\"harness\":\"assets/apps/apps.zx\",\"children\":[{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zx\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"preview\":\"assets/preview.avif\",\"icon\":\"assets/icon.avif\",\"cover\":{\"portrait\":\"assets/portrait.avif\",\"landscape\":\"assets/wide.avif\",\"logo\":\"assets/logo.avif\",\"action\":\"play\"}}]}", "avif-test", *avif_catalog) {
+        return 66
+    }
+    avif_entry := AppCatalogAt(*avif_catalog, 0)
+    avif_valid := TextUntilNul(avif_entry.icon[:]) == "assets/icon.avif" &&
+    TextUntilNul(avif_entry.preview[:]) == "assets/preview.avif" &&
+    TextUntilNul(avif_entry.cover.landscape[:]) == "assets/wide.avif"
+    AppCatalogClear(*avif_catalog)
+    if !avif_valid {
+        return 67
+    }
     covered: AppEntry
     cover_json := "{\"id\":\"game\",\"title\":\"Game\",\"bundle\":\"assets/game.zx\",\"protocol\":\"app/1\",\"expected_id\":\"game\",\"version\":\"1.0\",\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"cover\":{\"portrait\":\"assets/cover.png\",\"landscape\":\"assets/wide.png\",\"logo\":\"assets/logo.png\",\"caption\":\"Game\",\"action\":\"play\"}}"
     if !AppReadEntry(cover_json, 0, *covered) || TextUntilNul(covered.cover.landscape[:]) != "assets/wide.png" { return 60 }

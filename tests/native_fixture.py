@@ -12,7 +12,7 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = Path(os.environ.get('APPS_TEST_OUTPUT', ROOT / 'build/native-test')).resolve()
-ZIRAN = str(ROOT / 'scripts/ziran.sh')
+ZIRAN = 'ziran'
 LOCK_FLAGS = [] if (ROOT / 'ziran.local.toml').exists() else ['--locked']
 WINDOWS = os.environ.get('APPS_TEST_PLATFORM') == 'windows'
 CONTROLLER_ONLY = '--controller-only' in sys.argv
@@ -220,7 +220,7 @@ def main():
     output.mkdir(exist_ok=True)
     defines = ['--define', '_WIN32'] if WINDOWS else []
     run(ZIRAN, 'build', '--project', *LOCK_FLAGS, '--target=c', '--no-main', '--entry', 'native_behavior:' + ENTRY,
-        *defines, '--root', str(ROOT / 'tests'), '-o', str(output), str(ROOT / 'tests/native_behavior.zi'))
+        *defines, '--module-path', str(ROOT / 'tests'), '--root', str(ROOT / 'tests'), '-o', str(output), str(ROOT / 'tests/native_behavior.zi'))
     (output / 'main.c').write_text('#include <stdio.h>\n#include "native_behavior.h"\nint main(void) { int r=' + ENTRY + '(); if(r) fprintf(stderr,"Apps native check %d failed\\n",r); return r ? 1 : 0; }\n')
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran', *LOCK_FLAGS], cwd=ROOT, text=True).strip())
     includes = [argument for path in [output, *sorted(output.rglob('*'))] if path.is_dir() for argument in ('-iquote', str(path))]
@@ -253,7 +253,6 @@ def main():
     result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=90)
     # The final wrong-identity test deliberately trips the VM's foreign-call
     # gate. Keep that expected diagnostic without presenting it as a failure.
-    (WORK / 'run.log').write_text(result.stdout + result.stderr)
     if result.returncode:
         sys.stdout.write(result.stdout)
         sys.stderr.write(result.stderr)

@@ -1,3 +1,5 @@
+#import "host_ui"
+#import "game_hud_ui"
 // Shared native bundle ownership. Root hosts inject platform/account effects;
 // all child lookup, hash checking, expected identity and VM lifecycle live here.
 #import "std/vec"
@@ -42,9 +44,9 @@ APP_NODE_ROUTE :: 6
 APP_HOST_BYTE_LIMIT :: 67108864
 APP_HOST_PREVIOUS_CONTROLLERS :: 7
 
-AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) -> bool;
+AppPlatformAllows :: #type (context: *void, node: *AppNode, function: string) -> bool #reads;
 AppPlatformCall :: #type (context: *void, node: *AppNode, module: *u8, function: *u8,
-    arguments: *HostValue, count: s32, result: *HostValue) -> s32;
+    arguments: *HostValue, count: s32, result: *HostValue) -> s32 #reads;
 AppPlatformSave :: #type (context: *void, node: *AppNode) -> bool;
 // Borrow only this verified node's authorized private document namespace.
 // The provider retains storage through yielding calls and closes it before rebind.
@@ -242,8 +244,8 @@ AppHostAddonCaller :: (runtime: *AppRuntime) -> bool {
     TextUntilNul(runtime.node.account[:]) != TextUntilNul(host.tree.account[:]) { return false }
     parent := AppTreeNode(*host.tree, runtime.node.parent)
     return parent != null && parent.collection && parent.account_epoch == host.tree.account_epoch &&
-        TextUntilNul(parent.account[:]) == TextUntilNul(host.tree.account[:]) &&
-        TextUntilNul(parent.identity.authority[:]) == TextUntilNul(runtime.node.identity.authority[:])
+    TextUntilNul(parent.account[:]) == TextUntilNul(host.tree.account[:]) &&
+    TextUntilNul(parent.identity.authority[:]) == TextUntilNul(runtime.node.identity.authority[:])
 }
 
 // The request is a raw bounded catalog ID, never a route, callback or locator.
@@ -271,7 +273,7 @@ AppHostAddonMissing :: (context: *void, parent: *AppNode, entry: *AppEntry, sequ
     if !missing && !AppHostChildBundle(host, cast(*AppRuntime)parent.runtime, parent, entry, *packed).found {
         download: AppDownload
         missing = host.platform.download == null ||
-            !host.platform.download(host.platform.context, parent, entry, *download) || !download.cached
+        !host.platform.download(host.platform.context, parent, entry, *download) || !download.cached
     }
     return missing
 }
@@ -300,7 +302,7 @@ AppHostDocumentActive :: (runtime: *AppRuntime) -> bool {
     if runtime == null || runtime.retired || !runtime.busy || runtime.node == null { return false }
     owner := cast(*AppRuntime)runtime.node.runtime
     return owner != null && (owner == runtime || owner.frontend == runtime) &&
-        AppTreeNode(*runtime.host.tree, runtime.host.tree.active) == runtime.node
+    AppTreeNode(*runtime.host.tree, runtime.host.tree.active) == runtime.node
 }
 
 AppHostDocumentCall :: (runtime: *AppRuntime, module: *u8, function: *u8,
@@ -596,28 +598,28 @@ AppHostNotifications :: (context: *void, module: *u8, function: *u8,
     result.* = HostScalar("bool", 0)
     runtime := cast(*AppRuntime)context
     if runtime == null || runtime.host == null || runtime.node == null ||
-        runtime.retired || runtime.controller || !runtime.busy ||
-        runtime.host.platform.host_api < APPS_NOTIFICATION_HOST_API ||
-        runtime.node.runtime != context ||
-        AppTreeNode(*runtime.host.tree, runtime.host.tree.running) != runtime.node ||
-        AppTreeNode(*runtime.host.tree, runtime.host.tree.active) != runtime.node { return 1 }
+    runtime.retired || runtime.controller || !runtime.busy ||
+    runtime.host.platform.host_api < APPS_NOTIFICATION_HOST_API ||
+    runtime.node.runtime != context ||
+    AppTreeNode(*runtime.host.tree, runtime.host.tree.running) != runtime.node ||
+    AppTreeNode(*runtime.host.tree, runtime.host.tree.active) != runtime.node { return 1 }
     id_bytes := runtime.node.identity.id
     expected_bytes := runtime.node.entry.expected_id
-    id := TextUntilNul(id_bytes[:])
-    expected := TextUntilNul(expected_bytes[:])
     if runtime.protocol == APPS_NODE_PROTOCOL {
         node := *runtime.legacy
         if !node.identified || node.identifying || node.message.action != Node.APP_FRAME ||
-            TextUntilNul(node.id[:]) != id || TextUntilNul(node.name[:]) != expected { return 1 }
+        TextUntilNul(node.id[:]) != TextUntilNul(id_bytes[:]) ||
+        TextUntilNul(node.name[:]) != TextUntilNul(expected_bytes[:]) { return 1 }
     } else {
         app := *runtime.app
         if !app.identified || !app.described || app.mode != APP_FRAME ||
-            app.expected_id != expected || TextUntilNul(app.id[:]) != expected { return 1 }
+        app.expected_id != TextUntilNul(expected_bytes[:]) ||
+        TextUntilNul(app.id[:]) != TextUntilNul(expected_bytes[:]) { return 1 }
     }
     enabled := AppHostAllows(context, KRYON_NOTIFICATION_SCHEDULE)
     platform := runtime.host.platform
     focused := platform.focused != null && platform.focused(platform.context, runtime.node)
-    return NotificationScheduleHostCall(id, enabled, name, arguments, count, result, focused)
+    return NotificationScheduleHostCall(TextUntilNul(id_bytes[:]), enabled, name, arguments, count, result, focused)
 }
 
 AppHostAudioActive :: (runtime: *AppRuntime) -> bool {
@@ -725,8 +727,8 @@ AppHostRuntime :: (host: *AppHost, node: *AppNode, bytes: string, expected_id: s
         }
     } else {
         ready = (preparation != null || HostedAppOpen(opened, bytes)) &&
-            HostedAppStart(opened, AppContextAllows, AppHostContextCall, cast(*void)(*runtime.app)) &&
-            AppContextIdentify(cast(*void)(*runtime.app))
+        HostedAppStart(opened, AppContextAllows, AppHostContextCall, cast(*void)(*runtime.app)) &&
+        AppContextIdentify(cast(*void)(*runtime.app))
     }
     if !ready {
         HostedAppClose(AppContextRuntime(*runtime.app))
@@ -744,11 +746,13 @@ AppHostController :: (host: *AppHost, node: *AppNode, runtime: *AppRuntime,
     separate_art := node.catalog.art_sha256[0] != 0
     item := node.catalog.children
     while item != null && !separate_art {
-        art: [5]string = .[TextUntilNul(item.entry.preview[:]), TextUntilNul(item.entry.icon[:]),
-        TextUntilNul(item.entry.cover.portrait[:]), TextUntilNul(item.entry.cover.landscape[:]),
-        TextUntilNul(item.entry.cover.logo[:])]
-        for path: art {
-            if path != "" && (!AppAssetPathValid(path) || !AppHostResource(runtime, *node.entry, path, 0).found) { return false }
+        {
+            art: [5]string = .[TextUntilNul(item.entry.preview[:]), TextUntilNul(item.entry.icon[:]),
+            TextUntilNul(item.entry.cover.portrait[:]), TextUntilNul(item.entry.cover.landscape[:]),
+            TextUntilNul(item.entry.cover.logo[:])]
+            for path: art {
+                if path != "" && (!AppAssetPathValid(path) || !AppHostResource(runtime, *node.entry, path, 0).found) { return false }
+            }
         }
         item = item.next
     }
@@ -1454,7 +1458,7 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     }
     root := AppTreeNode(*host.tree, AppHandle.{0, 1})
     home := mode == APP_FRAME && !node.collection && node.parent.generation != 0 &&
-        root != null && root.collection && (root.catalog.cover_grid || host.platform.presentation.cover_grid)
+    root != null && root.collection && (root.catalog.cover_grid || host.platform.presentation.cover_grid)
     home_requested := home && runtime.app.key == 290
     if home_requested { runtime.app.key = 0 }
     // Host navigation owns its activation. Enter must never also start play.
@@ -1491,9 +1495,7 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
             runtime.app.bounds = Rectangle.{guest_area.x, guest_area.y + 64.0, guest_area.width, guest_area.height - 64.0}
             runtime.legacy.frame.top += 64
             guest_area = runtime.app.bounds
-            unused Box.Draw(frame_session, Box.Props.{.key = cast(u64)49190,
-                .bounds = Rectangle.{home_bounds.x, home_bounds.y, home_bounds.width, 64.0},
-                .fill = ColorFromPacked(AppCoversPalette().background)})
+            AppHostHomeStrip(frame_session, home_bounds)
         }
         if SessionValid(frame_session) {
             mount := TreeSubmitCurrent(frame_session, cast(u64)1099511627776 + cast(u64)node.generation,
@@ -1538,8 +1540,8 @@ AppHostRun :: (host: *AppHost, mode: s32) -> bool {
     unused AppTreeDrain(*host.tree)
     if home && AppHandleEqual(host.tree.active, handle) {
         clicked_home := AppGameHome(frame_session, AppGameHomeProps.{.key = cast(u64)49210,
-            .bounds = Rectangle.{home_bounds.x + 12.0, home_bounds.y + 8.0, 124.0, 48.0},
-            .label = TextUntilNul(root.catalog.title[:])})
+                .bounds = Rectangle.{home_bounds.x + 12.0, home_bounds.y + 8.0, 124.0, 48.0},
+                .label = TextUntilNul(root.catalog.title[:])})
         // A rejected save consumes Home while keeping the working game open.
         if clicked_home || home_requested { unused AppHostHome(host) }
     }
@@ -1697,35 +1699,35 @@ AppHostCollect :: (host: *AppHost) {
     // Repeat only after freeing something, so Stop drains such chains too.
     collecting := true
     while collecting {
-      progress := false
-      while runtime != null {
-        next := runtime.next_retired
-        if runtime.busy || runtime.dependency_leases > 0 || (runtime.frontend != null && runtime.frontend.busy) ||
-        (host.preparation != null && host.preparation_owner == runtime) {
-            runtime.next_retired = retained
-            retained = runtime
+        progress := false
+        while runtime != null {
+            next := runtime.next_retired
+            if runtime.busy || runtime.dependency_leases > 0 || (runtime.frontend != null && runtime.frontend.busy) ||
+            (host.preparation != null && host.preparation_owner == runtime) {
+                runtime.next_retired = retained
+                retained = runtime
+                runtime = next
+                continue
+            }
+            host.retired_bytes -= runtime.byte_charge
+            if runtime.frontend != null {
+                HostedAppClose(AppContextRuntime(*runtime.frontend.app))
+                AppFileFree(runtime.frontend.catalog)
+                free(runtime.frontend)
+            }
+            HostedAppClose(AppContextRuntime(*runtime.app))
+            AppHostCloseDependencies(runtime)
+            if runtime.art_open { HostedAppClose(*runtime.art) }
+            AppFileFree(runtime.catalog)
+            free(runtime)
+            progress = true
             runtime = next
-            continue
         }
-        host.retired_bytes -= runtime.byte_charge
-        if runtime.frontend != null {
-            HostedAppClose(AppContextRuntime(*runtime.frontend.app))
-            AppFileFree(runtime.frontend.catalog)
-            free(runtime.frontend)
+        collecting = progress && retained != null
+        if collecting {
+            runtime = retained
+            retained = null
         }
-        HostedAppClose(AppContextRuntime(*runtime.app))
-        AppHostCloseDependencies(runtime)
-        if runtime.art_open { HostedAppClose(*runtime.art) }
-        AppFileFree(runtime.catalog)
-        free(runtime)
-        progress = true
-        runtime = next
-      }
-      collecting = progress && retained != null
-      if collecting {
-          runtime = retained
-          retained = null
-      }
     }
     host.retired = retained
 }

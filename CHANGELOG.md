@@ -2,9 +2,11 @@
 
 ## [Unreleased]
 
+- Author the shared controller, launcher, connection consent, Home strip and game HUD with typed Kryon components and scoped modal and scroll content. Import screens directly from `apps/tsx/launcher`, `apps/tsx/connection` and `apps/tsx/game_hud`; the native model modules no longer export screen wrappers.
+
 - Resolve the shared controller entry from the selected compiler graph so consumer builds use dependency aliases instead of lock identities.
 
-- Share published Kryon 7fc37d68 with app hosts so locked controller builds resolve the same renderer.
+- Align the published compiler (fe57aa00), Kryon (0724d828), Mesh Client (05eed82a) and Crypto (b650c144) graph so locked controller and native host builds use the same checked types.
 
 - Build the shared controller with published Ziran edd7f35a and its current ZX 29 program format.
 
@@ -17,7 +19,11 @@
 
 - Validate signed package sizes against checked integer ranges instead of a universal 64 MiB limit, and verify public payloads incrementally without weakening signatures or exact digests.
 
-- Run add-ons on Ziran's one-format ZX: an add-on imports its base's modules and carries that code in its own bundle. `shared_code` and code-library loading are removed, and catalogs that name `shared_code` are rejected. Dependencies remain for resource links and shared records, and a running base's verified bundle is still leased once. Build with Ziran 0.5.0 and Kryon b45cc524.
+- Run add-ons on Ziran's one-format ZX: an add-on imports its base's modules and carries that code in its own bundle. `shared_code` and code-library loading are removed, and catalogs that name `shared_code` are rejected. Dependencies remain for resource links and shared records, and a running base's verified bundle is still leased once. Build with Ziran 0.5.0 and Kryon cc731751.
+
+- Accept AVIF artwork in verified app icons, previews and covers.
+
+- Use the current Kryon widget catalog in the shared host and game HUD.
 
 - Build with Ziran 0e91eb43 (program format 62) and Kryon 99c934a0 (staged swipes, correction caret and image sizing); hosts on host_api 43 load the new controller.
 

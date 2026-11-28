@@ -3,15 +3,19 @@
 Shared application launchers and verified portable app hosting for Ziran and
 Kryon applications.
 
-`apps/launcher` exports `AppLauncherScreen`: search with a clear action,
+`apps/tsx/launcher` exports `AppLauncherScreen`: search with a clear action,
 list/grid controls, favorite grouping and scrolling. The caller retains an
-`AppLauncherState`, supplies titles and favorite flags, and implements the
-`AppLauncherCards` callback for the filtered catalog indices. The result
+`AppLauncherState` from `apps/launcher`, supplies titles and favorite flags,
+and implements the `AppLauncherCards` callback for the filtered catalog indices. The result
 includes layout bounds for native drag/drop and guide overlays. Hosts persist
 view preferences and own their account, routing, storage and installation
 effects.
 
-The callback mounts the portable screen in `ui/apps.zi` through
+`apps/tsx/game_hud` exports `AppGameHud` and `AppGameHome`; their checked native
+props remain in `apps/game_hud`. Connection consent is composed through
+`AppConnectionNotice` from `apps/tsx/connection`, with policy in `apps/connection`.
+
+The callback mounts the portable screen in `ui/apps_ui.tsx` through
 `apps/controller`. It provides cards, working action menus, Properties,
 update/rollback confirmations and all UI translations. Catalog actions are an
 explicit capability list: a host only offers actions it can handle. Every
@@ -137,7 +141,7 @@ selected-game state. Apps also verifies that node is active and running. Without
 the callback, or while a different page/game is selected, opened calls return
 false and cannot suppress a game's daily reminder. Guests cannot use this
 capability to request Android notification permission; the outer app owns its
-permission UI. `build-queue -- python3 tests/notification_host_test.py /path/to/libziran.a`
+permission UI. `python3 tests/notification_host_test.py /path/to/libziran.a`
 exercises real source/saved portable guests with a recording native provider.
 
 Portable node/2 and app/1 apps can use `kryon/Media`'s `MediaAudio` for packed
@@ -211,6 +215,15 @@ Build the controller with the host's compiler and Kryon graph, review its
 digest, and pin those exact bytes in the host. A mismatched controller must
 fail validation; never substitute another screen silently.
 
+`ui/apps.zi` retains the controller protocol, catalog state and native actions;
+`ui/apps_ui.tsx` composes cards, menus, dialogs and cover views with typed Kryon
+components. The launcher, connection notice, game HUD and host navigation strip
+likewise compose their UI in `src/*_ui.tsx`. Import public screens from
+`apps/tsx/launcher`, `apps/tsx/connection` and `apps/tsx/game_hud`. The native
+modules retain models, editing policy, consent storage and presentation props.
+The removed native screen wrappers have no compatibility aliases. Modal and
+scroll children run inside the Kryon scoped callbacks.
+
 `scripts/build-ui.py` builds the standalone package controller. The native
 fixture exercises real card/menu/dialog behavior (`--controller-only` runs
 that controller suite independently); the external-consumer test
@@ -265,10 +278,11 @@ verifies public package imports and launcher search/grouping.
   before the saved snapshot changes. Hosts stop the former root before
   collecting its bytes, retain per-app saves, and keep their reviewed controller.
 
-- Align the published dependency graph on Kryon `ee9d204548295e6c6900939ba1120efe44659e79`.
-  Consumers must resolve the same Kryon revision for shared Session, Rectangle
-  and Color values. Ziran `972dc244c4ae67e87b6089869dff5abc9d36c1f8` writes the
-  Apps controller as ZX 26, so hosts built before ZX 27 still open it.
+- Use the published Ziran `fe57aa00`, Kryon `0724d828`, Crypto `b650c144`
+  and Mesh Client `05eed82a` graph. Consumers resolve the same Kryon revision
+  for shared Session, Rectangle and Color values. The controller uses ZX 29;
+  hosts must support that format and build their reviewed controller through
+  the ordinary Ziran package workflow.
 
 - Host document readiness and acknowledged flush through explicit per-node
   private AppFiles authority. `python3 tests/document_host_test.py /path/to/libziran.a`

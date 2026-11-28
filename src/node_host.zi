@@ -179,18 +179,20 @@ NodeCall :: (context: *void, module: *u8, function: *u8, arguments: *HostValue,
         return 1
     }
     if name == "AppLocaleHost" && count == 1 && HostScalarValid(arguments[0], "string", cast(s32)HostString) {
-        key := AppArgumentText(arguments[0])
-        text := NodeLocale(node.translations, key)
-        if text != "" {
-            result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
-                .data = HostTextData(text), .length = cast(usize)text.count}
-            return 1
+        reply: HostValue
+        translated: bool
+        {
+            key := AppArgumentText(arguments[0])
+            text := NodeLocale(node.translations, key)
+            translated = text != ""
+            value := ifx translated then text else key
+            reply = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+                .data = HostTextData(value), .length = cast(usize)value.count}
         }
-        if node.services != null && node.allows != null && node.allows(node.context, name) {
+        if !translated && node.services != null && node.allows != null && node.allows(node.context, name) {
             return node.services(node.context, module, function, arguments, count, result)
         }
-        result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
-            .data = HostTextData(key), .length = cast(usize)key.count}
+        result.* = reply
         return 1
     }
     if name == "AppFieldInputHost" && count == 0 {

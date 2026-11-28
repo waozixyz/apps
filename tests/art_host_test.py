@@ -25,7 +25,7 @@ def main():
     for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
                 'SESSION_MANAGER', 'DESKTOP_SESSION', 'XDG_SESSION_ID', 'XDG_SESSION_TYPE'):
         os.environ.pop(key, None)
-    os.environ.update(YUE_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1')
+    os.environ.update(HARMONY_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1')
     run('git', 'check-ignore', 'work/art-host/data')
     WORK.mkdir(parents=True, exist_ok=True)
     native.WORK = WORK
@@ -53,6 +53,7 @@ def main():
     lines = (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines()
     lines += ['M\troot\tnative_behavior\t' + str(ROOT / 'tests/native_behavior.zi'),
               'M\troot\tart_host_behavior\t' + str(ROOT / 'tests/art_host_behavior.zi')]
+    lines.append('M\troot\tnative_behavior_ui\t' + str(ROOT / 'tests/native_behavior_ui.tsx'))
     mapping.write_text('\n'.join(lines) + '\n')
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     output = WORK / 'c'
@@ -98,7 +99,6 @@ def main():
                APPS_FIXTURE_UI_BUNDLE=str(controller), APPS_FIXTURE_HARNESS_SHA256=native.digest(controller))
     try:
         result = subprocess.run([executable], cwd=ROOT, env=env, capture_output=True, text=True, timeout=60)
-        (WORK / 'run.log').write_text(result.stdout + result.stderr)
         if result.returncode:
             print((result.stdout + result.stderr)[-4000:])
             result.check_returncode()

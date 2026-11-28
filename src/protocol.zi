@@ -161,7 +161,8 @@ AppBundlePathValid :: (path: string) -> bool {
 AppPreviewPathValid :: (path: string) -> bool {
     if !AppAssetPathValid(path) || path.count < 12 { return false }
     return path[path.count - 4:] == ".png" || path[path.count - 4:] == ".jpg" ||
-    (path.count >= 13 && (path[path.count - 5:] == ".jpeg" || path[path.count - 5:] == ".webp"))
+    (path.count >= 13 && (path[path.count - 5:] == ".jpeg" ||
+        path[path.count - 5:] == ".webp" || path[path.count - 5:] == ".avif"))
 }
 
 // A personal title is one line of text; empty restores the app's own title.

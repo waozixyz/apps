@@ -24,7 +24,7 @@ def main():
     for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
                 'SESSION_MANAGER', 'DESKTOP_SESSION', 'XDG_SESSION_ID', 'XDG_SESSION_TYPE'):
         os.environ.pop(key, None)
-    os.environ.update(MAKEFLAGS='-j1', ZIRAN_PAR_THREADS='1', YUE_DESKTOP_RECOVERY='0')
+    os.environ.update(MAKEFLAGS='-j1', ZIRAN_PAR_THREADS='1', HARMONY_DESKTOP_RECOVERY='0')
     run('git', 'check-ignore', 'work/notification-host/test')
     WORK.mkdir(parents=True, exist_ok=True)
     toolchain = Path(subprocess.check_output([ZIRAN, 'pkg', 'path', 'ziran'], cwd=ROOT, text=True).strip())
@@ -78,6 +78,7 @@ def main():
     lines += ['M\troot\t' + name + '\t' + str(ROOT / 'tests' / (name + '.zi'))
               for name in ('notification_host_behavior', 'native_behavior')]
     mapping = WORK / 'module-map.tsv'
+    lines.append('M\troot\tnative_behavior_ui\t' + str(ROOT / 'tests/native_behavior_ui.tsx'))
     mapping.write_text('\n'.join(lines) + '\n')
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     output = WORK / 'c'

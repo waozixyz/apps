@@ -24,7 +24,7 @@ def main():
                 'SESSION_MANAGER', 'DESKTOP_SESSION', 'XDG_SESSION_ID', 'XDG_SESSION_TYPE'):
         os.environ.pop(key, None)
     os.environ.update(MAKEFLAGS='-j1', CMAKE_BUILD_PARALLEL_LEVEL='1', EMCC_CORES='1',
-                      ZIRAN_PAR_THREADS='1', YUE_DESKTOP_RECOVERY='0')
+                      ZIRAN_PAR_THREADS='1', HARMONY_DESKTOP_RECOVERY='0')
     if hasattr(os, 'sched_getaffinity'):
         os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
     run('git', 'check-ignore', 'work/document-host/data')
@@ -47,6 +47,7 @@ def main():
     lines = (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines()
     lines += ['M\troot\t' + name + '\t' + str(ROOT / 'tests' / (name + '.zi'))
               for name in ('document_host_behavior', 'native_behavior')]
+    lines.append('M\troot\tnative_behavior_ui\t' + str(ROOT / 'tests/native_behavior_ui.tsx'))
     mapping.write_text('\n'.join(lines) + '\n')
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     for web in ([False, True] if args.browser_runtime else [False]):

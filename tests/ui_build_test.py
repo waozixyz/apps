@@ -39,7 +39,7 @@ class ControllerBuildTest(unittest.TestCase):
             for extra, cwd, entry, selected in [
                 (['--project', str(consumer), '--compiler', str(compiler)],
                  consumer, 'controller__apps:Main', compiler),
-                ([], ROOT, 'apps:Main', ROOT / 'scripts/ziran.sh')]:
+                ([], ROOT, 'apps:Main', 'ziran')]:
                 with patch.object(sys, 'argv', ['build-ui', '--output', str(output), *extra]), \
                      patch('subprocess.run', side_effect=invoke) as calls, \
                      patch.object(Path, 'read_text', read_map):

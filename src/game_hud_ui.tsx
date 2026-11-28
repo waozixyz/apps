@@ -1,4 +1,4 @@
-// Typed UI composition. Native state and effects remain in game_hud.zi.
+// Typed UI composition with native props from game_hud.zi.
 import * as NativeImage from "kryon/image";
 import * as NativeText from "kryon/text";
 import { AppGameHomeProps, AppGameHudProps } from "game_hud";
@@ -10,12 +10,31 @@ import { Box } from "kryon/tsx/box";
 import { Button } from "kryon/tsx/button";
 import { Image } from "kryon/tsx/image";
 import { Text } from "kryon/tsx/text";
+import { WidgetPaletteRestore, WidgetPaletteUse } from "kryon/widget_palette";
 
-export function AppGameHudView(session: Session, props: AppGameHudProps): s32 {
-    let area = props.bounds;
-    if (area.width <= 0.0 || area.height <= 0.0) {
+// Reserves key..key+7. Returns 0, 1 (Profile), or 2 (Dew).
+export function AppGameHud(session: Session, props: AppGameHudProps): s32 {
+    if (props.bounds.width <= 0.0 || props.bounds.height <= 0.0) {
         return 0n;
     }
+    WidgetPaletteUse(session, {
+        background: 0x111316ffn,
+        base: 0x2a2722ffn,
+        text: 0xffeec1ffn,
+        selected: 0xad843effn,
+        selected_text: 0xffeec1ffn,
+        border: 0x66522bffn,
+        danger: 0xdc655bffn,
+        warning: 0xdeb56dffn,
+        success: 0x79b18bffn
+    });
+    const action = GameHud(session, props);
+    WidgetPaletteRestore(session);
+    return action;
+}
+
+function GameHud(session: Session, props: AppGameHudProps): s32 {
+    let area = props.bounds;
     if (area.height > 64.0) {
         area.height = 64.0;
     }
@@ -152,7 +171,22 @@ export function AppGameHudView(session: Session, props: AppGameHudProps): s32 {
     return 0n;
 }
 
-export function AppGameHomeView(session: Session, props: AppGameHomeProps): boolean {
+// Optional collection navigation; standalone games do not compose it.
+export function AppGameHome(session: Session, props: AppGameHomeProps): boolean {
+    WidgetPaletteUse(session, {
+        background: 0x111316ffn,
+        base: 0x2a2722ffn,
+        text: 0xffeec1ffn,
+        selected: 0xad843effn,
+        selected_text: 0xffeec1ffn,
+        border: 0x66522bffn
+    });
+    const clicked = GameHome(session, props);
+    WidgetPaletteRestore(session);
+    return clicked;
+}
+
+function GameHome(session: Session, props: AppGameHomeProps): boolean {
     return (
         <Button
             session={session}

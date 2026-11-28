@@ -49,13 +49,17 @@ AppControllerCall :: (context: *void, module: *u8, function: *u8, arguments: *Ho
     if !controller.ready || !controller.busy || TextFromCString(function) != "AppServiceHost" || count != 2 ||
     !HostScalarValid(arguments[0], "string", cast(s32)HostString) ||
     !HostScalarValid(arguments[1], "string", cast(s32)HostString) || AppArgumentText(arguments[0]) != APPS_SERVICE { return 0 }
-    request := AppArgumentText(arguments[1])
-    parsed: AppsRequest
-    if !AppsReadRequest(request, *parsed) { return 0 }
-    response := controller.platform.service(controller.platform.context, request)
-    if response.count > 1048576 { return 0 }
-    result.* = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
-        .data = HostTextData(response), .length = cast(usize)response.count}
+    reply: HostValue
+    {
+        request := AppArgumentText(arguments[1])
+        parsed: AppsRequest
+        if !AppsReadRequest(request, *parsed) { return 0 }
+        response := controller.platform.service(controller.platform.context, request)
+        if response.count > 1048576 { return 0 }
+        reply = HostValue.{.kind = cast(s32)HostString, .type_name = HostTextData("string"),
+            .data = HostTextData(response), .length = cast(usize)response.count}
+    }
+    result.* = reply
     return 1
 }
 

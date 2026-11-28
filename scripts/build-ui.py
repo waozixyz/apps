@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--output', type=Path, default=ROOT / 'build/ui')
 parser.add_argument('--project', type=Path, default=ROOT, help='consumer project selecting the controller compiler and dependency graph')
-parser.add_argument('--compiler', type=Path, default=ROOT / 'scripts/ziran.sh', help='compiler selected by the consumer project')
+parser.add_argument('--compiler', default='ziran', help='compiler selected by the consumer project')
 args = parser.parse_args()
 WORK = args.output.resolve()
 project = args.project.resolve()
@@ -26,7 +26,7 @@ flags = [] if (project / 'ziran.local.toml').exists() else ['--locked']
 source = ROOT / 'ui/apps.zi'
 # Lock identities select revisions; generated module names use dependency
 # aliases. Ask the selected compiler to resolve the actual source first.
-subprocess.run([str(args.compiler.resolve()), 'check', '--project', *flags,
+subprocess.run([args.compiler, 'check', '--project', *flags,
                 '--root', str(ROOT / 'ui'), str(source)], cwd=project, check=True)
 modules = []
 for line in (project / 'build/.ziran/module-map.tsv').read_text().splitlines():
@@ -36,7 +36,7 @@ for line in (project / 'build/.ziran/module-map.tsv').read_text().splitlines():
 if len(modules) != 1:
     parser.error('controller source must have one identity in the selected package graph')
 entry = modules[0] + ':Main'
-subprocess.run([str(args.compiler.resolve()), 'bundle', '--project', *flags,
+subprocess.run([args.compiler, 'bundle', '--project', *flags,
                 '--root', str(ROOT / 'ui'), '--entry', entry, '--define', 'KRYON_HOSTED_UI',
                 '-o', str(WORK / 'apps.zx'), str(ROOT / 'ui/apps.zi')], cwd=project, check=True)
 with (WORK / 'apps.zx').open('rb') as stream:

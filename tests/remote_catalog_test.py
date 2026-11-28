@@ -137,7 +137,7 @@ def main():
     for key in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
                 'SESSION_MANAGER', 'DESKTOP_SESSION', 'XDG_SESSION_ID', 'XDG_SESSION_TYPE'):
         os.environ.pop(key, None)
-    os.environ.update(YUE_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1', NO_PROXY='127.0.0.1',
+    os.environ.update(HARMONY_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1', NO_PROXY='127.0.0.1',
                       no_proxy='127.0.0.1')
     run('git', 'check-ignore', 'work/remote-catalog/data')
     WORK.mkdir(parents=True, exist_ok=True)

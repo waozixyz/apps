@@ -4,10 +4,11 @@ module_roots = ["src", "ui", "fixtures"]
 
 [toolchain]
 git = "https://git.waozi.xyz/ziranlang/ziran.git"
-ref = "edd7f35a93d2d7e9824c27c8bab34fb0a0302fc3"
+ref = "fe57aa00fe91541afd347d3be0aad7fcf8d3044f"
 
 [exports]
 game_hud = "src/game_hud.zi"
+"tsx/game_hud" = "src/game_hud_ui.tsx"
 appearance = "src/appearance.zi"
 protocol = "src/protocol.zi"
 catalog = "src/catalog.zi"
@@ -19,18 +20,20 @@ connection = "src/connection.zi"
 words = "ui/words.zi"
 remote_catalog = "src/remote_catalog.zi"
 launcher = "src/launcher.zi"
+"tsx/launcher" = "src/launcher_ui.tsx"
+"tsx/connection" = "src/connection_ui.tsx"
 node_types = "src/node_types.zi"
 node_app = "src/node_app.zi"
 node_codec = "src/node_codec.zi"
 
 [dependencies.kryon]
 git = "https://git.waozi.xyz/kryonlabs/kryon.git"
-ref = "7fc37d6861e42ffb2d075c460fd31080b9c3234a"
+ref = "0724d828113af5fba018c66103e6566ed733750e"
 
 [dependencies.crypto]
-git = "https://github.com/ziranlang/crypto.git"
+git = "https://git.waozi.xyz/ziranlang/crypto.git"
 ref = "b650c1444b99a672d78b5c1a54f7026b345c1dfe"
 
 [dependencies.mesh_client]
 git = "https://git.waozi.xyz/ziranlang/mesh-client.git"
-ref = "d99d9e9802061f726773a0f89d15ec4ed3366957"
+ref = "05eed82a77bfe728dea3132943574c8cfd5d92c4"

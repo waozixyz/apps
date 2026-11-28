@@ -1,19 +1,12 @@
-// The shared Apps screen. Hosts supply their ordered catalog and draw the
-// reviewed card controller; this module owns search, views and scrolling.
+// Native launcher model, search and editing policy. Screens compose the
+// typed component exported by apps/tsx/launcher.
 #import "std/c_string"
 #import "std/byte_text_linux"
 #import "std/text_buffer"
 #import "std/utf8"
-#import "kryon/session"
 #import "kryon/geometry"
-#import "kryon/control_props"
-#import "kryon/tree"
-Button :: #import "kryon/button";
 Scroll :: #import "kryon/scroll";
-Separator :: #import "kryon/separator";
-Text :: #import "kryon/text";
 TextField :: #import "kryon/text_field";
-#import, file "../ui/words.zi";
 
 APP_LAUNCHER_LIST :: "S2rr:M9 6H20M9 12H20M9 18H20M4 6H4.01M4 12H4.01M4 18H4.01"
 APP_LAUNCHER_GRID :: "S2rr:M4 4H10V10H4ZM14 4H20V10H14ZM4 14H10V20H4ZM14 14H20V20H14Z"
@@ -142,101 +135,11 @@ AppLauncherFilter :: (state: *AppLauncherState, items: []AppLauncherItem) {
     }
 }
 
-// Call once per frame, after the host's title/account bar. The cards callback
-// runs inside the scroll scope; their standard overlays escape that scope.
-AppLauncherScreen :: (session: Session, state: *AppLauncherState,
-    props: AppLauncherProps, items: []AppLauncherItem) -> AppLauncherResult {
-    result: AppLauncherResult
-    scale := ifx props.scale > 0.0 then props.scale else 1.0
-    bounds := props.bounds
-    field_height := 48.0 * scale
-    result.search_bounds = Rectangle.{bounds.x, bounds.y, bounds.width - 104.0 * scale, field_height}
-    snapshot: [128]u8
-    for index: cast(s32)0..127 { snapshot[index] = state.query[index] }
-    field := TextField.Draw(session, TextField.Props.{.key = cast(u64)30001, .focus_id = 6791,
-            .bounds = result.search_bounds, .value = TextUntilNul(snapshot[:]),
-            .label = AppsLabel(props.locale, "search"), .placeholder = AppsLabel(props.locale, "search"),
-            .clear_label = AppsLabel(props.locale, "clear_search"), .class_name = props.search_class,
-            .cursor = state.cursor, .anchor = state.anchor, .scroll_x = state.scroll_x,
-            .focused = state.focused, .max_bytes = 127, .max_codepoints = 80, .scale = scale,
-            .input = ifx state.focused then props.input else TextField.Input.{}})
-    if field.edit.changed {
-        AppLauncherReplace(state.query[:], field.edit)
-        state.scroll = 0
-    }
-    state.cursor = field.cursor
-    state.anchor = field.anchor
-    state.scroll_x = field.scroll_x
-    state.focused = field.focused && !field.escaped
-    result.clipboard_write = field.clipboard_write
-    if field.clipboard_write { unused CopyCString(field.clipboard_text, result.clipboard_text[:]) }
-    for mode: cast(s32)0..1 {
-        grid := mode == 1
-        if Button.Draw(session, Button.Props.{.key = cast(u64)(30002 + mode),
-                .label = AppsLabel(props.locale, ifx grid then "grid_view" else "list_view"),
-                .icon_shape = ifx grid then APP_LAUNCHER_GRID else APP_LAUNCHER_LIST,
-                .icon_only = true, .selected = state.grid == grid,
-                .tone = ifx state.grid == grid then ButtonTone.ButtonToneAccent else ButtonTone.ButtonToneNeutral,
-                .emphasis = ButtonEmphasis.ButtonEmphasisSoft,
-                .bounds = Rectangle.{bounds.x + bounds.width - 96.0 * scale + cast(float32)mode * 52.0 * scale,
-                    bounds.y + 2.0 * scale, 44.0 * scale, 44.0 * scale}}) != 0 && state.grid != grid {
-            state.grid = grid
-            state.scroll = 0
-            result.changed = true
-        }
-    }
-    AppLauncherFilter(state, items)
-    result.columns = 1
-    result.tile_height = cast(s32)(64.0 * scale)
-    result.gap = cast(s32)(4.0 * scale)
-    if state.grid {
-        result.tile_height = cast(s32)(88.0 * scale)
-        result.gap = cast(s32)(12.0 * scale)
-        result.columns = cast(s32)((bounds.width + cast(float32)result.gap) / (140.0 * scale + cast(float32)result.gap))
-        if result.columns < 1 { result.columns = 1 }
-        if result.columns > 6 { result.columns = 6 }
-    }
-    sections := props.empty_favorites || state.favorites > 0
-    heading := ifx sections then cast(s32)(36.0 * scale) else 0
-    more := state.count - state.favorites
-    stride := result.tile_height + result.gap
-    favorites_height := heading + (state.favorites + result.columns - 1) / result.columns * stride
-    library_height := heading + (more + result.columns - 1) / result.columns * stride
-    if props.empty_favorites && more == 0 { library_height += cast(s32)(64.0 * scale) }
-    if state.count == 0 { library_height += cast(s32)(64.0 * scale) }
-    top := bounds.y + 68.0 * scale
-    if props.status.count > 0 {
-        Text.Draw(session, Text.Props.{.key = cast(u64)30004, .text = props.status,
-                .class_name = props.muted_class, .bounds = Rectangle.{bounds.x, top, bounds.width, 44.0 * scale}})
-        top += 48.0 * scale
-    }
-    result.scroll_bounds = Rectangle.{bounds.x, top, bounds.width, bounds.y + bounds.height - top}
-    result.scrolled = Scroll.Draw(session, Scroll.Props.{.key = cast(u64)30005, .bounds = result.scroll_bounds,
-            .scale = scale, .scroll_offset = state.scroll, .content_height = favorites_height + library_height})
-    state.scroll = result.scrolled.scroll_offset
-    if result.scrolled.opened {
-        area := result.scrolled.content
-        result.favorites_bounds = Rectangle.{area.x, area.y, area.width, cast(float32)favorites_height}
-        result.library_bounds = Rectangle.{area.x, area.y + cast(float32)favorites_height,
-            area.width, cast(float32)library_height}
-        result.cards_bounds = Rectangle.{area.x, area.y + cast(float32)heading,
-            area.width, cast(float32)(favorites_height + library_height - heading)}
-        if sections {
-            Text.Draw(session, Text.Props.{.key = cast(u64)30006, .text = AppsLabel(props.locale, "favorites"),
-                    .class_name = props.heading_class, .bounds = Rectangle.{area.x, area.y, area.width, 28.0 * scale}})
-            Separator.Draw(session, Separator.Props.{.key = cast(u64)30009,
-                    .bounds = Rectangle.{area.x, result.library_bounds.y + 28.0 * scale, area.width, 8.0 * scale}})
-        }
-        input := ifx state.focused then TextField.Input.{} else props.input
-        if props.cards != null && state.count > 0 {
-            result.ran = props.cards(props.context, state.visible[:state.count],
-                result.cards_bounds, input, ifx sections then state.favorites else -1, result.columns)
-        } else {
-            Text.Draw(session, Text.Props.{.key = cast(u64)30008, .text = AppsLabel(props.locale, "no_results"),
-                    .class_name = props.muted_class, .bounds = result.cards_bounds})
-            result.ran = true
-        }
-        End(session)
-    }
+NewSnapshot :: () -> [128]u8 {
+    result: [128]u8
     return result
+}
+
+AppLauncherHasCards :: (props: AppLauncherProps) -> bool {
+    return props.cards != null
 }

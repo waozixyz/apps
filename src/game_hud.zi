@@ -1,15 +1,5 @@
-#import "game_hud_ui"
-// Shared painted game actions. The caller owns translations, balance and routes.
-#import "kryon/session"
+// Shared game presentation data. The caller owns translations, balance and routes.
 #import "kryon/geometry"
-Box :: #import "kryon/box";
-Button :: #import "kryon/button";
-Image :: #import "kryon/image";
-Text :: #import "kryon/text";
-#import "kryon/control_props"
-#import "kryon/text_align"
-#import "kryon/drawing_props"
-#import "kryon/widget_palette"
 
 AppGameHudProps :: struct {
     bounds: Rectangle
@@ -22,31 +12,9 @@ AppGameHudProps :: struct {
     dew_image: string
 }
 
-// Reserves key..key+7. Returns 0, 1 (Profile), or 2 (Dew).
-// The caller positions the bounds at the top right of its game viewport.
-#program_export
-AppGameHud :: (session: Session, props: AppGameHudProps) -> s32 {
-    if props.bounds.width <= 0.0 || props.bounds.height <= 0.0 { return 0 }
-    unused WidgetPaletteUse(session, WidgetPalette.{.background = 0x111316ff,
-            .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
-            .selected_text = 0xffeec1ff, .border = 0x66522bff, .danger = 0xdc655bff,
-            .warning = 0xdeb56dff, .success = 0x79b18bff})
-    defer { unused WidgetPaletteRestore(session) }
-    return AppGameHudView(session, props)
-}
-
 // Optional host navigation. Standalone games simply do not compose this.
 AppGameHomeProps :: struct {
     key: u64
     bounds: Rectangle
     label: string
-}
-
-#program_export
-AppGameHome :: (session: Session, props: AppGameHomeProps) -> bool {
-    unused WidgetPaletteUse(session, WidgetPalette.{.background = 0x111316ff,
-            .base = 0x2a2722ff, .text = 0xffeec1ff, .selected = 0xad843eff,
-            .selected_text = 0xffeec1ff, .border = 0x66522bff})
-    defer { unused WidgetPaletteRestore(session) }
-    return AppGameHomeView(session, props)
 }

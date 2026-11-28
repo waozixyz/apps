@@ -45,7 +45,7 @@ def main():
                 output.truncate(8388609)
         path = WORK / (kind.lower() + '.zx')
         source = 'audio_context' if kind == 'CONTEXT' else 'audio_node'
-        args = [ZIRAN, 'bundle', '--project', '--locked', '--offline', '--root', ROOT / 'fixtures',
+        args = [ZIRAN, 'bundle', '--project', *native.LOCK_FLAGS, '--offline', '--root', ROOT / 'fixtures',
                 '--entry', source + ':Main', '--define', 'KRYON_HOSTED_UI',
                 '--asset-dir', 'assets=' + str(assets.parent), '-o', path]
         if kind == 'CONTEXT':
@@ -70,6 +70,7 @@ def main():
     lines = (ROOT / 'build/.ziran/module-map.tsv').read_text().splitlines()
     lines += ['M\troot\t' + name + '\t' + str(ROOT / 'tests' / (name + '.zi'))
               for name in ('audio_host_behavior', 'native_behavior')]
+    lines.append('M\troot\tnative_behavior_ui\t' + str(ROOT / 'tests/native_behavior_ui.tsx'))
     mapping.write_text('\n'.join(lines) + '\n')
     os.environ['ZIRAN_PACKAGE_MAP'] = str(mapping)
     for actual in (False, True):
@@ -98,9 +99,8 @@ def main():
         config.write_text('pcm.!default { type null }\nctl.!default { type null }\n')
         env = dict(os.environ, ALSA_CONFIG_PATH=str(config), SDL_AUDIODRIVER='dummy',
             PULSE_SERVER='unix:' + str(WORK / 'no-pulse'), JACK_DEFAULT_SERVER='apps-test-no-server',
-            JACK_NO_START_SERVER='1', YUE_DESKTOP_RECOVERY='0')
+            JACK_NO_START_SERVER='1', HARMONY_DESKTOP_RECOVERY='0')
         result = subprocess.run([str(executable)], cwd=ROOT, env=env, text=True, capture_output=True, timeout=90)
-        (WORK / ('native.log' if actual else 'dummy.log')).write_text(result.stdout + result.stderr)
         if result.returncode:
             print((result.stdout + result.stderr)[-6000:])
             result.check_returncode()

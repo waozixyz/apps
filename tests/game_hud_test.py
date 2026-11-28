@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Display-free native tree and portable/hosted shared HUD contract tests.
 
-Run through build-queue; all compiler/linker children inherit its single slot.
+Compiler/linker children inherit the caller's managed build limits.
 """
 from pathlib import Path
 import os
@@ -12,7 +12,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / 'work/game-hud'
-ZIRAN = ROOT / 'scripts/ziran.sh'
+ZIRAN = 'ziran'
 
 def run(*args):
     return subprocess.run(list(map(str, args)), cwd=ROOT, check=True,
@@ -23,7 +23,8 @@ def main():
     for name in ('DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DBUS_SESSION_BUS_ADDRESS',
                  'SESSION_MANAGER', 'DESKTOP_SESSION', 'XDG_SESSION_ID', 'XDG_SESSION_TYPE'):
         os.environ.pop(name, None)
-    os.environ.update(YUE_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1', ZIRAN_JOBS='2')
+    os.environ.update(HARMONY_DESKTOP_RECOVERY='0', ZIRAN_PAR_THREADS='1')
+    os.environ.setdefault('ZIRAN_JOBS', '1')
     run('git', 'check-ignore', 'work/game-hud/test')
     WORK.mkdir(parents=True, exist_ok=True)
     scratch = WORK / 'runtime'

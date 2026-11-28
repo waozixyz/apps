@@ -56,7 +56,7 @@ def main():
     WORK.mkdir(parents=True, exist_ok=True)
     mapping = WORK / "module-map.tsv"
     mapping.write_text("\n".join(lines) + "\n")
-    toolchain = Path(subprocess.check_output([str(ROOT / "scripts/ziran.sh"), "pkg", "path", "ziran"], cwd=ROOT, text=True).strip())
+    toolchain = Path(subprocess.check_output(["ziran", "pkg", "path", "ziran"], cwd=ROOT, text=True).strip())
     output = WORK / "c"
     subprocess.run([str(toolchain / "build/bin/zi2c"), "--prune-stale", "--no-main", "--entry", "main:Check",
                     "--module-path", str(toolchain / "std"), "--root", str(CONSUMER), "-o", str(output),

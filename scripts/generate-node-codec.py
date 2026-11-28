@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 KRYON = Path(subprocess.check_output(
-    [str(ROOT / 'scripts/ziran.sh'), 'pkg', 'path', 'kryon'], cwd=ROOT, text=True).strip())
+    ['ziran', 'pkg', 'path', 'kryon'], cwd=ROOT, text=True).strip())
 command = [sys.executable, str(KRYON / 'scripts/generate-widget-codecs.py'),
            '--output', str(ROOT / 'src/node_codec.zi'),
            '--uses', str(KRYON / 'src/backend/widget_codec.zi'),
