@@ -6,7 +6,7 @@
 
 - Resolve the shared controller entry from the selected compiler graph so consumer builds use dependency aliases instead of lock identities.
 
-- Align the published compiler (fe57aa00), Kryon (0724d828), Mesh Client (05eed82a) and Crypto (b650c144) graph so locked controller and native host builds use the same checked types.
+- Align the published compiler (fe57aa00), Kryon (0724d828), Mesh Client (84ce5193) and Crypto (b650c144) graph so locked controller and native host builds use the same checked types.
 
 - Build the shared controller with published Ziran edd7f35a and its current ZX 29 program format.
 

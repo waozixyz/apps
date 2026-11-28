@@ -118,14 +118,6 @@
       "url": "https://git.waozi.xyz/ziranlang/crypto.git"
     },
     {
-      "commit": "cd4a75b3383e49dd5eb10a18b2181fe74b161880",
-      "dependencies": {},
-      "id": "waozi_xyz_ziranlang_crypto_cd4a75b3383e",
-      "name": "crypto",
-      "ref": "cd4a75b3383e49dd5eb10a18b2181fe74b161880",
-      "url": "https://git.waozi.xyz/ziranlang/crypto.git"
-    },
-    {
       "commit": "3017f0d1cc56975aa29c600a1f55a62e1193cf7b",
       "dependencies": {},
       "id": "waozi_xyz_ziranlang_image_codec_3017f0d1cc56",
@@ -134,12 +126,12 @@
       "url": "https://git.waozi.xyz/ziranlang/image-codec.git"
     },
     {
-      "commit": "05eed82a77bfe728dea3132943574c8cfd5d92c4",
-      "dependencies": {"crypto": "waozi_xyz_ziranlang_crypto_cd4a75b3383e", "oqs": "waozi_xyz_ziranlang_oqs_22d2ddbdc236"},
-      "dependency_refs": {"crypto": "cd4a75b3383e49dd5eb10a18b2181fe74b161880", "oqs": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3"},
-      "id": "waozi_xyz_ziranlang_mesh_client_05eed82a77bf",
+      "commit": "84ce51938ece21e1cf531beecd3b10f48c890bf9",
+      "dependencies": {"crypto": "waozi_xyz_ziranlang_crypto_b650c1444b99", "oqs": "waozi_xyz_ziranlang_oqs_22d2ddbdc236"},
+      "dependency_refs": {"crypto": "b650c1444b99a672d78b5c1a54f7026b345c1dfe", "oqs": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3"},
+      "id": "waozi_xyz_ziranlang_mesh_client_84ce51938ece",
       "name": "mesh_client",
-      "ref": "05eed82a77bfe728dea3132943574c8cfd5d92c4",
+      "ref": "84ce51938ece21e1cf531beecd3b10f48c890bf9",
       "url": "https://git.waozi.xyz/ziranlang/mesh-client.git"
     },
     {
@@ -162,8 +154,8 @@
     }
   ],
   "root": {
-    "dependencies": {"crypto": "waozi_xyz_ziranlang_crypto_b650c1444b99", "kryon": "waozi_xyz_kryonlabs_kryon_0724d828113a", "mesh_client": "waozi_xyz_ziranlang_mesh_client_05eed82a77bf"},
-    "dependency_refs": {"crypto": "b650c1444b99a672d78b5c1a54f7026b345c1dfe", "kryon": "0724d828113af5fba018c66103e6566ed733750e", "mesh_client": "05eed82a77bfe728dea3132943574c8cfd5d92c4"},
+    "dependencies": {"crypto": "waozi_xyz_ziranlang_crypto_b650c1444b99", "kryon": "waozi_xyz_kryonlabs_kryon_0724d828113a", "mesh_client": "waozi_xyz_ziranlang_mesh_client_84ce51938ece"},
+    "dependency_refs": {"crypto": "b650c1444b99a672d78b5c1a54f7026b345c1dfe", "kryon": "0724d828113af5fba018c66103e6566ed733750e", "mesh_client": "84ce51938ece21e1cf531beecd3b10f48c890bf9"},
     "name": "Apps"
   },
   "toolchain": {

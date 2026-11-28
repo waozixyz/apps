@@ -279,7 +279,7 @@ verifies public package imports and launcher search/grouping.
   collecting its bytes, retain per-app saves, and keep their reviewed controller.
 
 - Use the published Ziran `fe57aa00`, Kryon `0724d828`, Crypto `b650c144`
-  and Mesh Client `05eed82a` graph. Consumers resolve the same Kryon revision
+  and Mesh Client `84ce5193` graph. Consumers resolve the same Kryon revision
   for shared Session, Rectangle and Color values. The controller uses ZX 29;
   hosts must support that format and build their reviewed controller through
   the ordinary Ziran package workflow.

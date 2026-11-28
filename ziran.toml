@@ -36,4 +36,4 @@ ref = "b650c1444b99a672d78b5c1a54f7026b345c1dfe"
 
 [dependencies.mesh_client]
 git = "https://git.waozi.xyz/ziranlang/mesh-client.git"
-ref = "05eed82a77bfe728dea3132943574c8cfd5d92c4"
+ref = "84ce51938ece21e1cf531beecd3b10f48c890bf9"
